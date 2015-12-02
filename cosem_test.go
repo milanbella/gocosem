@@ -1,9 +1,8 @@
-package main
+package gocosem
 
 import (
 	"flag"
 	"log"
-	cosem "x4/gocosem"
 )
 
 var (
@@ -16,12 +15,13 @@ func init() {
 	flag.BoolVar(&verbose, "v", false, "verbose")
 }
 
-func main() {
+func ExampleGetSerialNumber() {
+
 	flag.Parse()
-	cosem.Debug = verbose
+	Debug = verbose
 
 	log.Println("initialising connection")
-	cos := cosem.NewCosem(ip)
+	cos := NewCosem(ip)
 	if err := cos.Connect(); err != nil {
 		log.Println("connection failed:", err)
 		return
