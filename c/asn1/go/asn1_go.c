@@ -18,9 +18,10 @@ AARQ_apdu_t *hlp__calloc_AARQ_apdu_t() {
 	return (AARQ_apdu_t *)calloc(1, sizeof(AARQ_apdu_t));
 }
 
-T_protocol_version_t *hlp__calloc_T_protocol_version_t() {
-	return (T_protocol_version_t *)calloc(1, sizeof(T_protocol_version_t));
+struct Authentication_value *hlp__calloc_struct_Authentication_value() {
+	return (struct Authentication_value *)calloc(1, sizeof(struct Authentication_value));
 }
+
 
 // fill in helpers
 
@@ -53,6 +54,11 @@ OBJECT_IDENTIFIER_t *hlp__fill_OBJECT_IDENTIFIER_t(OBJECT_IDENTIFIER_t *object_i
 	return object_identifier;
 }
 
-T_protocol_version_t *hlp__fill_T_protocol_version_t(T_protocol_version_t *T_protocol_version, uint8_t *buf, int bufLen, int unusedBits) {
-	return (T_protocol_version_t *)hlp__fill_BIT_STRING_t(T_protocol_version, buf, bufLen, unusedBits);
+OCTET_STRING_t *hlp__fill_OCTET_STRING_t(OCTET_STRING_t *octet_string, uint8_t *buf, int bufLen) {
+	if (0 == octet_string) {
+		octet_string = (OCTET_STRING_t *)calloc(1, sizeof(OCTET_STRING_t));
+	}
+	octet_string->buf = buf;
+	octet_string->size = bufLen;
+	return octet_string; 
 }
