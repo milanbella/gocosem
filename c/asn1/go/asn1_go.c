@@ -42,11 +42,6 @@ BIT_STRING_t *hlp__fill_BIT_STRING_t(BIT_STRING_t* bit_string, uint8_t *buf, int
 		bit_string = (BIT_STRING_t *)calloc(1, sizeof(BIT_STRING_t));
 	}
 
-	if (0 != bufLen % 8) {
-		fprintf(stderr, "%s:%d: bufLen must be multiple of 8", __FILE__, __LINE__);
-		exit(1);
-	}
-
 	bit_string->buf = buf;
 	bit_string->size = bufLen;
 	bit_string->bits_unused = unusedBits;

@@ -42,6 +42,23 @@ import (
 	user-information [30] EXPLICIT Association-information OPTIONAL
 */
 
+// asn1 simple types
+
+type tAsn1BitString struct {
+	bits       []byte
+	unusedBits int
+}
+
+type tAsn1IA5String string
+type tAsn1Integer int
+type tAsn1ObjectIdentifier []uint
+type tAsn1OctetString []byte
+type tAsn1PrintableString string
+type tAsn1T61String string
+type tAsn1UTCTime time.Time
+type tAsn1GraphicString []byte
+type tAsn1Any []byte
+
 type tAsn1Choice struct {
 	tag int
 	val interface{}
@@ -60,33 +77,11 @@ func (ch *tAsn1Choice) getVal() interface{} {
 	return ch.val
 }
 
-// asn1 simple types
-
-type tAsn1BitString struct {
-	bits       []byte
-	unusedBits int
-}
-
-type tAsn1IA5String string
-type tAsn1Integer int
-type tAsn1ObjectIdentifier []uint
-type tAsn1OctetString []byte
-type tAsn1PrintableString string
-type tAsn1T61String string
-type tAsn1UTCTime time.Time
-type tAsn1GraphicString []byte
-type tAsn1Any []byte
-
-type tAuthenticationValue struct {
-	callingAuthenticationValue_0 *tAsn1GraphicString
-	callingAuthenticationValue_1 *tAsn1BitString
-	callingAuthenticationValue_2 *tAsn1BitString
-	callingAuthenticationValue_3 *struct {
-		otherMechanismName tAsn1ObjectIdentifier
-		//other-mechanism-value ANY DEFINED BY other-mechanism-name
-		otherMechanismValue tAsn1OctetString
-	}
-}
+const C_Authentication_value_PR_NOTHING = int(C.Authentication_value_PR_NOTHING)
+const C_Authentication_value_PR_charstring = int(C.Authentication_value_PR_charstring)
+const C_Authentication_value_PR_bitstring = int(C.Authentication_value_PR_bitstring)
+const C_Authentication_value_PR_external = int(C.Authentication_value_PR_external)
+const C_Authentication_value_PR_other = int(C.Authentication_value_PR_other)
 
 type tAuthenticationValueOther struct {
 	otherMechanismName  tAsn1ObjectIdentifier
@@ -95,7 +90,7 @@ type tAuthenticationValueOther struct {
 
 type AARQapdu struct {
 	//protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1},
-	protocolVersion tAsn1BitString
+	protocolVersion *tAsn1BitString
 
 	//application-context-name [1] Application-context-name,
 	applicationContextName tAsn1ObjectIdentifier
@@ -254,12 +249,12 @@ func cAsn1ObjectIdentifier(oid *tAsn1ObjectIdentifier) *C.OBJECT_IDENTIFIER_t {
 	//	C.OBJECT_IDENTIFIER_get_arcs(coid, C.uint(len(*oid))
 
 	length := len(*oid)
-	cb := (*[1 << 26]C.uint32_t)(unsafe.Pointer(C.calloc(C.size_t(length), 1)))[:length:length]
+	cb := (*[1 << 26]C.uint32_t)(unsafe.Pointer(C.calloc(C.size_t(length), 4)))[:length:length]
 	for i := 0; i < length; i++ {
 		cb[i] = C.uint32_t((*oid)[i])
 	}
 	ret := C.OBJECT_IDENTIFIER_set_arcs(coid, unsafe.Pointer(&cb[0]), 4, C.uint(length))
-	if 0 == ret {
+	if -1 == ret {
 		panic("cAsn1ObjectIdentifier(): cannot encode oid")
 	}
 	C.free(unsafe.Pointer(&cb[0]))
@@ -283,13 +278,13 @@ func encode_AARQapdu(_pdu *AARQapdu) bytes.Buffer {
 	pdu = C.hlp__calloc_AARQ_apdu_t()
 
 	// protocol_version
-	pdu.protocol_version = cAsn1BitString(&_pdu.protocolVersion)
+	pdu.protocol_version = cAsn1BitString(_pdu.protocolVersion)
 
 	// application_context_name
 	pdu.application_context_name = *cAsn1ObjectIdentifier(&_pdu.applicationContextName)
 
 	// called_AP_title
-	if nil != *_pdu.calledAPtitle {
+	if nil != _pdu.calledAPtitle {
 		pdu.called_AP_title = cAsn1OctetString(_pdu.calledAPtitle)
 	}
 
@@ -314,7 +309,7 @@ func encode_AARQapdu(_pdu *AARQapdu) bytes.Buffer {
 	}
 
 	// calling_AE_qualifier
-	if nil != *_pdu.callingAEqualifier {
+	if nil != _pdu.callingAEqualifier {
 		pdu.calling_AE_qualifier = cAsn1OctetString(_pdu.callingAEqualifier)
 	}
 
