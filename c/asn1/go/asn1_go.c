@@ -22,6 +22,17 @@ struct Authentication_value *hlp__calloc_struct_Authentication_value() {
 	return (struct Authentication_value *)calloc(1, sizeof(struct Authentication_value));
 }
 
+OBJECT_IDENTIFIER_t *hlp__calloc_OBJECT_IDENTIFIER_t() {
+	return (OBJECT_IDENTIFIER_t *)calloc(1, sizeof(OBJECT_IDENTIFIER_t));
+}
+
+// memory free helpers
+AARQ_apdu_t *hlp__free_AARQ_apdu_t(AARQ_apdu_t *aarq) {
+	if (0 != aarq) {
+		asn_DEF_AARQ_apdu.free_struct(&asn_DEF_AARQ_apdu, aarq, 0);
+	}
+}
+
 
 // fill in helpers
 
@@ -61,4 +72,13 @@ OCTET_STRING_t *hlp__fill_OCTET_STRING_t(OCTET_STRING_t *octet_string, uint8_t *
 	octet_string->buf = buf;
 	octet_string->size = bufLen;
 	return octet_string; 
+}
+
+ANY_t *hlp__fill_ANY_t(ANY_t *any, uint8_t *buf, int bufLen) {
+	if (0 == any) {
+		any = (ANY_t *)calloc(1, sizeof(ANY_t));
+	}
+	any->buf = buf;
+	any->size = bufLen;
+	return any; 
 }
