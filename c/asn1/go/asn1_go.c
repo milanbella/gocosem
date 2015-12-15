@@ -32,9 +32,16 @@ OBJECT_IDENTIFIER_t *hlp__calloc_OBJECT_IDENTIFIER_t() {
 }
 
 // memory free helpers
-AARQ_apdu_t *hlp__free_AARQ_apdu_t(AARQ_apdu_t *aarq) {
+
+void hlp__free_AARQ_apdu_t(AARQ_apdu_t *aarq) {
 	if (0 != aarq) {
 		asn_DEF_AARQ_apdu.free_struct(&asn_DEF_AARQ_apdu, aarq, 0);
+	}
+}
+
+void hlp__free_AARE_apdu_t(AARE_apdu_t *aare) {
+	if (0 != aare) {
+		asn_DEF_AARE_apdu.free_struct(&asn_DEF_AARE_apdu, aare, 0);
 	}
 }
 

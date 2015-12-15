@@ -348,6 +348,7 @@ func goAsn1BitString(cBitString *C.BIT_STRING_t) *tAsn1BitString {
 	bitString := new(tAsn1BitString)
 
 	bitString.buf = goslice(cBitString.buf, cBitString.size)
+	bitString.bitsUnused = int(cBitString.bits_unused)
 	return bitString
 }
 
@@ -444,7 +445,7 @@ func goAsn1Any(cAny *C.ANY_t) *tAsn1Any {
 	return any
 }
 
-func encode_AARQapdu(_pdu *AARQapdu) bytes.Buffer {
+func encode_AARQapdu(_pdu *AARQapdu) []byte {
 	var ret C.asn_enc_rval_t
 	var pdu *C.AARQ_apdu_t
 	var buf bytes.Buffer
@@ -573,10 +574,12 @@ func encode_AARQapdu(_pdu *AARQapdu) bytes.Buffer {
 		panic(fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno))
 	}
 	C.hlp__free_AARQ_apdu_t(pdu)
-	return buf
+	return buf.Bytes()
 }
 
-func decode_AAREapdu(buf bytes.Buffer) (pdu *AAREapdu) {
+func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
+
+	buf := bytes.NewBuffer(inb)
 	var _pdu *C.AARE_apdu_t
 
 	pdu = new(AAREapdu)
@@ -653,8 +656,15 @@ func decode_AAREapdu(buf bytes.Buffer) (pdu *AAREapdu) {
 		case C.Authentication_value_PR_charstring:
 			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_charstring), goAsn1GraphicString((*C.GraphicString_t)(unsafe.Pointer(&b[0]))))
 		case C.Authentication_value_PR_bitstring:
+			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_bitstring), goAsn1BitString((*C.BIT_STRING_t)(unsafe.Pointer(&b[0]))))
 		case C.Authentication_value_PR_external:
+			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_external), goAsn1OctetString((*C.OCTET_STRING_t)(unsafe.Pointer(&b[0]))))
 		case C.Authentication_value_PR_other:
+			var _other *C.Authentication_value_other_t = (*C.Authentication_value_other_t)(unsafe.Pointer(&b[0]))
+			var other tAuthenticationValueOther
+			other.otherMechanismName = *goAsn1ObjectIdentifier(&_other.other_mechanism_name)
+			other.otherMechanismValue = *goAsn1Any(&_other.other_mechanism_value)
+			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_other), &other)
 		default:
 			panic(fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(_pdu.responding_authentication_value.present)))
 		}
@@ -662,9 +672,13 @@ func decode_AAREapdu(buf bytes.Buffer) (pdu *AAREapdu) {
 
 	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
 	//implementationInformation *tAsn1GraphicString
+	pdu.implementationInformation = goAsn1GraphicString(_pdu.implementation_information)
 
 	//user-information [30] EXPLICIT Association-information OPTIONAL
 	//userInformation *tAsn1OctetString
-	return nil
+	pdu.userInformation = goAsn1OctetString(_pdu.user_information)
 
+	C.hlp__free_AARE_apdu_t(_pdu)
+
+	return pdu
 }
