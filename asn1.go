@@ -24,8 +24,8 @@ import (
 // asn1 simple types
 
 type tAsn1BitString struct {
-	bits       []byte
-	unusedBits int
+	buf        []byte
+	bitsUnused int
 }
 
 type tAsn1IA5String string
@@ -307,15 +307,48 @@ func cslice(b []byte) []C.uint8_t {
 	return cb
 }
 
+func goslice(cb *C.uint8_t, n C.int) []byte {
+	return C.GoBytes(unsafe.Pointer(cb), n)
+}
+
+func cAsn1Integer(i *tAsn1Integer) *C.long {
+	if nil == i {
+		return nil
+	}
+	ci := C.hlp__calloc_long(1)
+	*ci = C.long(*i)
+	return ci
+}
+
+func goAsn1Integer(ci *C.long) *tAsn1Integer {
+	if nil == ci {
+		return nil
+	}
+	i := new(tAsn1Integer)
+	*i = tAsn1Integer(*ci)
+	return i
+}
+
 func cAsn1BitString(bitString *tAsn1BitString) *C.BIT_STRING_t {
 
 	if nil == bitString {
 		return (*C.BIT_STRING_t)(unsafe.Pointer(nil))
 	}
 
-	cb := cslice(bitString.bits)
-	unusedBits := bitString.unusedBits
-	return (*C.T_protocol_version_t)(C.hlp__fill_BIT_STRING_t((*C.BIT_STRING_t)(unsafe.Pointer(nil)), &cb[0], C.int(len(cb)), C.int(unusedBits)))
+	cb := cslice(bitString.buf)
+	bitsUnused := bitString.bitsUnused
+	return (*C.T_protocol_version_t)(C.hlp__fill_BIT_STRING_t((*C.BIT_STRING_t)(unsafe.Pointer(nil)), &cb[0], C.int(len(cb)), C.int(bitsUnused)))
+}
+
+func goAsn1BitString(cBitString *C.BIT_STRING_t) *tAsn1BitString {
+	if nil == cBitString {
+		return nil
+	}
+
+	bitString := new(tAsn1BitString)
+
+	bitString.buf = goslice(cBitString.buf, cBitString.size)
+	return bitString
 }
 
 func cAsn1OctetString(octetString *tAsn1OctetString) *C.OCTET_STRING_t {
@@ -326,6 +359,16 @@ func cAsn1OctetString(octetString *tAsn1OctetString) *C.OCTET_STRING_t {
 	return C.hlp__fill_OCTET_STRING_t((*C.OCTET_STRING_t)(unsafe.Pointer(nil)), &cb[0], C.int(len(cb)))
 }
 
+func goAsn1OctetString(cOctetString *C.OCTET_STRING_t) *tAsn1OctetString {
+	if nil == cOctetString {
+		return nil
+	}
+
+	octetString := new(tAsn1OctetString)
+	*octetString = tAsn1OctetString(goslice(cOctetString.buf, cOctetString.size))
+	return octetString
+}
+
 func cAsn1GraphicString(graphicString *tAsn1GraphicString) *C.GraphicString_t {
 	if nil == graphicString {
 		return (*C.GraphicString_t)(unsafe.Pointer(nil))
@@ -334,29 +377,53 @@ func cAsn1GraphicString(graphicString *tAsn1GraphicString) *C.GraphicString_t {
 	return C.hlp__fill_OCTET_STRING_t((*C.GraphicString_t)(unsafe.Pointer(nil)), &cb[0], C.int(len(cb)))
 }
 
+func goAsn1GraphicString(cGraphicString *C.GraphicString_t) *tAsn1GraphicString {
+	if nil == cGraphicString {
+		return nil
+	}
+	graphicString := new(tAsn1GraphicString)
+	*graphicString = tAsn1GraphicString(goslice(cGraphicString.buf, cGraphicString.size))
+	return graphicString
+}
+
 func cAsn1ObjectIdentifier(oid *tAsn1ObjectIdentifier) *C.OBJECT_IDENTIFIER_t {
 	if nil == oid {
 		return (*C.OBJECT_IDENTIFIER_t)(unsafe.Pointer(nil))
 	}
-	coid := C.hlp__calloc_OBJECT_IDENTIFIER_t()
-
-	//int OBJECT_IDENTIFIER_get_arcs(const OBJECT_IDENTIFIER_t *_oid,
-	//	void *_arcs,			/* e.g., unsigned int arcs[N] */
-	//	unsigned int _arc_type_size,	/* e.g., sizeof(arcs[0]) */
-	//	unsigned int _arc_slots		/* e.g., N */);
-	//	C.OBJECT_IDENTIFIER_get_arcs(coid, C.uint(len(*oid))
+	cOid := C.hlp__calloc_OBJECT_IDENTIFIER_t()
 
 	length := len(*oid)
 	cb := (*[1 << 26]C.uint32_t)(unsafe.Pointer(C.calloc(C.size_t(length), 4)))[:length:length]
 	for i := 0; i < length; i++ {
 		cb[i] = C.uint32_t((*oid)[i])
 	}
-	ret := C.OBJECT_IDENTIFIER_set_arcs(coid, unsafe.Pointer(&cb[0]), 4, C.uint(length))
+	ret := C.OBJECT_IDENTIFIER_set_arcs(cOid, unsafe.Pointer(&cb[0]), 4, C.uint(length))
 	if -1 == ret {
 		panic("cAsn1ObjectIdentifier(): cannot encode oid")
 	}
 	C.free(unsafe.Pointer(&cb[0]))
-	return coid
+	return cOid
+}
+
+func goAsn1ObjectIdentifier(cOid *C.OBJECT_IDENTIFIER_t) *tAsn1ObjectIdentifier {
+	if nil == cOid {
+		return nil
+	}
+
+	length := C.int(20)
+	cb := (*[1 << 26]C.uint32_t)(unsafe.Pointer(C.calloc(C.size_t(length), 4)))[:length:length]
+	ret := C.OBJECT_IDENTIFIER_get_arcs(cOid, unsafe.Pointer(&cb[0]), 4, C.uint(length))
+	if -1 == ret {
+		panic("goAsn1ObjectIdentifier(): cannot decode oid")
+	}
+	n := int(ret)
+	b := make([]uint, n)
+	for i := 0; i < n; i++ {
+		b[i] = uint(cb[i])
+	}
+	C.free(unsafe.Pointer(&cb[0]))
+	return (*tAsn1ObjectIdentifier)(&b)
+
 }
 
 func cAsn1Any(any *tAsn1Any) *C.ANY_t {
@@ -365,6 +432,16 @@ func cAsn1Any(any *tAsn1Any) *C.ANY_t {
 	}
 	cb := cslice(*any)
 	return C.hlp__fill_ANY_t((*C.ANY_t)(unsafe.Pointer(nil)), &cb[0], C.int(len(cb)))
+}
+
+func goAsn1Any(cAny *C.ANY_t) *tAsn1Any {
+	if nil == cAny {
+		return nil
+	}
+
+	any := new(tAsn1Any)
+	*any = goslice(cAny.buf, cAny.size)
+	return any
 }
 
 func encode_AARQapdu(_pdu *AARQapdu) bytes.Buffer {
@@ -393,12 +470,12 @@ func encode_AARQapdu(_pdu *AARQapdu) bytes.Buffer {
 
 	// called_AP_invocation_id
 	if nil != _pdu.calledAPinvocationId {
-		pdu.called_AP_invocation_id = (*C.AP_invocation_identifier_t)(unsafe.Pointer(_pdu.calledAPinvocationId))
+		pdu.called_AP_invocation_id = (*C.AP_invocation_identifier_t)(cAsn1Integer(_pdu.calledAPinvocationId))
 	}
 
 	// called_AE_invocation_id
 	if nil != _pdu.calledAEinvocationId {
-		pdu.called_AE_invocation_id = (*C.AE_invocation_identifier_t)(unsafe.Pointer(_pdu.calledAEinvocationId))
+		pdu.called_AE_invocation_id = (*C.AE_invocation_identifier_t)(cAsn1Integer(_pdu.calledAEinvocationId))
 	}
 
 	// calling_AP_title
@@ -413,12 +490,12 @@ func encode_AARQapdu(_pdu *AARQapdu) bytes.Buffer {
 
 	// calling_AP_invocation_id
 	if nil != _pdu.callingAPinvocationId {
-		pdu.calling_AP_invocation_id = (*C.AP_invocation_identifier_t)(unsafe.Pointer(_pdu.callingAPinvocationId))
+		pdu.calling_AP_invocation_id = (*C.AP_invocation_identifier_t)(cAsn1Integer(_pdu.callingAPinvocationId))
 	}
 
 	// calling_AE_invocation_id
 	if nil != _pdu.callingAEinvocationId {
-		pdu.calling_AE_invocation_id = (*C.AE_invocation_identifier_t)(unsafe.Pointer(_pdu.callingAEinvocationId))
+		pdu.calling_AE_invocation_id = (*C.AE_invocation_identifier_t)(cAsn1Integer(_pdu.callingAEinvocationId))
 	}
 
 	// sender_acse_requirements
@@ -480,10 +557,12 @@ func encode_AARQapdu(_pdu *AARQapdu) bytes.Buffer {
 		}
 	}
 
+	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
 	if nil != _pdu.implementationInformation {
 		pdu.implementation_information = cAsn1GraphicString(_pdu.implementationInformation)
 	}
 
+	//user-information [30] EXPLICIT Association-information OPTIONAL
 	if nil != _pdu.userInformation {
 		pdu.user_information = cAsn1OctetString(_pdu.userInformation)
 	}
@@ -497,15 +576,95 @@ func encode_AARQapdu(_pdu *AARQapdu) bytes.Buffer {
 	return buf
 }
 
-func decode_AAREapdu(b bytes.Buffer) *AAREapdu {
+func decode_AAREapdu(buf bytes.Buffer) (pdu *AAREapdu) {
 	var _pdu *C.AARE_apdu_t
 
-	cb := cslice(b.Bytes())
+	pdu = new(AAREapdu)
+
+	cb := cslice(buf.Bytes())
 	ret, errno := C.ber_decode((*C.struct_asn_codec_ctx_s)(unsafe.Pointer(nil)), &C.asn_DEF_AARE_apdu, (*unsafe.Pointer)(unsafe.Pointer(&_pdu)), unsafe.Pointer(&cb[0]), C.size_t(len(cb)))
 	C.free(unsafe.Pointer(&cb[0]))
 	if C.RC_OK != ret.code {
 		panic(fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno))
 	}
+
+	//-- [APPLICATION 1] == [ 61H ] = [ 97 ]
+	//protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1},
+	//protocolVersion *tAsn1BitString
+	pdu.protocolVersion = goAsn1BitString(_pdu.protocol_version)
+
+	//application-context-name [1] Application-context-name,
+	//applicationContextName tAsn1ObjectIdentifier
+	pdu.applicationContextName = *goAsn1ObjectIdentifier(&_pdu.application_context_name)
+
+	//result [2] Association-result,
+	//result tAsn1Integer
+	pdu.result = *goAsn1Integer((*C.long)(&_pdu.result))
+
+	//result-source-diagnostic [3] Associate-source-diagnostic,
+	//resultSourceDiagnostic tAsn1Choice
+	b := _pdu.result_source_diagnostic.choice
+	switch _pdu.result_source_diagnostic.present {
+	case C.Associate_source_diagnostic_PR_NOTHING:
+		pdu.resultSourceDiagnostic.setVal(int(C.Associate_source_diagnostic_PR_NOTHING), nil)
+	case C.Associate_source_diagnostic_PR_acse_service_user:
+		pdu.resultSourceDiagnostic.setVal(int(C.Associate_source_diagnostic_PR_acse_service_user), int(*(*C.long)(unsafe.Pointer(&b[0]))))
+	case C.Associate_source_diagnostic_PR_acse_service_provider:
+		pdu.resultSourceDiagnostic.setVal(int(C.Associate_source_diagnostic_PR_acse_service_provider), int(*(*C.long)(unsafe.Pointer(&b[0]))))
+	default:
+		panic(fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(_pdu.result_source_diagnostic.present)))
+	}
+
+	//responding-AP-title [4] AP-title OPTIONAL,
+	//respondingAPtitle *tAsn1OctetString
+	pdu.respondingAPtitle = goAsn1OctetString(_pdu.responding_AP_title)
+
+	//responding-AE-qualifier [5] AE-qualifier OPTIONAL,
+	//respondingAEqualifier *tAsn1OctetString
+	pdu.respondingAEqualifier = goAsn1OctetString(_pdu.responding_AE_qualifier)
+
+	//responding-AP-invocation-id [6] AP-invocation-identifier OPTIONAL,
+	//respondingAPinvocationId *tAsn1Integer
+	pdu.respondingAPinvocationId = goAsn1Integer((*C.long)(_pdu.responding_AP_invocation_id))
+
+	//responding-AE-invocation-id [7] AE-invocation-identifier OPTIONAL,
+	//respondingAEinvocationId *tAsn1Integer
+	pdu.respondingAEinvocationId = goAsn1Integer((*C.long)(_pdu.responding_AE_invocation_id))
+
+	//-- The following field shall not be present if only the kernel is used.
+	//responder-acse-requirements [8] IMPLICIT ACSE-requirements OPTIONAL,
+	//responderAcseRequirements *tAsn1BitString
+	pdu.responderAcseRequirements = goAsn1BitString(_pdu.responder_acse_requirements)
+
+	//-- The following field shall only be present if the authentication functional unit is selected.
+	//mechanism-name [9] IMPLICIT Mechanism-name OPTIONAL,
+	//mechanismName *tAsn1ObjectIdentifier
+	pdu.mechanismName = goAsn1ObjectIdentifier(_pdu.mechanism_name)
+
+	//-- The following field shall only be present if the authentication functional unit is selected.
+	//responding-authentication-value [10] EXPLICIT Authentication-value OPTIONAL,
+	//respondingAuthenticationValue *tAsn1Choice
+	if nil != _pdu.responding_authentication_value {
+		pdu.respondingAuthenticationValue = new(tAsn1Choice)
+		b := _pdu.responding_authentication_value.choice
+		switch _pdu.responding_authentication_value.present {
+		case C.Authentication_value_PR_NOTHING:
+			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_NOTHING), nil)
+		case C.Authentication_value_PR_charstring:
+			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_charstring), goAsn1GraphicString((*C.GraphicString_t)(unsafe.Pointer(&b[0]))))
+		case C.Authentication_value_PR_bitstring:
+		case C.Authentication_value_PR_external:
+		case C.Authentication_value_PR_other:
+		default:
+			panic(fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(_pdu.responding_authentication_value.present)))
+		}
+	}
+
+	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
+	//implementationInformation *tAsn1GraphicString
+
+	//user-information [30] EXPLICIT Association-information OPTIONAL
+	//userInformation *tAsn1OctetString
 	return nil
 
 }

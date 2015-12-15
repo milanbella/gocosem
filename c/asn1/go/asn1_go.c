@@ -14,9 +14,14 @@ int consumeBytesWrap (void *_buf, int _bufLen, void *ctx) {
 
 // calloc helpers
 
+long *hlp__calloc_long(int n) {
+	return (long *)calloc((size_t)n, sizeof(long));
+}
+
 AARQ_apdu_t *hlp__calloc_AARQ_apdu_t() {
 	return (AARQ_apdu_t *)calloc(1, sizeof(AARQ_apdu_t));
 }
+
 
 struct Authentication_value *hlp__calloc_struct_Authentication_value() {
 	return (struct Authentication_value *)calloc(1, sizeof(struct Authentication_value));

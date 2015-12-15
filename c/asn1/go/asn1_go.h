@@ -14,6 +14,7 @@ typedef struct Authentication_value_other {
 int consumeBytes (void *_buf, int _bufLen, void *ctx);
 int consumeBytesWrap (void *_buf, int _bufLen, void *ctx);
 
+long *hlp__calloc_long(int n);
 OBJECT_IDENTIFIER_t *hlp__calloc_OBJECT_IDENTIFIER_t();
 struct Authentication_value *hlp__calloc_struct_Authentication_value();
 AARQ_apdu_t *hlp__calloc_AARQ_apdu_t();

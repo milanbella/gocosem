@@ -76,8 +76,8 @@ func TestX_encode_AARQapdu(t *testing.T) {
 
 	aarq.applicationContextName = tAsn1ObjectIdentifier([]uint{2, 16, 756, 5, 8, 1, 1})
 	aarq.senderAcseRequirements = &tAsn1BitString{
-		bits:       []byte{0x80},
-		unusedBits: 7,
+		buf:        []byte{0x80},
+		bitsUnused: 7,
 	}
 	mechanismName := (tAsn1ObjectIdentifier)([]uint{2, 16, 756, 5, 8, 2, 1})
 	aarq.mechanismName = &mechanismName
