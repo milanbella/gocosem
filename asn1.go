@@ -9,6 +9,7 @@ package gocosem
 //
 // #include "asn1_go.h"
 // #include "AARQ-apdu.h"
+// #include "AARE-apdu.h"
 //
 //
 import "C"
@@ -19,28 +20,6 @@ import (
 	"time"
 	"unsafe"
 )
-
-/*
-	-- [APPLICATION 0] == [ 60H ] = [ 96 ]
-	protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1},
-	application-context-name [1] Application-context-name,
-	called-AP-title [2] AP-title OPTIONAL,
-	called-AE-qualifier [3] AE-qualifier OPTIONAL,
-	called-AP-invocation-id [4] AP-invocation-identifier OPTIONAL,
-	called-AE-invocation-id [5] AE-invocation-identifier OPTIONAL,
-	calling-AP-title [6] AP-title OPTIONAL,
-	calling-AE-qualifier [7] AE-qualifier OPTIONAL,
-	calling-AP-invocation-id [8] AP-invocation-identifier OPTIONAL,
-	calling-AE-invocation-id [9] AE-invocation-identifier OPTIONAL,
-	-- The following field shall not be present if only the kernel is used.
-	sender-acse-requirements [10] IMPLICIT ACSE-requirements OPTIONAL,
-	-- The following field shall only be present if the authentication functional unit is selected.
-	mechanism-name [11] IMPLICIT Mechanism-name OPTIONAL,
-	-- The following field shall only be present if the authentication functional unit is selected.
-	calling-authentication-value [12] EXPLICIT Authentication-value OPTIONAL,
-	implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
-	user-information [30] EXPLICIT Association-information OPTIONAL
-*/
 
 // asn1 simple types
 
@@ -77,11 +56,27 @@ func (ch *tAsn1Choice) getVal() interface{} {
 	return ch.val
 }
 
+const C_RC_OK = int(C.RC_OK)
+const C_RC_WMORE = int(C.RC_WMORE)
+const C_RC_FAIL = int(C.RC_FAIL)
+
 const C_Authentication_value_PR_NOTHING = int(C.Authentication_value_PR_NOTHING)
 const C_Authentication_value_PR_charstring = int(C.Authentication_value_PR_charstring)
 const C_Authentication_value_PR_bitstring = int(C.Authentication_value_PR_bitstring)
 const C_Authentication_value_PR_external = int(C.Authentication_value_PR_external)
 const C_Authentication_value_PR_other = int(C.Authentication_value_PR_other)
+
+/*
+typedef enum Association_result {
+	Association_result_accepted	= 0,
+	Association_result_rejected_permanent	= 1,
+	Association_result_rejected_transient	= 2
+} e_Association_result;
+*/
+
+const C_Association_result_accepted = int(C.Association_result_accepted)
+const C_Association_result_rejected_permanent = int(C.Association_result_rejected_permanent)
+const C_Association_result_rejected_transient = int(C.Association_result_rejected_transient)
 
 type tAuthenticationValueOther struct {
 	otherMechanismName  tAsn1ObjectIdentifier
@@ -130,6 +125,109 @@ type AARQapdu struct {
 	//-- The following field shall only be present if the authentication functional unit is selected.
 	//calling-authentication-value [12] EXPLICIT Authentication-value OPTIONAL,
 	callingAuthenticationValue *tAsn1Choice
+
+	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
+	implementationInformation *tAsn1GraphicString
+
+	//user-information [30] EXPLICIT Association-information OPTIONAL
+	userInformation *tAsn1OctetString
+}
+
+/*
+AARE-apdu ::= [APPLICATION 1] IMPLICIT SEQUENCE
+{
+	-- [APPLICATION 1] == [ 61H ] = [ 97 ]
+	protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1},
+	application-context-name [1] Application-context-name,
+	result [2] Association-result,
+	result-source-diagnostic [3] Associate-source-diagnostic,
+	responding-AP-title [4] AP-title OPTIONAL,
+	responding-AE-qualifier [5] AE-qualifier OPTIONAL,
+	responding-AP-invocation-id [6] AP-invocation-identifier OPTIONAL,
+	responding-AE-invocation-id [7] AE-invocation-identifier OPTIONAL,
+	-- The following field shall not be present if only the kernel is used.
+	responder-acse-requirements [8] IMPLICIT ACSE-requirements OPTIONAL,
+	-- The following field shall only be present if the authentication functional unit is selected.
+	mechanism-name [9] IMPLICIT Mechanism-name OPTIONAL,
+	-- The following field shall only be present if the authentication functional unit is selected.
+	responding-authentication-value [10] EXPLICIT Authentication-value OPTIONAL,
+	implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
+	user-information [30] EXPLICIT Association-information OPTIONAL
+}
+*/
+
+const C_Associate_source_diagnostic_PR_NOTHING = int(C.Associate_source_diagnostic_PR_NOTHING)
+const C_Associate_source_diagnostic_PR_acse_service_user = int(C.Associate_source_diagnostic_PR_acse_service_user)
+const CAssociate_source_diagnostic_PR_acse_service_provider = int(C.Associate_source_diagnostic_PR_acse_service_provider)
+
+/*
+typedef enum acse_service_user {
+	acse_service_user_null	= 0,
+	acse_service_user_no_reason_given	= 1,
+	acse_service_user_application_context_name_not_supported	= 2,
+	acse_service_user_authentication_mechanism_name_not_recognised	= 11,
+	acse_service_user_authentication_mechanism_name_required	= 12,
+	acse_service_user_authentication_failure	= 13,
+	acse_service_user_authentication_required	= 14
+} e_acse_service_user;
+*/
+const C_acse_service_user_null = int(C.acse_service_user_null)
+const C_acse_service_user_no_reason_given = int(C.acse_service_user_no_reason_given)
+const C_acse_service_user_application_context_name_not_supported = int(C.acse_service_user_application_context_name_not_supported)
+const C_acse_service_user_authentication_mechanism_name_not_recognised = int(C.acse_service_user_authentication_mechanism_name_not_recognised)
+const C_acse_service_user_authentication_mechanism_name_required = int(C.acse_service_user_authentication_mechanism_name_required)
+const C_acse_service_user_authentication_failure = int(C.acse_service_user_authentication_failure)
+const C_acse_service_user_authentication_required = int(C.acse_service_user_authentication_required)
+
+/*
+typedef enum acse_service_provider {
+	acse_service_provider_null	= 0,
+	acse_service_provider_no_reason_given	= 1,
+	acse_service_provider_no_common_acse_version	= 2
+} e_acse_service_provider;
+*/
+const C_acse_service_provider_null = int(C.acse_service_provider_null)
+const C_acse_service_provider_no_reason_given = int(C.acse_service_provider_no_reason_given)
+const C_acse_service_provider_no_common_acse_version = int(C.acse_service_provider_no_common_acse_version)
+
+//AARE-apdu ::= [APPLICATION 1] IMPLICIT SEQUENCE
+type AAREapdu struct {
+	//-- [APPLICATION 1] == [ 61H ] = [ 97 ]
+	//protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1},
+	protocolVersion *tAsn1BitString
+
+	//application-context-name [1] Application-context-name,
+	applicationContextName tAsn1ObjectIdentifier
+
+	//result [2] Association-result,
+	result tAsn1Integer
+
+	//result-source-diagnostic [3] Associate-source-diagnostic,
+	resultSourceDiagnostic tAsn1Choice
+
+	//responding-AP-title [4] AP-title OPTIONAL,
+	respondingAPtitle *tAsn1OctetString
+
+	//responding-AE-qualifier [5] AE-qualifier OPTIONAL,
+	respondingAEqualifier *tAsn1OctetString
+
+	//responding-AP-invocation-id [6] AP-invocation-identifier OPTIONAL,
+	respondingAPinvocationId *tAsn1Integer
+
+	//responding-AE-invocation-id [7] AE-invocation-identifier OPTIONAL,
+	respondingAEinvocationId *tAsn1Integer
+
+	//-- The following field shall not be present if only the kernel is used.
+	//responder-acse-requirements [8] IMPLICIT ACSE-requirements OPTIONAL,
+	responderAcseRequirements *tAsn1BitString
+
+	//-- The following field shall only be present if the authentication functional unit is selected.
+	//mechanism-name [9] IMPLICIT Mechanism-name OPTIONAL,
+	mechanismName *tAsn1ObjectIdentifier
+
+	//-- The following field shall only be present if the authentication functional unit is selected.
+	//responding-authentication-value [10] EXPLICIT Authentication-value OPTIONAL,
+	respondingAuthenticationValue *tAsn1Choice
 
 	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
 	implementationInformation *tAsn1GraphicString
@@ -393,8 +491,21 @@ func encode_AARQapdu(_pdu *AARQapdu) bytes.Buffer {
 	ret, errno := C.der_encode(&C.asn_DEF_AARQ_apdu, unsafe.Pointer(pdu), (*C.asn_app_consume_bytes_f)(C.consumeBytesWrap), unsafe.Pointer(&buf))
 	if -1 == ret.encoded {
 		s := C.GoString(ret.failed_type.name)
-		panic(fmt.Sprintf("encode_AARQapdu() failed, faile type name: %v, errno: %v", s, errno))
+		panic(fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno))
 	}
 	C.hlp__free_AARQ_apdu_t(pdu)
 	return buf
+}
+
+func decode_AAREapdu(b bytes.Buffer) *AAREapdu {
+	var _pdu *C.AARE_apdu_t
+
+	cb := cslice(b.Bytes())
+	ret, errno := C.ber_decode((*C.struct_asn_codec_ctx_s)(unsafe.Pointer(nil)), &C.asn_DEF_AARE_apdu, (*unsafe.Pointer)(unsafe.Pointer(&_pdu)), unsafe.Pointer(&cb[0]), C.size_t(len(cb)))
+	C.free(unsafe.Pointer(&cb[0]))
+	if C.RC_OK != ret.code {
+		panic(fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno))
+	}
+	return nil
+
 }
