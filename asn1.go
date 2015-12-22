@@ -10,6 +10,7 @@ package gocosem
 // #include "asn1_go.h"
 // #include "AARQ-apdu.h"
 // #include "AARE-apdu.h"
+// #include "Data.h"
 //
 //
 import "C"
@@ -37,6 +38,8 @@ type tAsn1T61String string
 type tAsn1UTCTime time.Time
 type tAsn1GraphicString []byte
 type tAsn1Any []byte
+type tAsn1Null int
+type tAsn1Boolean bool
 
 type tAsn1Choice struct {
 	tag int
@@ -66,17 +69,50 @@ const C_Authentication_value_PR_bitstring = int(C.Authentication_value_PR_bitstr
 const C_Authentication_value_PR_external = int(C.Authentication_value_PR_external)
 const C_Authentication_value_PR_other = int(C.Authentication_value_PR_other)
 
-/*
-typedef enum Association_result {
-	Association_result_accepted	= 0,
-	Association_result_rejected_permanent	= 1,
-	Association_result_rejected_transient	= 2
-} e_Association_result;
-*/
-
 const C_Association_result_accepted = int(C.Association_result_accepted)
 const C_Association_result_rejected_permanent = int(C.Association_result_rejected_permanent)
 const C_Association_result_rejected_transient = int(C.Association_result_rejected_transient)
+
+const C_Associate_source_diagnostic_PR_NOTHING = int(C.Associate_source_diagnostic_PR_NOTHING)
+const C_Associate_source_diagnostic_PR_acse_service_user = int(C.Associate_source_diagnostic_PR_acse_service_user)
+const CAssociate_source_diagnostic_PR_acse_service_provider = int(C.Associate_source_diagnostic_PR_acse_service_provider)
+
+const C_acse_service_user_null = int(C.acse_service_user_null)
+const C_acse_service_user_no_reason_given = int(C.acse_service_user_no_reason_given)
+const C_acse_service_user_application_context_name_not_supported = int(C.acse_service_user_application_context_name_not_supported)
+const C_acse_service_user_authentication_mechanism_name_not_recognised = int(C.acse_service_user_authentication_mechanism_name_not_recognised)
+const C_acse_service_user_authentication_mechanism_name_required = int(C.acse_service_user_authentication_mechanism_name_required)
+const C_acse_service_user_authentication_failure = int(C.acse_service_user_authentication_failure)
+const C_acse_service_user_authentication_required = int(C.acse_service_user_authentication_required)
+
+const C_acse_service_provider_null = int(C.acse_service_provider_null)
+const C_acse_service_provider_no_reason_given = int(C.acse_service_provider_no_reason_given)
+const C_acse_service_provider_no_common_acse_version = int(C.acse_service_provider_no_common_acse_version)
+
+const C_Data_PR_NOTHING = int(C.Data_PR_NOTHING)
+const C_Data_PR_null_data = int(C.Data_PR_null_data)
+const C_Data_PR_array = int(C.Data_PR_array)
+const C_Data_PR_structure = int(C.Data_PR_structure)
+const C_Data_PR_boolean = int(C.Data_PR_boolean)
+const C_Data_PR_bit_string = int(C.Data_PR_bit_string)
+const C_Data_PR_double_long = int(C.Data_PR_double_long)
+const C_Data_PR_double_long_unsigned = int(C.Data_PR_double_long_unsigned)
+const C_Data_PR_floating_point = int(C.Data_PR_floating_point)
+const C_Data_PR_octet_string = int(C.Data_PR_octet_string)
+const C_Data_PR_visible_string = int(C.Data_PR_visible_string)
+const C_Data_PR_bcd = int(C.Data_PR_bcd)
+const C_Data_PR_integer = int(C.Data_PR_integer)
+const C_Data_PR_long = int(C.Data_PR_long)
+const C_Data_PR_unsigned = int(C.Data_PR_unsigned)
+const C_Data_PR_long_unsigned = int(C.Data_PR_long_unsigned)
+const C_Data_PR_compact_array = int(C.Data_PR_compact_array)
+const C_Data_PR_enum = int(C.Data_PR_enum)
+const C_Data_PR_float32 = int(C.Data_PR_float32)
+const C_Data_PR_float64 = int(C.Data_PR_float64)
+const C_Data_PR_date_time = int(C.Data_PR_date_time)
+const C_Data_PR_date = int(C.Data_PR_date)
+const C_Data_PR_time = int(C.Data_PR_time)
+const C_Data_PR_dont_care = int(C.Data_PR_dont_care)
 
 type tAuthenticationValueOther struct {
 	otherMechanismName  tAsn1ObjectIdentifier
@@ -132,63 +168,6 @@ type AARQapdu struct {
 	//user-information [30] EXPLICIT Association-information OPTIONAL
 	userInformation *tAsn1OctetString
 }
-
-/*
-AARE-apdu ::= [APPLICATION 1] IMPLICIT SEQUENCE
-{
-	-- [APPLICATION 1] == [ 61H ] = [ 97 ]
-	protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1},
-	application-context-name [1] Application-context-name,
-	result [2] Association-result,
-	result-source-diagnostic [3] Associate-source-diagnostic,
-	responding-AP-title [4] AP-title OPTIONAL,
-	responding-AE-qualifier [5] AE-qualifier OPTIONAL,
-	responding-AP-invocation-id [6] AP-invocation-identifier OPTIONAL,
-	responding-AE-invocation-id [7] AE-invocation-identifier OPTIONAL,
-	-- The following field shall not be present if only the kernel is used.
-	responder-acse-requirements [8] IMPLICIT ACSE-requirements OPTIONAL,
-	-- The following field shall only be present if the authentication functional unit is selected.
-	mechanism-name [9] IMPLICIT Mechanism-name OPTIONAL,
-	-- The following field shall only be present if the authentication functional unit is selected.
-	responding-authentication-value [10] EXPLICIT Authentication-value OPTIONAL,
-	implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
-	user-information [30] EXPLICIT Association-information OPTIONAL
-}
-*/
-
-const C_Associate_source_diagnostic_PR_NOTHING = int(C.Associate_source_diagnostic_PR_NOTHING)
-const C_Associate_source_diagnostic_PR_acse_service_user = int(C.Associate_source_diagnostic_PR_acse_service_user)
-const CAssociate_source_diagnostic_PR_acse_service_provider = int(C.Associate_source_diagnostic_PR_acse_service_provider)
-
-/*
-typedef enum acse_service_user {
-	acse_service_user_null	= 0,
-	acse_service_user_no_reason_given	= 1,
-	acse_service_user_application_context_name_not_supported	= 2,
-	acse_service_user_authentication_mechanism_name_not_recognised	= 11,
-	acse_service_user_authentication_mechanism_name_required	= 12,
-	acse_service_user_authentication_failure	= 13,
-	acse_service_user_authentication_required	= 14
-} e_acse_service_user;
-*/
-const C_acse_service_user_null = int(C.acse_service_user_null)
-const C_acse_service_user_no_reason_given = int(C.acse_service_user_no_reason_given)
-const C_acse_service_user_application_context_name_not_supported = int(C.acse_service_user_application_context_name_not_supported)
-const C_acse_service_user_authentication_mechanism_name_not_recognised = int(C.acse_service_user_authentication_mechanism_name_not_recognised)
-const C_acse_service_user_authentication_mechanism_name_required = int(C.acse_service_user_authentication_mechanism_name_required)
-const C_acse_service_user_authentication_failure = int(C.acse_service_user_authentication_failure)
-const C_acse_service_user_authentication_required = int(C.acse_service_user_authentication_required)
-
-/*
-typedef enum acse_service_provider {
-	acse_service_provider_null	= 0,
-	acse_service_provider_no_reason_given	= 1,
-	acse_service_provider_no_common_acse_version	= 2
-} e_acse_service_provider;
-*/
-const C_acse_service_provider_null = int(C.acse_service_provider_null)
-const C_acse_service_provider_no_reason_given = int(C.acse_service_provider_no_reason_given)
-const C_acse_service_provider_no_common_acse_version = int(C.acse_service_provider_no_common_acse_version)
 
 //AARE-apdu ::= [APPLICATION 1] IMPLICIT SEQUENCE
 type AAREapdu struct {
@@ -445,6 +424,44 @@ func goAsn1Any(cAny *C.ANY_t) *tAsn1Any {
 	return any
 }
 
+func cAsn1Null() *C.NULL_t {
+	cNull := C.hlp__calloc_NULL_t()
+	*cNull = C.NULL_t(0)
+	return cNull
+}
+
+func goAsn1Null() *tAsn1Null {
+	null := new(tAsn1Null)
+	(*null) = 0
+	return null
+}
+
+func cAsn1Boolean(b *tAsn1Boolean) *C.BOOLEAN_t {
+	if nil == b {
+		return (*C.BOOLEAN_t)(unsafe.Pointer(nil))
+	}
+	cb := C.hlp__calloc_BOOLEAN_t()
+	if *b {
+		*cb = C.BOOLEAN_t(1)
+	} else {
+		*cb = C.BOOLEAN_t(0)
+	}
+	return cb
+}
+
+func goAsn1Boolean(cb *C.BOOLEAN_t) *tAsn1Boolean {
+	if nil == cb {
+		return nil
+	}
+	b := new(tAsn1Boolean)
+	if C.BOOLEAN_t(0) == (*cb) {
+		*b = false
+	} else {
+		*b = true
+	}
+	return b
+}
+
 func encode_AARQapdu(_pdu *AARQapdu) []byte {
 	var ret C.asn_enc_rval_t
 	var pdu *C.AARQ_apdu_t
@@ -681,4 +698,49 @@ func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
 	C.hlp__free_AARE_apdu_t(_pdu)
 
 	return pdu
+}
+
+func encode_Data(_data *tAsn1Choice) []byte {
+	data := C.hlp__calloc_Data_t()
+
+	switch C.Data_PR((*_data).getTag()) {
+	case C.Data_PR_NOTHING:
+		data.present = C.Data_PR_NOTHING
+	case C.Data_PR_null_data:
+		data.present = C.Data_PR_null_data
+		*(*C.NULL_t)(unsafe.Pointer(&(*data).choice[0])) = *cAsn1Null()
+	case C.Data_PR_array:
+		panic(fmt.Sprintf("encode_Data(): array not implemnted"))
+	case C.Data_PR_structure:
+		panic(fmt.Sprintf("encode_Data(): structure not implemnted"))
+	case C.Data_PR_boolean:
+		data.present = C.Data_PR_boolean
+		cb := cAsn1Boolean((_data.getVal()).(*tAsn1Boolean))
+		*(*C.BOOLEAN_t)(unsafe.Pointer(&(*data).choice[0])) = *cb
+		C.free(unsafe.Pointer(cb))
+	case C.Data_PR_bit_string:
+	case C.Data_PR_double_long:
+	case C.Data_PR_double_long_unsigned:
+	case C.Data_PR_floating_point:
+	case C.Data_PR_octet_string:
+	case C.Data_PR_visible_string:
+	case C.Data_PR_bcd:
+	case C.Data_PR_integer:
+	case C.Data_PR_long:
+	case C.Data_PR_unsigned:
+	case C.Data_PR_long_unsigned:
+	case C.Data_PR_compact_array:
+	case C.Data_PR_enum:
+	case C.Data_PR_float32:
+	case C.Data_PR_float64:
+	case C.Data_PR_date_time:
+	case C.Data_PR_date:
+	case C.Data_PR_time:
+	case C.Data_PR_dont_care:
+	default:
+		panic(fmt.Sprintf("encode_Data(): unknown choice tag: %v", int((*_data).getTag())))
+	}
+
+	return nil
+
 }

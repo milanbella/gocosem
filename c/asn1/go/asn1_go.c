@@ -18,18 +18,30 @@ long *hlp__calloc_long(int n) {
 	return (long *)calloc((size_t)n, sizeof(long));
 }
 
-AARQ_apdu_t *hlp__calloc_AARQ_apdu_t() {
-	return (AARQ_apdu_t *)calloc(1, sizeof(AARQ_apdu_t));
+NULL_t *hlp__calloc_NULL_t() {
+	return (NULL_t *)calloc(1, sizeof(NULL_t));
 }
 
-
-struct Authentication_value *hlp__calloc_struct_Authentication_value() {
-	return (struct Authentication_value *)calloc(1, sizeof(struct Authentication_value));
+BOOLEAN_t *hlp__calloc_BOOLEAN_t() {
+	return (BOOLEAN_t *)calloc(1, sizeof(BOOLEAN_t));
 }
 
 OBJECT_IDENTIFIER_t *hlp__calloc_OBJECT_IDENTIFIER_t() {
 	return (OBJECT_IDENTIFIER_t *)calloc(1, sizeof(OBJECT_IDENTIFIER_t));
 }
+
+struct Authentication_value *hlp__calloc_struct_Authentication_value() {
+	return (struct Authentication_value *)calloc(1, sizeof(struct Authentication_value));
+}
+
+Data_t *hlp__calloc_Data_t() {
+	return (Data_t *)calloc(1, sizeof(Data_t));
+}
+
+AARQ_apdu_t *hlp__calloc_AARQ_apdu_t() {
+	return (AARQ_apdu_t *)calloc(1, sizeof(AARQ_apdu_t));
+}
+
 
 // memory free helpers
 

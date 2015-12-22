@@ -3,6 +3,7 @@
 
 #include "AARQ-apdu.h"
 #include "AARE-apdu.h"
+#include "Data.h"
 
 typedef struct Authentication_value_other {
 	Mechanism_name_t	 other_mechanism_name;
@@ -17,7 +18,10 @@ int consumeBytesWrap (void *_buf, int _bufLen, void *ctx);
 
 long *hlp__calloc_long(int n);
 OBJECT_IDENTIFIER_t *hlp__calloc_OBJECT_IDENTIFIER_t();
+NULL_t *hlp__calloc_NULL_t();
+BOOLEAN_t *hlp__calloc_BOOLEAN_t();
 struct Authentication_value *hlp__calloc_struct_Authentication_value();
+Data_t *hlp__calloc_Data_t();
 AARQ_apdu_t *hlp__calloc_AARQ_apdu_t();
 
 void hlp__free_AARQ_apdu_t(AARQ_apdu_t *aarq);
