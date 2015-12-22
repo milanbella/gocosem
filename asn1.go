@@ -1159,11 +1159,17 @@ func encode_Data(_data *tAsn1Choice) []byte {
 		panic(fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno))
 	}
 	C.hlp__free_Data_t(data)
-	return buf.Bytes()
+
+	eb := buf.Bytes()
+	eb[0] &= 0x7F // clear bit 8 (asn1 class context-specifix)
+
+	return eb
 
 }
 
 func decode_Data(inb []byte) (data *tAsn1Choice) {
+	inb[0] |= 0x80 // set bit 8 (asn1 class context-specifix)
+
 	data = new(tAsn1Choice)
 
 	var cdata *C.Data_t
@@ -1187,10 +1193,10 @@ func decode_Data(inb []byte) (data *tAsn1Choice) {
 	case C.Data_PR_array:
 
 	case C.Data_PR_structure:
-		panic(fmt.Sprintf("encode_Data(): array not implemnted"))
+		panic(fmt.Sprintf("decode_Data(): array not implemnted"))
 
 	case C.Data_PR_boolean:
-		panic(fmt.Sprintf("encode_Data(): structure not implemnted"))
+		panic(fmt.Sprintf("decode_Data(): structure not implemnted"))
 
 	case C.Data_PR_bit_string:
 		data.setVal(int(C.Data_PR_bit_string), goAsn1BitString((*C.BIT_STRING_t)(choice)))
@@ -1226,7 +1232,7 @@ func decode_Data(inb []byte) (data *tAsn1Choice) {
 		data.setVal(int(C.Data_PR_long_unsigned), goAsn1Unsigned16((*C.Unsigned16_t)(choice)))
 
 	case C.Data_PR_compact_array:
-		panic(fmt.Sprintf("encode_Data(): compact_array not implemnted"))
+		panic(fmt.Sprintf("decode_Data(): compact_array not implemnted"))
 
 	case C.Data_PR_long64:
 		data.setVal(int(C.Data_PR_long64), goAsn1UnsignedLong64((*C.OCTET_STRING_t)(choice)))
@@ -1235,7 +1241,7 @@ func decode_Data(inb []byte) (data *tAsn1Choice) {
 		data.setVal(int(C.Data_PR_long64_unsigned), goAsn1UnsignedLong64((*C.OCTET_STRING_t)(choice)))
 
 	case C.Data_PR_enum:
-		panic(fmt.Sprintf("encode_Data(): enum not implemnted"))
+		panic(fmt.Sprintf("decode_Data(): enum not implemnted"))
 
 	case C.Data_PR_float32:
 		data.setVal(int(C.Data_PR_float32), goAsn1Float32((*C.OCTET_STRING_t)(choice)))
@@ -1256,6 +1262,7 @@ func decode_Data(inb []byte) (data *tAsn1Choice) {
 		data.setVal(int(C.Data_PR_dont_care), goAsn1Null())
 
 	default:
+		panic(fmt.Sprintf("decode_Data(): unknown choice tag: %v", int(cdata.present)))
 	}
 
 	return data

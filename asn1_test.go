@@ -174,3 +174,65 @@ func TestX_decode_AAREapdu(t *testing.T) {
 		t.Errorf(" are.userInformation don't match")
 	}
 }
+
+func TestX_encode_Data_octet_string(t *testing.T) {
+	data := new(tAsn1Choice)
+	b := []byte{0x81, 0xC2, 0x9A, 0xA5}
+	data.setVal(C_Data_PR_octet_string, (*tAsn1OctetString)(&b))
+	eb := encode_Data(data)
+
+	printBuffer(t, eb)
+
+	if !byteEquals(t, eb, []byte{0x09, 0x04, 0x81, 0xC2, 0x9A, 0xA5}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
+
+func TestX_decode_Data_octet_string(t *testing.T) {
+
+	b := []byte{0x09, 0x04, 0x81, 0xC2, 0x9A, 0xA5}
+
+	data := decode_Data(b)
+
+	if C_Data_PR_octet_string != data.getTag() {
+		t.Errorf("wrong tag")
+	}
+
+	db := *data.getVal().(*tAsn1OctetString)
+	printBuffer(t, db)
+
+	if !byteEquals(t, db, []byte{0x81, 0xC2, 0x9A, 0xA5}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
+
+func TestX_encode_Data_visible_string(t *testing.T) {
+	data := new(tAsn1Choice)
+	b := []byte{0x30, 0x30, 0x30}
+	data.setVal(C_Data_PR_visible_string, (*tAsn1VisibleString)(&b))
+	eb := encode_Data(data)
+
+	printBuffer(t, eb)
+
+	if !byteEquals(t, eb, []byte{0x0A, 0x03, 0x30, 0x30, 0x30}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
+
+func TestX_decode_Data_visible_string(t *testing.T) {
+
+	b := []byte{0x0A, 0x03, 0x30, 0x30, 0x30}
+
+	data := decode_Data(b)
+
+	if C_Data_PR_visible_string != data.getTag() {
+		t.Errorf("wrong tag")
+	}
+
+	db := *data.getVal().(*tAsn1VisibleString)
+	printBuffer(t, db)
+
+	if !byteEquals(t, db, []byte{0x30, 0x30, 0x30}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
