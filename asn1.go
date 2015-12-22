@@ -480,6 +480,15 @@ func goAsn1UnsignedLong64(ci *C.OCTET_STRING_t) *tAsn1UnsignedLong64 {
 	return i
 }
 
+func cAsn1Float(f *tAsn1Float) *C.OCTET_STRING_t {
+	if nil == f {
+		return nil
+	}
+	fb := ((*[4]byte)(unsafe.Pointer(f)))[:4:4]
+	cfb := cslice(fb)
+	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
+}
+
 func goAsn1Float(cf *C.OCTET_STRING_t) *tAsn1Float {
 	if nil == cf {
 		return nil
@@ -494,15 +503,13 @@ func goAsn1Float(cf *C.OCTET_STRING_t) *tAsn1Float {
 	return f
 }
 
-func cAsn1Float(f *tAsn1Float) *C.OCTET_STRING_t {
+func cAsn1Float32(f *tAsn1Float32) *C.OCTET_STRING_t {
 	if nil == f {
 		return nil
 	}
-	cf := C.hlp__calloc_Float(1)
-	cfb := goslice(cf.buf, cf.size)
 	fb := ((*[4]byte)(unsafe.Pointer(f)))[:4:4]
-	copy(cfb, fb)
-	return cf
+	cfb := cslice(fb)
+	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
 }
 
 func goAsn1Float32(cf *C.OCTET_STRING_t) *tAsn1Float32 {
@@ -510,36 +517,9 @@ func goAsn1Float32(cf *C.OCTET_STRING_t) *tAsn1Float32 {
 		return nil
 	}
 	f := new(tAsn1Float32)
-	//./asn1.go:351: cannot convert unsafe.Pointer(f) (type unsafe.Pointer) to type [4]byte
 	fb := ((*[4]byte)(unsafe.Pointer(f)))[:4:4]
 	if 4 != cf.size {
 		panic(fmt.Sprintf("goAsn1Float32(): size of float is not 4"))
-	}
-	cfb := goslice(cf.buf, cf.size)
-	copy(fb, cfb)
-	return f
-}
-
-func cAsn1Float32(f *tAsn1Float32) *C.OCTET_STRING_t {
-	if nil == f {
-		return nil
-	}
-	cf := C.hlp__calloc_Float32(1)
-	cfb := goslice(cf.buf, cf.size)
-	fb := ((*[4]byte)(unsafe.Pointer(f)))[:4:4]
-	copy(cfb, fb)
-	return cf
-}
-
-func goAsn1Float64(cf *C.OCTET_STRING_t) *tAsn1Float64 {
-	if nil == cf {
-		return nil
-	}
-	f := new(tAsn1Float64)
-	//./asn1.go:351: cannot convert unsafe.Pointer(f) (type unsafe.Pointer) to type [4]byte
-	fb := ((*[8]byte)(unsafe.Pointer(f)))[:8:8]
-	if 8 != cf.size {
-		panic(fmt.Sprintf("goAsn1Float64(): size of float is not 8"))
 	}
 	cfb := goslice(cf.buf, cf.size)
 	copy(fb, cfb)
@@ -550,11 +530,23 @@ func cAsn1Float64(f *tAsn1Float64) *C.OCTET_STRING_t {
 	if nil == f {
 		return nil
 	}
-	cf := C.hlp__calloc_Float64(1)
-	cfb := goslice(cf.buf, cf.size)
 	fb := ((*[8]byte)(unsafe.Pointer(f)))[:8:8]
-	copy(cfb, fb)
-	return cf
+	cfb := cslice(fb)
+	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
+}
+
+func goAsn1Float64(cf *C.OCTET_STRING_t) *tAsn1Float64 {
+	if nil == cf {
+		return nil
+	}
+	f := new(tAsn1Float64)
+	fb := ((*[8]byte)(unsafe.Pointer(f)))[:8:8]
+	if 8 != cf.size {
+		panic(fmt.Sprintf("goAsn1Float64(): size of float is not 8"))
+	}
+	cfb := goslice(cf.buf, cf.size)
+	copy(fb, cfb)
+	return f
 }
 
 func cAsn1BitString(bitString *tAsn1BitString) *C.BIT_STRING_t {

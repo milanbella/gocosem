@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"unsafe"
 )
 
 func printBuffer(t *testing.T, inb []byte) {
@@ -233,6 +234,72 @@ func TestX_decode_Data_visible_string(t *testing.T) {
 	printBuffer(t, db)
 
 	if !byteEquals(t, db, []byte{0x30, 0x30, 0x30}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
+
+func TestX_encode_Data_float32(t *testing.T) {
+	data := new(tAsn1Choice)
+	f := float32(1)
+	data.setVal(C_Data_PR_float32, (*tAsn1Float32)(&f))
+	eb := encode_Data(data)
+
+	printBuffer(t, eb)
+
+	if !byteEquals(t, eb, []byte{0x17, 0x04, 0x00, 0x00, 0x80, 0x3F}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
+
+func TestX_decode_Data_float32(t *testing.T) {
+
+	b := []byte{0x17, 0x04, 0x00, 0x00, 0x80, 0x3F}
+
+	data := decode_Data(b)
+
+	if C_Data_PR_float32 != data.getTag() {
+		t.Errorf("wrong tag")
+	}
+
+	f := *data.getVal().(*tAsn1Float32)
+
+	db := (*[4]byte)(unsafe.Pointer(&f))[:4:4]
+	printBuffer(t, db)
+
+	if !byteEquals(t, db, []byte{0x00, 0x00, 0x80, 0x3F}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
+
+func TestX_encode_Data_float64(t *testing.T) {
+	data := new(tAsn1Choice)
+	f := float64(1)
+	data.setVal(C_Data_PR_float64, (*tAsn1Float64)(&f))
+	eb := encode_Data(data)
+
+	printBuffer(t, eb)
+
+	if !byteEquals(t, eb, []byte{0x18, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
+
+func TestX_decode_Data_float64(t *testing.T) {
+
+	b := []byte{0x18, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F}
+
+	data := decode_Data(b)
+
+	if C_Data_PR_float64 != data.getTag() {
+		t.Errorf("wrong tag")
+	}
+
+	f := *data.getVal().(*tAsn1Float64)
+
+	db := (*[8]byte)(unsafe.Pointer(&f))[:8:8]
+	printBuffer(t, db)
+
+	if !byteEquals(t, db, []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3f}, true) {
 		t.Errorf("bytes don't match")
 	}
 }
