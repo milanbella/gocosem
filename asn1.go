@@ -485,7 +485,6 @@ func goAsn1Float(cf *C.OCTET_STRING_t) *tAsn1Float {
 		return nil
 	}
 	f := new(tAsn1Float)
-	//./asn1.go:351: cannot convert unsafe.Pointer(f) (type unsafe.Pointer) to type [4]byte
 	fb := ((*[4]byte)(unsafe.Pointer(f)))[:4:4]
 	if 4 != cf.size {
 		panic(fmt.Sprintf("goAsn1Float(): size of float is not 4"))
@@ -920,13 +919,12 @@ func encode_AARQapdu(_pdu *AARQapdu) []byte {
 
 func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
 
-	buf := bytes.NewBuffer(inb)
-	var _pdu *C.AARE_apdu_t
+	var cpdu *C.AARE_apdu_t
 
 	pdu = new(AAREapdu)
 
-	cb := cslice(buf.Bytes())
-	ret, errno := C.ber_decode((*C.struct_asn_codec_ctx_s)(unsafe.Pointer(nil)), &C.asn_DEF_AARE_apdu, (*unsafe.Pointer)(unsafe.Pointer(&_pdu)), unsafe.Pointer(&cb[0]), C.size_t(len(cb)))
+	cb := cslice(inb)
+	ret, errno := C.ber_decode((*C.struct_asn_codec_ctx_s)(unsafe.Pointer(nil)), &C.asn_DEF_AARE_apdu, (*unsafe.Pointer)(unsafe.Pointer(&cpdu)), unsafe.Pointer(&cb[0]), C.size_t(len(cb)))
 	C.hlp__gc_free(unsafe.Pointer(&cb[0]))
 	if C.RC_OK != ret.code {
 		panic(fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno))
@@ -935,20 +933,20 @@ func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
 	//-- [APPLICATION 1] == [ 61H ] = [ 97 ]
 	//protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1},
 	//protocolVersion *tAsn1BitString
-	pdu.protocolVersion = goAsn1BitString(_pdu.protocol_version)
+	pdu.protocolVersion = goAsn1BitString(cpdu.protocol_version)
 
 	//application-context-name [1] Application-context-name,
 	//applicationContextName tAsn1ObjectIdentifier
-	pdu.applicationContextName = *goAsn1ObjectIdentifier(&_pdu.application_context_name)
+	pdu.applicationContextName = *goAsn1ObjectIdentifier(&cpdu.application_context_name)
 
 	//result [2] Association-result,
 	//result tAsn1Integer
-	pdu.result = *goAsn1Integer((*C.long)(&_pdu.result))
+	pdu.result = *goAsn1Integer((*C.long)(&cpdu.result))
 
 	//result-source-diagnostic [3] Associate-source-diagnostic,
 	//resultSourceDiagnostic tAsn1Choice
-	b := _pdu.result_source_diagnostic.choice
-	switch _pdu.result_source_diagnostic.present {
+	b := cpdu.result_source_diagnostic.choice
+	switch cpdu.result_source_diagnostic.present {
 	case C.Associate_source_diagnostic_PR_NOTHING:
 		pdu.resultSourceDiagnostic.setVal(int(C.Associate_source_diagnostic_PR_NOTHING), nil)
 	case C.Associate_source_diagnostic_PR_acse_service_user:
@@ -956,42 +954,42 @@ func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
 	case C.Associate_source_diagnostic_PR_acse_service_provider:
 		pdu.resultSourceDiagnostic.setVal(int(C.Associate_source_diagnostic_PR_acse_service_provider), int(*(*C.long)(unsafe.Pointer(&b[0]))))
 	default:
-		panic(fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(_pdu.result_source_diagnostic.present)))
+		panic(fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.result_source_diagnostic.present)))
 	}
 
 	//responding-AP-title [4] AP-title OPTIONAL,
 	//respondingAPtitle *tAsn1OctetString
-	pdu.respondingAPtitle = goAsn1OctetString(_pdu.responding_AP_title)
+	pdu.respondingAPtitle = goAsn1OctetString(cpdu.responding_AP_title)
 
 	//responding-AE-qualifier [5] AE-qualifier OPTIONAL,
 	//respondingAEqualifier *tAsn1OctetString
-	pdu.respondingAEqualifier = goAsn1OctetString(_pdu.responding_AE_qualifier)
+	pdu.respondingAEqualifier = goAsn1OctetString(cpdu.responding_AE_qualifier)
 
 	//responding-AP-invocation-id [6] AP-invocation-identifier OPTIONAL,
 	//respondingAPinvocationId *tAsn1Integer
-	pdu.respondingAPinvocationId = goAsn1Integer((*C.long)(_pdu.responding_AP_invocation_id))
+	pdu.respondingAPinvocationId = goAsn1Integer((*C.long)(cpdu.responding_AP_invocation_id))
 
 	//responding-AE-invocation-id [7] AE-invocation-identifier OPTIONAL,
 	//respondingAEinvocationId *tAsn1Integer
-	pdu.respondingAEinvocationId = goAsn1Integer((*C.long)(_pdu.responding_AE_invocation_id))
+	pdu.respondingAEinvocationId = goAsn1Integer((*C.long)(cpdu.responding_AE_invocation_id))
 
 	//-- The following field shall not be present if only the kernel is used.
 	//responder-acse-requirements [8] IMPLICIT ACSE-requirements OPTIONAL,
 	//responderAcseRequirements *tAsn1BitString
-	pdu.responderAcseRequirements = goAsn1BitString(_pdu.responder_acse_requirements)
+	pdu.responderAcseRequirements = goAsn1BitString(cpdu.responder_acse_requirements)
 
 	//-- The following field shall only be present if the authentication functional unit is selected.
 	//mechanism-name [9] IMPLICIT Mechanism-name OPTIONAL,
 	//mechanismName *tAsn1ObjectIdentifier
-	pdu.mechanismName = goAsn1ObjectIdentifier(_pdu.mechanism_name)
+	pdu.mechanismName = goAsn1ObjectIdentifier(cpdu.mechanism_name)
 
 	//-- The following field shall only be present if the authentication functional unit is selected.
 	//responding-authentication-value [10] EXPLICIT Authentication-value OPTIONAL,
 	//respondingAuthenticationValue *tAsn1Choice
-	if nil != _pdu.responding_authentication_value {
+	if nil != cpdu.responding_authentication_value {
 		pdu.respondingAuthenticationValue = new(tAsn1Choice)
-		b := _pdu.responding_authentication_value.choice
-		switch _pdu.responding_authentication_value.present {
+		b := cpdu.responding_authentication_value.choice
+		switch cpdu.responding_authentication_value.present {
 		case C.Authentication_value_PR_NOTHING:
 			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_NOTHING), nil)
 		case C.Authentication_value_PR_charstring:
@@ -1007,19 +1005,19 @@ func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
 			other.otherMechanismValue = *goAsn1Any(&_other.other_mechanism_value)
 			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_other), &other)
 		default:
-			panic(fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(_pdu.responding_authentication_value.present)))
+			panic(fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.responding_authentication_value.present)))
 		}
 	}
 
 	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
 	//implementationInformation *tAsn1GraphicString
-	pdu.implementationInformation = goAsn1GraphicString(_pdu.implementation_information)
+	pdu.implementationInformation = goAsn1GraphicString(cpdu.implementation_information)
 
 	//user-information [30] EXPLICIT Association-information OPTIONAL
 	//userInformation *tAsn1OctetString
-	pdu.userInformation = goAsn1OctetString(_pdu.user_information)
+	pdu.userInformation = goAsn1OctetString(cpdu.user_information)
 
-	C.hlp__free_AARE_apdu_t(_pdu)
+	C.hlp__free_AARE_apdu_t(cpdu)
 
 	return pdu
 }
@@ -1028,99 +1026,128 @@ func encode_Data(_data *tAsn1Choice) []byte {
 
 	data := C.hlp__calloc_Data_t()
 
+	//choice := unsafe.Pointer(&(*data).choice[0])
+	choice := unsafe.Pointer(&data.choice[0])
+
 	switch C.Data_PR((*_data).getTag()) {
 	case C.Data_PR_NOTHING:
 		data.present = C.Data_PR_NOTHING
+
 	case C.Data_PR_null_data:
 		data.present = C.Data_PR_null_data
-		*(*C.NULL_t)(unsafe.Pointer(&(*data).choice[0])) = *cAsn1Null()
+		*(*C.NULL_t)(choice) = *cAsn1Null()
+
 	case C.Data_PR_array:
 		panic(fmt.Sprintf("encode_Data(): array not implemnted"))
+
 	case C.Data_PR_structure:
 		panic(fmt.Sprintf("encode_Data(): structure not implemnted"))
+
 	case C.Data_PR_boolean:
 		data.present = C.Data_PR_boolean
 		v := cAsn1Boolean((_data.getVal()).(*tAsn1Boolean))
-		*(*C.BOOLEAN_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.BOOLEAN_t)(choice) = *v
+
 	case C.Data_PR_bit_string:
 		data.present = C.Data_PR_bit_string
 		v := cAsn1BitString((_data.getVal()).(*tAsn1BitString))
-		*(*C.BIT_STRING_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.BIT_STRING_t)(choice) = *v
+
 	case C.Data_PR_double_long:
 		data.present = C.Data_PR_double_long
 		v := cAsn1Integer32((_data.getVal()).(*tAsn1Integer32))
-		*(*C.Integer32_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.Integer32_t)(choice) = *v
+
 	case C.Data_PR_double_long_unsigned:
 		data.present = C.Data_PR_double_long_unsigned
 		v := cAsn1Unsigned32((_data.getVal()).(*tAsn1Unsigned32))
-		*(*C.Unsigned32_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.Unsigned32_t)(choice) = *v
+
 	case C.Data_PR_floating_point:
 		data.present = C.Data_PR_floating_point
 		v := cAsn1Float((_data.getVal()).(*tAsn1Float))
-		*(*C.OCTET_STRING_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.OCTET_STRING_t)(choice) = *v
+
 	case C.Data_PR_octet_string:
 		data.present = C.Data_PR_octet_string
 		v := cAsn1OctetString((_data.getVal()).(*tAsn1OctetString))
-		*(*C.OCTET_STRING_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.OCTET_STRING_t)(choice) = *v
+
 	case C.Data_PR_visible_string:
 		data.present = C.Data_PR_visible_string
 		v := cAsn1VisibleString((_data.getVal()).(*tAsn1VisibleString))
-		*(*C.VisibleString_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.VisibleString_t)(choice) = *v
+
 	case C.Data_PR_bcd:
 		data.present = C.Data_PR_bcd
 		v := cAsn1Integer8((_data.getVal()).(*tAsn1Integer8))
-		*(*C.Integer8_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.Integer8_t)(choice) = *v
+
 	case C.Data_PR_integer:
 		data.present = C.Data_PR_integer
 		v := cAsn1Integer8((_data.getVal()).(*tAsn1Integer8))
-		*(*C.Integer8_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.Integer8_t)(choice) = *v
+
 	case C.Data_PR_long:
 		data.present = C.Data_PR_long
 		v := cAsn1Integer16((_data.getVal()).(*tAsn1Integer16))
-		*(*C.Integer16_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.Integer16_t)(choice) = *v
+
 	case C.Data_PR_unsigned:
 		data.present = C.Data_PR_unsigned
 		v := cAsn1Unsigned8((_data.getVal()).(*tAsn1Unsigned8))
-		*(*C.Unsigned8_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.Unsigned8_t)(choice) = *v
+
 	case C.Data_PR_long_unsigned:
 		data.present = C.Data_PR_long_unsigned
 		v := cAsn1Unsigned16((_data.getVal()).(*tAsn1Unsigned16))
-		*(*C.Unsigned16_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.Unsigned16_t)(choice) = *v
+
 	case C.Data_PR_compact_array:
 		panic(fmt.Sprintf("encode_Data(): compact_array not implemnted"))
+
 	case C.Data_PR_long64:
 		data.present = C.Data_PR_long64
 		v := cAsn1Long64((_data.getVal()).(*tAsn1Long64))
-		*(*C.OCTET_STRING_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.OCTET_STRING_t)(choice) = *v
+
 	case C.Data_PR_long64_unsigned:
 		data.present = C.Data_PR_long64_unsigned
 		v := cAsn1UnsignedLong64((_data.getVal()).(*tAsn1UnsignedLong64))
-		*(*C.OCTET_STRING_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.OCTET_STRING_t)(choice) = *v
+
 	case C.Data_PR_enum:
 		panic(fmt.Sprintf("encode_Data(): enum not implemnted"))
+
 	case C.Data_PR_float32:
 		data.present = C.Data_PR_float32
 		v := cAsn1Float32((_data.getVal()).(*tAsn1Float32))
-		*(*C.OCTET_STRING_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.OCTET_STRING_t)(choice) = *v
+
 	case C.Data_PR_float64:
 		data.present = C.Data_PR_float64
 		v := cAsn1Float64((_data.getVal()).(*tAsn1Float64))
-		*(*C.OCTET_STRING_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.OCTET_STRING_t)(choice) = *v
+
 	case C.Data_PR_date_time:
 		data.present = C.Data_PR_date_time
 		v := cAsn1DateTime((_data.getVal()).(*tAsn1DateTime))
-		*(*C.OCTET_STRING_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.OCTET_STRING_t)(choice) = *v
+
 	case C.Data_PR_date:
 		data.present = C.Data_PR_date
 		v := cAsn1Date((_data.getVal()).(*tAsn1Date))
-		*(*C.OCTET_STRING_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.OCTET_STRING_t)(choice) = *v
+
 	case C.Data_PR_time:
 		data.present = C.Data_PR_time
 		v := cAsn1Time((_data.getVal()).(*tAsn1Time))
-		*(*C.OCTET_STRING_t)(unsafe.Pointer(&(*data).choice[0])) = *v
+		*(*C.OCTET_STRING_t)(choice) = *v
+
 	case C.Data_PR_dont_care:
 		data.present = C.Data_PR_dont_care
-		*(*C.NULL_t)(unsafe.Pointer(&(*data).choice[0])) = *cAsn1Null()
+		*(*C.NULL_t)(choice) = *cAsn1Null()
+
 	default:
 		panic(fmt.Sprintf("encode_Data(): unknown choice tag: %v", int((*_data).getTag())))
 	}
@@ -1134,4 +1161,102 @@ func encode_Data(_data *tAsn1Choice) []byte {
 	C.hlp__free_Data_t(data)
 	return buf.Bytes()
 
+}
+
+func decode_Data(inb []byte) (data *tAsn1Choice) {
+	data = new(tAsn1Choice)
+
+	var cdata *C.Data_t
+
+	cb := cslice(inb)
+	ret, errno := C.ber_decode((*C.struct_asn_codec_ctx_s)(unsafe.Pointer(nil)), &C.asn_DEF_Data, (*unsafe.Pointer)(unsafe.Pointer(&cdata)), unsafe.Pointer(&cb[0]), C.size_t(len(cb)))
+	C.hlp__gc_free(unsafe.Pointer(&cb[0]))
+	if C.RC_OK != ret.code {
+		panic(fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno))
+	}
+
+	choice := unsafe.Pointer(&cdata.choice[0])
+
+	switch cdata.present {
+	case C.Data_PR_NOTHING:
+		data.setVal(int(C.Data_PR_NOTHING), nil)
+
+	case C.Data_PR_null_data:
+		data.setVal(int(C.Data_PR_null_data), goAsn1Null())
+
+	case C.Data_PR_array:
+
+	case C.Data_PR_structure:
+		panic(fmt.Sprintf("encode_Data(): array not implemnted"))
+
+	case C.Data_PR_boolean:
+		panic(fmt.Sprintf("encode_Data(): structure not implemnted"))
+
+	case C.Data_PR_bit_string:
+		data.setVal(int(C.Data_PR_bit_string), goAsn1BitString((*C.BIT_STRING_t)(choice)))
+
+	case C.Data_PR_double_long:
+		data.setVal(int(C.Data_PR_double_long), goAsn1Integer32((*C.Integer32_t)(choice)))
+
+	case C.Data_PR_double_long_unsigned:
+		data.setVal(int(C.Data_PR_double_long_unsigned), goAsn1Unsigned32((*C.Unsigned32_t)(choice)))
+
+	case C.Data_PR_floating_point:
+		data.setVal(int(C.Data_PR_floating_point), goAsn1Float((*C.OCTET_STRING_t)(choice)))
+
+	case C.Data_PR_octet_string:
+		data.setVal(int(C.Data_PR_octet_string), goAsn1OctetString((*C.OCTET_STRING_t)(choice)))
+
+	case C.Data_PR_visible_string:
+		data.setVal(int(C.Data_PR_visible_string), goAsn1VisibleString((*C.VisibleString_t)(choice)))
+
+	case C.Data_PR_bcd:
+		data.setVal(int(C.Data_PR_bcd), goAsn1Integer8((*C.Integer8_t)(choice)))
+
+	case C.Data_PR_integer:
+		data.setVal(int(C.Data_PR_integer), goAsn1Integer8((*C.Integer8_t)(choice)))
+
+	case C.Data_PR_long:
+		data.setVal(int(C.Data_PR_long), goAsn1UnsignedLong64((*C.OCTET_STRING_t)(choice)))
+
+	case C.Data_PR_unsigned:
+		data.setVal(int(C.Data_PR_unsigned), goAsn1Unsigned8((*C.Unsigned8_t)(choice)))
+
+	case C.Data_PR_long_unsigned:
+		data.setVal(int(C.Data_PR_long_unsigned), goAsn1Unsigned16((*C.Unsigned16_t)(choice)))
+
+	case C.Data_PR_compact_array:
+		panic(fmt.Sprintf("encode_Data(): compact_array not implemnted"))
+
+	case C.Data_PR_long64:
+		data.setVal(int(C.Data_PR_long64), goAsn1UnsignedLong64((*C.OCTET_STRING_t)(choice)))
+
+	case C.Data_PR_long64_unsigned:
+		data.setVal(int(C.Data_PR_long64_unsigned), goAsn1UnsignedLong64((*C.OCTET_STRING_t)(choice)))
+
+	case C.Data_PR_enum:
+		panic(fmt.Sprintf("encode_Data(): enum not implemnted"))
+
+	case C.Data_PR_float32:
+		data.setVal(int(C.Data_PR_float32), goAsn1Float32((*C.OCTET_STRING_t)(choice)))
+
+	case C.Data_PR_float64:
+		data.setVal(int(C.Data_PR_float64), goAsn1Float64((*C.OCTET_STRING_t)(choice)))
+
+	case C.Data_PR_date_time:
+		data.setVal(int(C.Data_PR_date_time), goAsn1DateTime((*C.OCTET_STRING_t)(choice)))
+
+	case C.Data_PR_date:
+		data.setVal(int(C.Data_PR_date), goAsn1Date((*C.OCTET_STRING_t)(choice)))
+
+	case C.Data_PR_time:
+		data.setVal(int(C.Data_PR_time), goAsn1Time((*C.OCTET_STRING_t)(choice)))
+
+	case C.Data_PR_dont_care:
+		data.setVal(int(C.Data_PR_dont_care), goAsn1Null())
+
+	default:
+	}
+
+	return data
 }
