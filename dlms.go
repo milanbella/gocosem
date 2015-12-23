@@ -101,6 +101,27 @@ func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAtt
 	return nil, w.Bytes()
 }
 
+func getResponse(pdu []byte) (err error, n int, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
+
+	b := pdu[0:]
+
+	if len(b) < 1 {
+		return errors.New("short pdu"), 0, 0, nil
+	}
+	dataAccessResult = tDlmsDataAccessResult(b[0])
+	b = b[1:]
+
+	var cdata *tAsn1Choice
+	if dataAccessResult_success == dataAccessResult {
+		err, cdata, n = decode_Data(b)
+		if nil != err {
+			return err, 0, 0, nil
+		}
+	}
+
+	return nil, n, dataAccessResult, (*tDlmsData)(cdata)
+}
+
 func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
 	var FNAME = "encode_GetRequestNormal()"
 
@@ -134,7 +155,7 @@ func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, class
 }
 
 func decode_GetResponseNormal(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
-	var FNAME = "decode_GetResponsenormal"
+	var FNAME = "decode_GetResponsenormal()"
 	b := pdu[0:]
 
 	if len(b) < 2 {
@@ -152,18 +173,12 @@ func decode_GetResponseNormal(pdu []byte) (err error, invokeIdAndPriority tDlmsI
 	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
 	b = b[1:]
 
-	if len(b) < 1 {
-		return errors.New("short pdu"), 0, 0, nil
-	}
-	dataAccessResult = tDlmsDataAccessResult(b[0])
-	b = b[1:]
-
-	var cdata *tAsn1Choice
-	if dataAccessResult_success == dataAccessResult {
-		err, cdata, _ = decode_Data(b)
+	err, _, dataAccessResult, data = getResponse(b)
+	if nil != err {
+		return err, 0, 0, nil
 	}
 
-	return nil, invokeIdAndPriority, dataAccessResult, (*tDlmsData)(cdata)
+	return nil, invokeIdAndPriority, dataAccessResult, data
 }
 
 func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, classIds []tDlmsClassId, instanceIds []*tDlmsOid, attributeIds []tDlmsAttributeId, accessSelectors []*tDlmsAccessSelector, accessParameters []*tDlmsData) (err error, pdu []byte) {
