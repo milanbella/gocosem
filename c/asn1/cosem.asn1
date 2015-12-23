@@ -998,8 +998,11 @@ Data ::= CHOICE
 		contents-description [0] TypeDescription,
 		array-contents [1] IMPLICIT OCTET STRING
 	},
+	--TODO
 	--long64 [20] IMPLICIT Integer64,
 	--long64-unsigned [21] IMPLICIT Unsigned64,
+	long64 [20] IMPLICIT OCTET STRING(SIZE(8)),
+	long64-unsigned [21] OCTET STRING(SIZE(8)),
 	enum [22] IMPLICIT Unsigned8,
 	float32 [23] IMPLICIT OCTET STRING (SIZE(4)),
 	float64 [24] IMPLICIT OCTET STRING (SIZE(8)),
