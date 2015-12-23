@@ -61,3 +61,24 @@ func TestX_decode_GetResponsenormal(t *testing.T) {
 		t.Errorf("bytes don't match")
 	}
 }
+
+func TestX_encode_GetRequestWithList(t *testing.T) {
+	//func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, classIds []tDlmsClassId, instanceIds []*tDlmsOid, attributeIds []tDlmsAttributeId, accessSelectors []*tDlmsAccessSelector, accessParameters []*tDlmsData) (pdu []byte, err error) {
+
+	b := []byte{
+		0xC0, 0x03, 0x81,
+		0x02,
+		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
+		0x00, 0x01, 0x00, 0x00, 0x80, 0x01, 0x00, 0xFF, 0x02, 0x00}
+
+	pdu, err := encode_GetRequestWithList(0x81, []tDlmsClassId{1, 1}, []*tDlmsOid{&tDlmsOid{0, 0, 128, 0, 0, 255}, &tDlmsOid{0, 0, 128, 1, 0, 255}}, []tDlmsAttributeId{2, 2}, []*tDlmsAccessSelector{nil, nil}, []*tDlmsData{nil, nil})
+	if nil != err {
+		t.Errorf("encode_GetRequestNormal() failed, err: %v", err)
+	}
+
+	printBuffer(t, pdu)
+
+	if !byteEquals(t, pdu, b, true) {
+		t.Errorf("bytes don't match")
+	}
+}
