@@ -2,10 +2,10 @@ package gocosem
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"testing"
-	"unsafe"
 )
 
 func printBuffer(t *testing.T, inb []byte) {
@@ -238,6 +238,76 @@ func TestX_decode_Data_visible_string(t *testing.T) {
 	}
 }
 
+func TestX_encode_Data_double_long(t *testing.T) {
+	data := new(tAsn1Choice)
+	i := int32(1)
+	data.setVal(C_Data_PR_double_long, (*tAsn1Integer32)(&i))
+	eb := encode_Data(data)
+
+	printBuffer(t, eb)
+
+	if !byteEquals(t, eb, []byte{0x05, 0x01, 0x01}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
+
+func TestX_decode_Data_double_long(t *testing.T) {
+
+	b := []byte{0x05, 0x01, 0x01}
+
+	data := decode_Data(b)
+
+	if C_Data_PR_double_long != data.getTag() {
+		t.Errorf("wrong tag")
+	}
+
+	i := *data.getVal().(*tAsn1Integer32)
+
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.BigEndian, i)
+	db := buf.Bytes()
+	printBuffer(t, db)
+
+	if !byteEquals(t, db, []byte{0x00, 0x00, 0x00, 0x01}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
+
+func TestX_encode_Data_long64(t *testing.T) {
+	data := new(tAsn1Choice)
+	i := int64(1)
+	data.setVal(C_Data_PR_long64, (*tAsn1Long64)(&i))
+	eb := encode_Data(data)
+
+	printBuffer(t, eb)
+
+	if !byteEquals(t, eb, []byte{0x14, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
+
+func TestX_decode_Data_long64(t *testing.T) {
+
+	b := []byte{0x14, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}
+
+	data := decode_Data(b)
+
+	if C_Data_PR_long64 != data.getTag() {
+		t.Errorf("wrong tag")
+	}
+
+	i := *data.getVal().(*tAsn1Long64)
+
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.BigEndian, i)
+	db := buf.Bytes()
+	printBuffer(t, db)
+
+	if !byteEquals(t, db, []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, true) {
+		t.Errorf("bytes don't match")
+	}
+}
+
 func TestX_encode_Data_float32(t *testing.T) {
 	data := new(tAsn1Choice)
 	f := float32(1)
@@ -246,14 +316,14 @@ func TestX_encode_Data_float32(t *testing.T) {
 
 	printBuffer(t, eb)
 
-	if !byteEquals(t, eb, []byte{0x17, 0x04, 0x00, 0x00, 0x80, 0x3F}, true) {
+	if !byteEquals(t, eb, []byte{0x17, 0x3F, 0x80, 0x00, 0x00}, true) {
 		t.Errorf("bytes don't match")
 	}
 }
 
 func TestX_decode_Data_float32(t *testing.T) {
 
-	b := []byte{0x17, 0x04, 0x00, 0x00, 0x80, 0x3F}
+	b := []byte{0x17, 0x3F, 0x80, 0x00, 0x00}
 
 	data := decode_Data(b)
 
@@ -263,10 +333,13 @@ func TestX_decode_Data_float32(t *testing.T) {
 
 	f := *data.getVal().(*tAsn1Float32)
 
-	db := (*[4]byte)(unsafe.Pointer(&f))[:4:4]
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.BigEndian, f)
+	db := buf.Bytes()
+
 	printBuffer(t, db)
 
-	if !byteEquals(t, db, []byte{0x00, 0x00, 0x80, 0x3F}, true) {
+	if !byteEquals(t, db, []byte{0x3F, 0x80, 0x00, 0x00}, true) {
 		t.Errorf("bytes don't match")
 	}
 }
@@ -279,14 +352,14 @@ func TestX_encode_Data_float64(t *testing.T) {
 
 	printBuffer(t, eb)
 
-	if !byteEquals(t, eb, []byte{0x18, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F}, true) {
+	if !byteEquals(t, eb, []byte{0x18, 0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, true) {
 		t.Errorf("bytes don't match")
 	}
 }
 
 func TestX_decode_Data_float64(t *testing.T) {
 
-	b := []byte{0x18, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3F}
+	b := []byte{0x18, 0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
 	data := decode_Data(b)
 
@@ -296,10 +369,13 @@ func TestX_decode_Data_float64(t *testing.T) {
 
 	f := *data.getVal().(*tAsn1Float64)
 
-	db := (*[8]byte)(unsafe.Pointer(&f))[:8:8]
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.BigEndian, f)
+	db := buf.Bytes()
+
 	printBuffer(t, db)
 
-	if !byteEquals(t, db, []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xF0, 0x3f}, true) {
+	if !byteEquals(t, db, []byte{0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, true) {
 		t.Errorf("bytes don't match")
 	}
 }

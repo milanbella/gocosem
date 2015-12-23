@@ -18,6 +18,7 @@ import "C"
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"time"
 	"unsafe"
@@ -31,14 +32,14 @@ type tAsn1BitString struct {
 }
 
 type tAsn1IA5String string
-type tAsn1Integer int
-type tAsn1Integer8 int
-type tAsn1Integer16 int
-type tAsn1Integer32 int
+type tAsn1Integer int32
+type tAsn1Integer8 int8
+type tAsn1Integer16 int16
+type tAsn1Integer32 int32
 type tAsn1Long64 int64
-type tAsn1Unsigned8 uint
-type tAsn1Unsigned16 uint
-type tAsn1Unsigned32 uint
+type tAsn1Unsigned8 uint8
+type tAsn1Unsigned16 uint16
+type tAsn1Unsigned32 uint32
 type tAsn1UnsignedLong64 uint64
 type tAsn1Float float32
 type tAsn1Float32 float32
@@ -384,7 +385,14 @@ func cAsn1Long64(i *tAsn1Long64) *C.OCTET_STRING_t {
 	if nil == i {
 		return nil
 	}
-	ib := (*[8]byte)(unsafe.Pointer(i))[:8:8]
+
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, i)
+	if err != nil {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	ib := buf.Bytes()
+
 	cib := cslice(ib)
 	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cib[0]), C.int(len(cib)))
 }
@@ -393,13 +401,20 @@ func goAsn1Long64(ci *C.OCTET_STRING_t) *tAsn1Long64 {
 	if nil == ci {
 		return nil
 	}
+
 	i := new(tAsn1Long64)
-	ib := (*[8]byte)(unsafe.Pointer(i))[:8:8]
+
 	if 8 != ci.size {
 		panic(fmt.Sprintf("goAsn1Long64(): size of long64 is not 8"))
 	}
-	cib := goslice(ci.buf, ci.size)
-	copy(ib, cib)
+	b := goslice(ci.buf, ci.size)
+
+	buf := bytes.NewBuffer(b)
+	err := binary.Read(buf, binary.BigEndian, i)
+	if err != nil {
+		panic(fmt.Sprintf("binary.Read() failed: %v", err))
+	}
+
 	return i
 }
 
@@ -461,7 +476,14 @@ func cAsn1UnsignedLong64(i *tAsn1UnsignedLong64) *C.OCTET_STRING_t {
 	if nil == i {
 		return nil
 	}
-	ib := (*[8]byte)(unsafe.Pointer(i))[:8:8]
+
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, i)
+	if err != nil {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	ib := buf.Bytes()
+
 	cib := cslice(ib)
 	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cib[0]), C.int(len(cib)))
 }
@@ -470,13 +492,20 @@ func goAsn1UnsignedLong64(ci *C.OCTET_STRING_t) *tAsn1UnsignedLong64 {
 	if nil == ci {
 		return nil
 	}
+
 	i := new(tAsn1UnsignedLong64)
-	ib := (*[8]byte)(unsafe.Pointer(i))[:8:8]
+
 	if 8 != ci.size {
 		panic(fmt.Sprintf("goAsn1UnsignedLong64(): size of long64 is not 8"))
 	}
-	cib := goslice(ci.buf, ci.size)
-	copy(ib, cib)
+	b := goslice(ci.buf, ci.size)
+
+	buf := bytes.NewBuffer(b)
+	err := binary.Read(buf, binary.BigEndian, i)
+	if err != nil {
+		panic(fmt.Sprintf("binary.Read() failed: %v", err))
+	}
+
 	return i
 }
 
@@ -484,7 +513,14 @@ func cAsn1Float(f *tAsn1Float) *C.OCTET_STRING_t {
 	if nil == f {
 		return nil
 	}
-	fb := ((*[4]byte)(unsafe.Pointer(f)))[:4:4]
+
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, f)
+	if err != nil {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	fb := buf.Bytes()
+
 	cfb := cslice(fb)
 	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
 }
@@ -494,12 +530,14 @@ func goAsn1Float(cf *C.OCTET_STRING_t) *tAsn1Float {
 		return nil
 	}
 	f := new(tAsn1Float)
-	fb := ((*[4]byte)(unsafe.Pointer(f)))[:4:4]
-	if 4 != cf.size {
-		panic(fmt.Sprintf("goAsn1Float(): size of float is not 4"))
+	b := goslice(cf.buf, cf.size)
+
+	buf := bytes.NewBuffer(b)
+	err := binary.Read(buf, binary.BigEndian, f)
+	if err != nil {
+		panic(fmt.Sprintf("binary.Read() failed: %v", err))
 	}
-	cfb := goslice(cf.buf, cf.size)
-	copy(fb, cfb)
+
 	return f
 }
 
@@ -507,7 +545,14 @@ func cAsn1Float32(f *tAsn1Float32) *C.OCTET_STRING_t {
 	if nil == f {
 		return nil
 	}
-	fb := ((*[4]byte)(unsafe.Pointer(f)))[:4:4]
+
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, f)
+	if err != nil {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	fb := buf.Bytes()
+
 	cfb := cslice(fb)
 	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
 }
@@ -516,13 +561,19 @@ func goAsn1Float32(cf *C.OCTET_STRING_t) *tAsn1Float32 {
 	if nil == cf {
 		return nil
 	}
+
 	f := new(tAsn1Float32)
-	fb := ((*[4]byte)(unsafe.Pointer(f)))[:4:4]
 	if 4 != cf.size {
 		panic(fmt.Sprintf("goAsn1Float32(): size of float is not 4"))
 	}
-	cfb := goslice(cf.buf, cf.size)
-	copy(fb, cfb)
+	b := goslice(cf.buf, cf.size)
+
+	buf := bytes.NewBuffer(b)
+	err := binary.Read(buf, binary.BigEndian, f)
+	if err != nil {
+		panic(fmt.Sprintf("binary.Read() failed: %v", err))
+	}
+
 	return f
 }
 
@@ -530,7 +581,14 @@ func cAsn1Float64(f *tAsn1Float64) *C.OCTET_STRING_t {
 	if nil == f {
 		return nil
 	}
-	fb := ((*[8]byte)(unsafe.Pointer(f)))[:8:8]
+
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, f)
+	if err != nil {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	fb := buf.Bytes()
+
 	cfb := cslice(fb)
 	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
 }
@@ -540,12 +598,17 @@ func goAsn1Float64(cf *C.OCTET_STRING_t) *tAsn1Float64 {
 		return nil
 	}
 	f := new(tAsn1Float64)
-	fb := ((*[8]byte)(unsafe.Pointer(f)))[:8:8]
 	if 8 != cf.size {
 		panic(fmt.Sprintf("goAsn1Float64(): size of float is not 8"))
 	}
-	cfb := goslice(cf.buf, cf.size)
-	copy(fb, cfb)
+	b := goslice(cf.buf, cf.size)
+
+	buf := bytes.NewBuffer(b)
+	err := binary.Read(buf, binary.BigEndian, f)
+	if err != nil {
+		panic(fmt.Sprintf("binary.Read() failed: %v", err))
+	}
+
 	return f
 }
 
@@ -1014,6 +1077,28 @@ func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
 	return pdu
 }
 
+func removeLengthByte(inb []byte) (b []byte) {
+	var buf bytes.Buffer
+
+	buf.Write(inb[0:1])
+	buf.Write(inb[2:])
+
+	b = buf.Bytes()
+	return b
+}
+
+func addLengthByte(inb []byte, n uint8) (b []byte) {
+
+	var buf bytes.Buffer
+
+	buf.Write(inb[0:1])
+	buf.Write([]byte{n})
+	buf.Write(inb[1:])
+
+	b = buf.Bytes()
+	return b
+}
+
 func encode_Data(_data *tAsn1Choice) []byte {
 
 	data := C.hlp__calloc_Data_t()
@@ -1152,15 +1237,48 @@ func encode_Data(_data *tAsn1Choice) []byte {
 	}
 	C.hlp__free_Data_t(data)
 
+	// Cosem - Dlms incompatibilities
+	//TODO: remove asn1c calls (encoding is very simple, can do it preheps directly in go)
+
 	eb := buf.Bytes()
-	eb[0] &= 0x7F // clear bit 8 (asn1 class context-specifix)
+	eb[0] &= 0x7F // clear bit 8 (asn1 class context-specific)
+
+	switch C.Data_PR((*_data).getTag()) {
+
+	case C.Data_PR_floating_point:
+		eb = removeLengthByte(eb)
+	case C.Data_PR_float32:
+		eb = removeLengthByte(eb)
+	case C.Data_PR_float64:
+		eb = removeLengthByte(eb)
+	default:
+	}
 
 	return eb
 
 }
 
 func decode_Data(inb []byte) (data *tAsn1Choice) {
-	inb[0] |= 0x80 // set bit 8 (asn1 class context-specifix)
+
+	// Cosem - Dlms incompatibilities
+	//TODO: remove asn1c calls (encoding is very simple, can do it preheps directly in go)
+
+	inb[0] |= 0x80 // set bit 8 (asn1 class context-specific)
+
+	tag := int(inb[0] & 0x1F) // clear off first 3 bits
+	switch tag {
+
+	//case C_Data_PR_floating_point:
+	case 7:
+		inb = addLengthByte(inb, 4)
+	//case C_Data_PR_float32:
+	case 23:
+		inb = addLengthByte(inb, 4)
+	//case C_Data_PR_float64:
+	case 24:
+		inb = addLengthByte(inb, 8)
+	default:
+	}
 
 	data = new(tAsn1Choice)
 
@@ -1227,7 +1345,7 @@ func decode_Data(inb []byte) (data *tAsn1Choice) {
 		panic(fmt.Sprintf("decode_Data(): compact_array not implemnted"))
 
 	case C.Data_PR_long64:
-		data.setVal(int(C.Data_PR_long64), goAsn1UnsignedLong64((*C.OCTET_STRING_t)(choice)))
+		data.setVal(int(C.Data_PR_long64), goAsn1Long64((*C.OCTET_STRING_t)(choice)))
 
 	case C.Data_PR_long64_unsigned:
 		data.setVal(int(C.Data_PR_long64_unsigned), goAsn1UnsignedLong64((*C.OCTET_STRING_t)(choice)))
