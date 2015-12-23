@@ -9,7 +9,7 @@ func TestX_encode_GetRequestNormal(t *testing.T) {
 		0xC0, 0x01, 0x81,
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00}
 
-	pdu, err := encode_GetRequestNormal(0x81, 1, &tDlmsOid{0, 0, 128, 0, 0, 255}, 2, nil, nil)
+	err, pdu := encode_GetRequestNormal(0x81, 1, &tDlmsOid{0, 0, 128, 0, 0, 255}, 2, nil, nil)
 	if nil != err {
 		t.Errorf("encode_GetRequestNormal() failed, err: %v", err)
 	}
@@ -22,7 +22,7 @@ func TestX_encode_GetRequestNormal(t *testing.T) {
 
 }
 
-func TestX_decode_GetResponsenormal(t *testing.T) {
+func TestX_decode_GetResponseNormal(t *testing.T) {
 	pdu := []byte{
 		0xC4, 0x01, 0x81,
 		0x00,
@@ -30,9 +30,9 @@ func TestX_decode_GetResponsenormal(t *testing.T) {
 		0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
 
 	//func decode_GetResponsenormal(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
-	err, invokeIdAndPriority, dataAccessResult, data := decode_GetResponsenormal(pdu)
+	err, invokeIdAndPriority, dataAccessResult, data := decode_GetResponseNormal(pdu)
 	if nil != err {
-		t.Errorf("decode_GetResponsenormal() failed, err %v", err)
+		t.Errorf("decode_GetResponseNormal() failed, err %v", err)
 	}
 	t.Logf("invokeIdAndPriority: %02X", invokeIdAndPriority)
 	t.Logf("dataAccessResult: %d", dataAccessResult)
@@ -71,9 +71,9 @@ func TestX_encode_GetRequestWithList(t *testing.T) {
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x01, 0x00, 0xFF, 0x02, 0x00}
 
-	pdu, err := encode_GetRequestWithList(0x81, []tDlmsClassId{1, 1}, []*tDlmsOid{&tDlmsOid{0, 0, 128, 0, 0, 255}, &tDlmsOid{0, 0, 128, 1, 0, 255}}, []tDlmsAttributeId{2, 2}, []*tDlmsAccessSelector{nil, nil}, []*tDlmsData{nil, nil})
+	err, pdu := encode_GetRequestWithList(0x81, []tDlmsClassId{1, 1}, []*tDlmsOid{&tDlmsOid{0, 0, 128, 0, 0, 255}, &tDlmsOid{0, 0, 128, 1, 0, 255}}, []tDlmsAttributeId{2, 2}, []*tDlmsAccessSelector{nil, nil}, []*tDlmsData{nil, nil})
 	if nil != err {
-		t.Errorf("encode_GetRequestNormal() failed, err: %v", err)
+		t.Errorf("encode_GetRequestWithList() failed, err: %v", err)
 	}
 
 	printBuffer(t, pdu)

@@ -38,7 +38,7 @@ const (
 
 var logger *log.Logger = getLogger()
 
-func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (pdu []byte, err error) {
+func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
 	var FNAME = "getRequest()"
 
 	var w bytes.Buffer
@@ -47,25 +47,25 @@ func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAtt
 	err = binary.Write(&buf, binary.BigEndian, classId)
 	if nil != err {
 		logger.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s", err))
-		return nil, err
+		return err, nil
 	}
 	b := buf.Bytes()
 	_, err = w.Write(b)
 	if nil != err {
 		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-		return nil, err
+		return err, nil
 	}
 
 	_, err = w.Write((*instanceId)[0:6])
 	if nil != err {
 		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-		return nil, err
+		return err, nil
 	}
 
 	_, err = w.Write([]byte{byte(attributeId)})
 	if nil != err {
 		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-		return nil, err
+		return err, nil
 	}
 
 	if 0 != attributeId {
@@ -77,7 +77,10 @@ func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAtt
 			as = []byte{byte(*accessSelector)}
 		}
 		if nil != accessParameters {
-			ap = encode_Data((*tAsn1Choice)(accessParameters))
+			err, ap = encode_Data((*tAsn1Choice)(accessParameters))
+			if nil != err {
+				return err, nil
+			}
 		} else {
 			ap = make([]byte, 0)
 		}
@@ -85,20 +88,20 @@ func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAtt
 		_, err = w.Write(as)
 		if nil != err {
 			logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-			return nil, err
+			return err, nil
 		}
 
 		_, err = w.Write(ap)
 		if nil != err {
 			logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-			return nil, err
+			return err, nil
 		}
 	}
 
-	return w.Bytes(), nil
+	return nil, w.Bytes()
 }
 
-func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (pdu []byte, err error) {
+func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
 	var FNAME = "encode_GetRequestNormal()"
 
 	var w bytes.Buffer
@@ -106,31 +109,31 @@ func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, class
 	_, err = w.Write([]byte{0xc0, 0x01})
 	if nil != err {
 		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-		return nil, err
+		return err, nil
 	}
 
 	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
 	if nil != err {
 		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-		return nil, err
+		return err, nil
 	}
 
-	pdu, err = getRequest(classId, instanceId, attributeId, accessSelector, accessParameters)
+	err, pdu = getRequest(classId, instanceId, attributeId, accessSelector, accessParameters)
 	if nil != err {
 		logger.Printf("%s: getRequest() failed, err: %v", FNAME, err)
-		return nil, err
+		return err, nil
 	}
 
 	_, err = w.Write(pdu)
 	if nil != err {
 		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-		return nil, err
+		return err, nil
 	}
 
-	return w.Bytes(), nil
+	return nil, w.Bytes()
 }
 
-func decode_GetResponsenormal(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
+func decode_GetResponseNormal(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
 	var FNAME = "decode_GetResponsenormal"
 	b := pdu[0:]
 
@@ -155,14 +158,15 @@ func decode_GetResponsenormal(pdu []byte) (err error, invokeIdAndPriority tDlmsI
 	dataAccessResult = tDlmsDataAccessResult(b[0])
 	b = b[1:]
 
+	var cdata *tAsn1Choice
 	if dataAccessResult_success == dataAccessResult {
-		data = (*tDlmsData)(decode_Data(b))
+		err, cdata, _ = decode_Data(b)
 	}
 
-	return nil, invokeIdAndPriority, dataAccessResult, data
+	return nil, invokeIdAndPriority, dataAccessResult, (*tDlmsData)(cdata)
 }
 
-func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, classIds []tDlmsClassId, instanceIds []*tDlmsOid, attributeIds []tDlmsAttributeId, accessSelectors []*tDlmsAccessSelector, accessParameters []*tDlmsData) (pdu []byte, err error) {
+func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, classIds []tDlmsClassId, instanceIds []*tDlmsOid, attributeIds []tDlmsAttributeId, accessSelectors []*tDlmsAccessSelector, accessParameters []*tDlmsData) (err error, pdu []byte) {
 	var FNAME = "encode_GetRequestWithList"
 
 	var w bytes.Buffer
@@ -170,13 +174,13 @@ func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, cla
 	_, err = w.Write([]byte{0xc0, 0x03})
 	if nil != err {
 		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-		return nil, err
+		return err, nil
 	}
 
 	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
 	if nil != err {
 		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-		return nil, err
+		return err, nil
 	}
 
 	count := len(classIds) // count of get requests
@@ -184,23 +188,23 @@ func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, cla
 	_, err = w.Write([]byte{byte(count)})
 	if nil != err {
 		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-		return nil, err
+		return err, nil
 	}
 
 	for i := 0; i < count; i += 1 {
 
-		pdu, err = getRequest(classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
+		err, pdu = getRequest(classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
 		if nil != err {
 			logger.Printf("%s: getRequest() failed, err: %v", FNAME, err)
-			return nil, err
+			return err, nil
 		}
 
 		_, err = w.Write(pdu)
 		if nil != err {
 			logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
-			return nil, err
+			return err, nil
 		}
 	}
 
-	return w.Bytes(), nil
+	return nil, w.Bytes()
 }

@@ -109,7 +109,10 @@ func TestX_encode_AARQapdu(t *testing.T) {
 	userInformation := tAsn1OctetString([]byte{0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x7E, 0x1F, 0x04, 0xB0})
 	aarq.userInformation = &userInformation
 
-	b := encode_AARQapdu(&aarq)
+	err, b := encode_AARQapdu(&aarq)
+	if nil != err {
+		t.Errorf("encode_AARQapdu() failed")
+	}
 	printBuffer(t, b)
 
 	expectB := []byte{0x60, 0x36, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0x8A, 0x02, 0x07, 0x80, 0x8B, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01, 0xAC, 0x0A, 0x80, 0x08, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0xBE, 0x10, 0x04, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x7E, 0x1F, 0x04, 0xB0}
@@ -151,7 +154,10 @@ func TestX_decode_AAREapdu(t *testing.T) {
 	*/
 
 	b := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x18, 0x1F, 0x08, 0x00, 0x00, 0x07}
-	aare := decode_AAREapdu(b)
+	err, aare := decode_AAREapdu(b)
+	if nil != err {
+		t.Errorf("decode_AAREapdu() failed")
+	}
 
 	t.Logf("%v", aare.applicationContextName)
 	t.Logf("%v", aare.result)
@@ -180,7 +186,10 @@ func TestX_encode_Data_octet_string(t *testing.T) {
 	data := new(tAsn1Choice)
 	b := []byte{0x81, 0xC2, 0x9A, 0xA5}
 	data.setVal(C_Data_PR_octet_string, (*tAsn1OctetString)(&b))
-	eb := encode_Data(data)
+	err, eb := encode_Data(data)
+	if nil != err {
+		t.Errorf("encode_Data() failed")
+	}
 
 	printBuffer(t, eb)
 
@@ -193,7 +202,10 @@ func TestX_decode_Data_octet_string(t *testing.T) {
 
 	b := []byte{0x09, 0x04, 0x81, 0xC2, 0x9A, 0xA5}
 
-	data := decode_Data(b)
+	err, data, _ := decode_Data(b)
+	if nil != err {
+		t.Errorf("decode_Data() failed")
+	}
 
 	if C_Data_PR_octet_string != data.getTag() {
 		t.Errorf("wrong tag")
@@ -211,7 +223,10 @@ func TestX_encode_Data_visible_string(t *testing.T) {
 	data := new(tAsn1Choice)
 	b := []byte{0x30, 0x30, 0x30}
 	data.setVal(C_Data_PR_visible_string, (*tAsn1VisibleString)(&b))
-	eb := encode_Data(data)
+	err, eb := encode_Data(data)
+	if nil != err {
+		t.Errorf("encode_Data() failed")
+	}
 
 	printBuffer(t, eb)
 
@@ -224,7 +239,10 @@ func TestX_decode_Data_visible_string(t *testing.T) {
 
 	b := []byte{0x0A, 0x03, 0x30, 0x30, 0x30}
 
-	data := decode_Data(b)
+	err, data, _ := decode_Data(b)
+	if nil != err {
+		t.Errorf("decode_Data() failed")
+	}
 
 	if C_Data_PR_visible_string != data.getTag() {
 		t.Errorf("wrong tag")
@@ -242,7 +260,10 @@ func TestX_encode_Data_double_long(t *testing.T) {
 	data := new(tAsn1Choice)
 	i := int32(1)
 	data.setVal(C_Data_PR_double_long, (*tAsn1Integer32)(&i))
-	eb := encode_Data(data)
+	err, eb := encode_Data(data)
+	if nil != err {
+		t.Errorf("encode_Data() failed")
+	}
 
 	printBuffer(t, eb)
 
@@ -255,7 +276,10 @@ func TestX_decode_Data_double_long(t *testing.T) {
 
 	b := []byte{0x05, 0x01, 0x01}
 
-	data := decode_Data(b)
+	err, data, _ := decode_Data(b)
+	if nil != err {
+		t.Errorf("decode_Data() failed")
+	}
 
 	if C_Data_PR_double_long != data.getTag() {
 		t.Errorf("wrong tag")
@@ -277,7 +301,10 @@ func TestX_encode_Data_long64(t *testing.T) {
 	data := new(tAsn1Choice)
 	i := int64(1)
 	data.setVal(C_Data_PR_long64, (*tAsn1Long64)(&i))
-	eb := encode_Data(data)
+	err, eb := encode_Data(data)
+	if nil != err {
+		t.Errorf("encode_Data() failed")
+	}
 
 	printBuffer(t, eb)
 
@@ -290,7 +317,10 @@ func TestX_decode_Data_long64(t *testing.T) {
 
 	b := []byte{0x14, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}
 
-	data := decode_Data(b)
+	err, data, _ := decode_Data(b)
+	if nil != err {
+		t.Errorf("decode_Data() failed")
+	}
 
 	if C_Data_PR_long64 != data.getTag() {
 		t.Errorf("wrong tag")
@@ -312,7 +342,10 @@ func TestX_encode_Data_float32(t *testing.T) {
 	data := new(tAsn1Choice)
 	f := float32(1)
 	data.setVal(C_Data_PR_float32, (*tAsn1Float32)(&f))
-	eb := encode_Data(data)
+	err, eb := encode_Data(data)
+	if nil != err {
+		t.Errorf("encode_Data() failed")
+	}
 
 	printBuffer(t, eb)
 
@@ -325,7 +358,10 @@ func TestX_decode_Data_float32(t *testing.T) {
 
 	b := []byte{0x17, 0x3F, 0x80, 0x00, 0x00}
 
-	data := decode_Data(b)
+	err, data, _ := decode_Data(b)
+	if nil != err {
+		t.Errorf("decode_Data() failed")
+	}
 
 	if C_Data_PR_float32 != data.getTag() {
 		t.Errorf("wrong tag")
@@ -348,7 +384,10 @@ func TestX_encode_Data_float64(t *testing.T) {
 	data := new(tAsn1Choice)
 	f := float64(1)
 	data.setVal(C_Data_PR_float64, (*tAsn1Float64)(&f))
-	eb := encode_Data(data)
+	err, eb := encode_Data(data)
+	if nil != err {
+		t.Errorf("encode_Data() failed")
+	}
 
 	printBuffer(t, eb)
 
@@ -361,7 +400,10 @@ func TestX_decode_Data_float64(t *testing.T) {
 
 	b := []byte{0x18, 0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 
-	data := decode_Data(b)
+	err, data, _ := decode_Data(b)
+	if nil != err {
+		t.Errorf("decode_Data() failed")
+	}
 
 	if C_Data_PR_float64 != data.getTag() {
 		t.Errorf("wrong tag")

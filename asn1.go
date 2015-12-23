@@ -19,6 +19,7 @@ import "C"
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"time"
 	"unsafe"
@@ -837,11 +838,12 @@ func goAsn1Time(d *C.OCTET_STRING_t) *tAsn1Time {
 	return (*tAsn1Time)(&ad)
 }
 
-func encode_AARQapdu(_pdu *AARQapdu) []byte {
+func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 	var ret C.asn_enc_rval_t
 	var pdu *C.AARQ_apdu_t
 	var buf bytes.Buffer
 	var cb []C.uint8_t
+	var serr string
 
 	pdu = C.hlp__calloc_AARQ_apdu_t()
 
@@ -949,7 +951,9 @@ func encode_AARQapdu(_pdu *AARQapdu) []byte {
 			cb = cslicep((uintptr)(unsafe.Pointer(&avo)), unsafe.Sizeof(avo))
 			C.hlp__fill_OCTET_STRING_t((*C.OCTET_STRING_t)(unsafe.Pointer(&(*av).choice[0])), &cb[0], C.int(len(cb)))
 		default:
-			panic(fmt.Sprintf("encode_AARQapdu() failed, unknown callingAuthenticationValue tag %v", _pdu.callingAuthenticationValue.getTag()))
+			serr = fmt.Sprintf("encode_AARQapdu() failed, unknown callingAuthenticationValue tag %v", _pdu.callingAuthenticationValue.getTag())
+			logger.Printf(serr)
+			return errors.New(serr), nil
 		}
 	}
 
@@ -966,15 +970,18 @@ func encode_AARQapdu(_pdu *AARQapdu) []byte {
 	ret, errno := C.der_encode(&C.asn_DEF_AARQ_apdu, unsafe.Pointer(pdu), (*C.asn_app_consume_bytes_f)(C.consumeBytesWrap), unsafe.Pointer(&buf))
 	if -1 == ret.encoded {
 		s := C.GoString(ret.failed_type.name)
-		panic(fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno))
+		serr = fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno)
+		logger.Printf(serr)
+		return errors.New(serr), nil
 	}
 	C.hlp__free_AARQ_apdu_t(pdu)
-	return buf.Bytes()
+	return nil, buf.Bytes()
 }
 
-func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
+func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 
 	var cpdu *C.AARE_apdu_t
+	var serr string
 
 	pdu = new(AAREapdu)
 
@@ -982,7 +989,9 @@ func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
 	ret, errno := C.ber_decode((*C.struct_asn_codec_ctx_s)(unsafe.Pointer(nil)), &C.asn_DEF_AARE_apdu, (*unsafe.Pointer)(unsafe.Pointer(&cpdu)), unsafe.Pointer(&cb[0]), C.size_t(len(cb)))
 	C.hlp__gc_free(unsafe.Pointer(&cb[0]))
 	if C.RC_OK != ret.code {
-		panic(fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno))
+		serr = fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno)
+		logger.Printf(serr)
+		return errors.New(serr), nil
 	}
 
 	//-- [APPLICATION 1] == [ 61H ] = [ 97 ]
@@ -1009,7 +1018,9 @@ func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
 	case C.Associate_source_diagnostic_PR_acse_service_provider:
 		pdu.resultSourceDiagnostic.setVal(int(C.Associate_source_diagnostic_PR_acse_service_provider), int(*(*C.long)(unsafe.Pointer(&b[0]))))
 	default:
-		panic(fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.result_source_diagnostic.present)))
+		serr = fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.result_source_diagnostic.present))
+		logger.Printf(serr)
+		return errors.New(serr), nil
 	}
 
 	//responding-AP-title [4] AP-title OPTIONAL,
@@ -1060,7 +1071,9 @@ func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
 			other.otherMechanismValue = *goAsn1Any(&_other.other_mechanism_value)
 			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_other), &other)
 		default:
-			panic(fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.responding_authentication_value.present)))
+			serr = fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.responding_authentication_value.present))
+			logger.Printf(serr)
+			return errors.New(serr), nil
 		}
 	}
 
@@ -1074,7 +1087,7 @@ func decode_AAREapdu(inb []byte) (pdu *AAREapdu) {
 
 	C.hlp__free_AARE_apdu_t(cpdu)
 
-	return pdu
+	return nil, pdu
 }
 
 func removeLengthByte(inb []byte) (b []byte) {
@@ -1099,7 +1112,8 @@ func addLengthByte(inb []byte, n uint8) (b []byte) {
 	return b
 }
 
-func encode_Data(_data *tAsn1Choice) []byte {
+func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
+	var serr string
 
 	data := C.hlp__calloc_Data_t()
 
@@ -1115,10 +1129,14 @@ func encode_Data(_data *tAsn1Choice) []byte {
 		*(*C.NULL_t)(choice) = *cAsn1Null()
 
 	case C.Data_PR_array:
-		panic(fmt.Sprintf("encode_Data(): array not implemnted"))
+		serr = fmt.Sprintf("encode_Data(): array not implemnted")
+		logger.Printf(serr)
+		return errors.New(serr), nil
 
 	case C.Data_PR_structure:
-		panic(fmt.Sprintf("encode_Data(): structure not implemnted"))
+		serr = fmt.Sprintf("encode_Data(): structure not implemnted")
+		logger.Printf(serr)
+		return errors.New(serr), nil
 
 	case C.Data_PR_boolean:
 		data.present = C.Data_PR_boolean
@@ -1181,7 +1199,9 @@ func encode_Data(_data *tAsn1Choice) []byte {
 		*(*C.Unsigned16_t)(choice) = *v
 
 	case C.Data_PR_compact_array:
-		panic(fmt.Sprintf("encode_Data(): compact_array not implemnted"))
+		serr = fmt.Sprintf("encode_Data(): compact_array not implemnted")
+		logger.Printf(serr)
+		return errors.New(serr), nil
 
 	case C.Data_PR_long64:
 		data.present = C.Data_PR_long64
@@ -1194,7 +1214,9 @@ func encode_Data(_data *tAsn1Choice) []byte {
 		*(*C.OCTET_STRING_t)(choice) = *v
 
 	case C.Data_PR_enum:
-		panic(fmt.Sprintf("encode_Data(): enum not implemnted"))
+		serr = fmt.Sprintf("encode_Data(): enum not implemnted")
+		logger.Printf(serr)
+		return errors.New(serr), nil
 
 	case C.Data_PR_float32:
 		data.present = C.Data_PR_float32
@@ -1226,14 +1248,18 @@ func encode_Data(_data *tAsn1Choice) []byte {
 		*(*C.NULL_t)(choice) = *cAsn1Null()
 
 	default:
-		panic(fmt.Sprintf("encode_Data(): unknown choice tag: %v", int((*_data).getTag())))
+		serr = fmt.Sprintf("encode_Data(): unknown choice tag: %v", int((*_data).getTag()))
+		logger.Printf(serr)
+		return errors.New(serr), nil
 	}
 
 	var buf bytes.Buffer
 	ret, errno := C.der_encode(&C.asn_DEF_Data, unsafe.Pointer(data), (*C.asn_app_consume_bytes_f)(C.consumeBytesWrap), unsafe.Pointer(&buf))
 	if -1 == ret.encoded {
 		s := C.GoString(ret.failed_type.name)
-		panic(fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno))
+		serr = fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno)
+		logger.Printf(serr)
+		return errors.New(serr), nil
 	}
 	C.hlp__free_Data_t(data)
 
@@ -1254,11 +1280,14 @@ func encode_Data(_data *tAsn1Choice) []byte {
 	default:
 	}
 
-	return eb
+	return nil, eb
 
 }
 
-func decode_Data(inb []byte) (data *tAsn1Choice) {
+// Returns decoded data and number of bytes consumed.
+func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
+
+	var serr string
 
 	// Cosem - Dlms incompatibilities
 	//TODO: remove asn1c calls (encoding is very simple, can do it preheps directly in go)
@@ -1288,8 +1317,11 @@ func decode_Data(inb []byte) (data *tAsn1Choice) {
 	ret, errno := C.ber_decode((*C.struct_asn_codec_ctx_s)(unsafe.Pointer(nil)), &C.asn_DEF_Data, (*unsafe.Pointer)(unsafe.Pointer(&cdata)), unsafe.Pointer(&cb[0]), C.size_t(len(cb)))
 	C.hlp__gc_free(unsafe.Pointer(&cb[0]))
 	if C.RC_OK != ret.code {
-		panic(fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno))
+		serr = fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno)
+		logger.Printf(serr)
+		return errors.New(serr), nil, 0
 	}
+	n = int(ret.consumed)
 
 	choice := unsafe.Pointer(&cdata.choice[0])
 
@@ -1303,10 +1335,14 @@ func decode_Data(inb []byte) (data *tAsn1Choice) {
 	case C.Data_PR_array:
 
 	case C.Data_PR_structure:
-		panic(fmt.Sprintf("decode_Data(): array not implemnted"))
+		serr = fmt.Sprintf("decode_Data(): array not implemnted")
+		logger.Printf(serr)
+		return errors.New(serr), nil, 0
 
 	case C.Data_PR_boolean:
-		panic(fmt.Sprintf("decode_Data(): structure not implemnted"))
+		serr = fmt.Sprintf("decode_Data(): structure not implemnted")
+		logger.Printf(serr)
+		return errors.New(serr), nil, 0
 
 	case C.Data_PR_bit_string:
 		data.setVal(int(C.Data_PR_bit_string), goAsn1BitString((*C.BIT_STRING_t)(choice)))
@@ -1342,7 +1378,9 @@ func decode_Data(inb []byte) (data *tAsn1Choice) {
 		data.setVal(int(C.Data_PR_long_unsigned), goAsn1Unsigned16((*C.Unsigned16_t)(choice)))
 
 	case C.Data_PR_compact_array:
-		panic(fmt.Sprintf("decode_Data(): compact_array not implemnted"))
+		serr = fmt.Sprintf("decode_Data(): compact_array not implemnted")
+		logger.Printf(serr)
+		return errors.New(serr), nil, 0
 
 	case C.Data_PR_long64:
 		data.setVal(int(C.Data_PR_long64), goAsn1Long64((*C.OCTET_STRING_t)(choice)))
@@ -1351,7 +1389,9 @@ func decode_Data(inb []byte) (data *tAsn1Choice) {
 		data.setVal(int(C.Data_PR_long64_unsigned), goAsn1UnsignedLong64((*C.OCTET_STRING_t)(choice)))
 
 	case C.Data_PR_enum:
-		panic(fmt.Sprintf("decode_Data(): enum not implemnted"))
+		serr = fmt.Sprintf("decode_Data(): enum not implemnted")
+		logger.Printf(serr)
+		return errors.New(serr), nil, 0
 
 	case C.Data_PR_float32:
 		data.setVal(int(C.Data_PR_float32), goAsn1Float32((*C.OCTET_STRING_t)(choice)))
@@ -1372,8 +1412,10 @@ func decode_Data(inb []byte) (data *tAsn1Choice) {
 		data.setVal(int(C.Data_PR_dont_care), goAsn1Null())
 
 	default:
-		panic(fmt.Sprintf("decode_Data(): unknown choice tag: %v", int(cdata.present)))
+		serr = fmt.Sprintf("decode_Data(): unknown choice tag: %v", int(cdata.present))
+		logger.Printf(serr)
+		return errors.New(serr), nil, 0
 	}
 
-	return data
+	return nil, data, n
 }
