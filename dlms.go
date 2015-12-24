@@ -102,21 +102,25 @@ func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAtt
 }
 
 func getResponse(pdu []byte) (err error, n int, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
+	var nn = 0
 
 	b := pdu[0:]
+	n = 0
 
 	if len(b) < 1 {
 		return errors.New("short pdu"), 0, 0, nil
 	}
 	dataAccessResult = tDlmsDataAccessResult(b[0])
 	b = b[1:]
+	n += 1
 
 	var cdata *tAsn1Choice
 	if dataAccessResult_success == dataAccessResult {
-		err, cdata, n = decode_Data(b)
+		err, cdata, nn = decode_Data(b)
 		if nil != err {
-			return err, 0, 0, nil
+			return err, n + nn, 0, nil
 		}
+		n += nn
 	}
 
 	return nil, n, dataAccessResult, (*tDlmsData)(cdata)
@@ -222,4 +226,48 @@ func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, cla
 	}
 
 	return nil, w.Bytes()
+}
+
+func decode_GetResponseWithList(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResults []tDlmsDataAccessResult, datas []*tDlmsData) {
+	var FNAME = "decode_GetResponseWithList()"
+	b := pdu[0:]
+
+	if len(b) < 2 {
+		return errors.New("short pdu"), 0, nil, nil
+	}
+	if !bytes.Equal(b[0:2], []byte{0xC4, 0x03}) {
+		logger.Printf("%s: pdu is not GetResponseWithList: 0x%02X 0x%02X ", FNAME, b[0], b[1])
+		return errors.New("pdu is not GetResponseWithList"), 0, nil, nil
+	}
+	b = b[2:]
+
+	if len(b) < 1 {
+		return errors.New("short pdu"), 0, nil, nil
+	}
+	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
+	b = b[1:]
+
+	if len(b) < 1 {
+		return errors.New("short pdu"), 0, nil, nil
+	}
+	count := int(b[0])
+	b = b[1:]
+
+	dataAccessResults = make([]tDlmsDataAccessResult, count)
+	datas = make([]*tDlmsData, count)
+
+	var dataAccessResult tDlmsDataAccessResult
+	var data *tDlmsData
+	var n int
+	for i := 0; i < count; i += 1 {
+		err, n, dataAccessResult, data = getResponse(b)
+		if nil != err {
+			return err, 0, nil, nil
+		}
+		b = b[n:]
+		dataAccessResults[i] = dataAccessResult
+		datas[i] = data
+	}
+
+	return nil, invokeIdAndPriority, dataAccessResults, datas
 }

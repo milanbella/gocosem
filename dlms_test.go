@@ -82,3 +82,57 @@ func TestX_encode_GetRequestWithList(t *testing.T) {
 		t.Errorf("bytes don't match")
 	}
 }
+
+func TestX_decode_GetResponseWithList(t *testing.T) {
+	b := []byte{
+		0xC4, 0x03, 0x81,
+		0x02,
+		0x00,
+		0x09, 0x04,
+		0x01, 0x02, 0x03, 0x04,
+		0x00,
+		0x0A, 0x03,
+		0x30, 0x30, 0x30}
+
+	err, invokeIdAndPriority, dataAccessResults, datas := decode_GetResponseWithList(b)
+	if nil != err {
+		t.Errorf("decode_GetResponseWithList() failed, err: %v", err)
+	}
+
+	if 0x81 != invokeIdAndPriority {
+		t.Errorf("invokeIdAndPriority wrong: %02X", invokeIdAndPriority)
+	}
+
+	count := len(dataAccessResults)
+
+	for i := 0; i < count; i += 1 {
+		choice := (*tAsn1Choice)(datas[i])
+		t.Logf("%d: dataAccessResult: %d tag: %d", i, dataAccessResults[i], choice.getTag())
+	}
+
+	if 0 != dataAccessResults[0] {
+		t.Errorf("wrong dataAccessResults[0]: ", dataAccessResults[0])
+	}
+	choice := (*tAsn1Choice)(datas[0])
+	if C_Data_PR_octet_string != choice.getTag() {
+		t.Errorf("wrong tag[0]: ", choice.getTag())
+	}
+	db := *(choice.getVal().(*tAsn1OctetString))
+	printBuffer(t, db)
+	if !byteEquals(t, db, []byte{0x01, 0x02, 0x03, 0x04}, true) {
+		t.Errorf("wrong data[0]: ")
+	}
+
+	if 0 != dataAccessResults[1] {
+		t.Errorf("wrong dataAccessResults[1]: ", dataAccessResults[1])
+	}
+	choice = (*tAsn1Choice)(datas[1])
+	if C_Data_PR_visible_string != choice.getTag() {
+		t.Errorf("wrong tag[1]: ", choice.getTag())
+	}
+	vs := *(choice.getVal().(*tAsn1VisibleString))
+	printBuffer(t, vs)
+	if !byteEquals(t, vs, []byte{0x30, 0x30, 0x30}, true) {
+		t.Errorf("wrong data[1]: ")
+	}
+}

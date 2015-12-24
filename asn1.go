@@ -1288,6 +1288,7 @@ func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
 func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 
 	var serr string
+	var nn int
 
 	// Cosem - Dlms incompatibilities
 	//TODO: remove asn1c calls (encoding is very simple, can do it preheps directly in go)
@@ -1300,12 +1301,15 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 	//case C_Data_PR_floating_point:
 	case 7:
 		inb = addLengthByte(inb, 4)
+		nn = -4
 	//case C_Data_PR_float32:
 	case 23:
 		inb = addLengthByte(inb, 4)
+		nn = -4
 	//case C_Data_PR_float64:
 	case 24:
 		inb = addLengthByte(inb, 8)
+		nn = -5
 	default:
 	}
 
@@ -1321,7 +1325,7 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 		logger.Printf(serr)
 		return errors.New(serr), nil, 0
 	}
-	n = int(ret.consumed)
+	n = int(ret.consumed) + nn
 
 	choice := unsafe.Pointer(&cdata.choice[0])
 
