@@ -63,7 +63,6 @@ func TestX_decode_GetResponseNormal(t *testing.T) {
 }
 
 func TestX_encode_GetRequestWithList(t *testing.T) {
-	//func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, classIds []tDlmsClassId, instanceIds []*tDlmsOid, attributeIds []tDlmsAttributeId, accessSelectors []*tDlmsAccessSelector, accessParameters []*tDlmsData) (pdu []byte, err error) {
 
 	b := []byte{
 		0xC0, 0x03, 0x81,
@@ -173,4 +172,23 @@ func TestX_decode_GetResponsewithDataBlock(t *testing.T) {
 	if !byteEquals(t, rawData, []byte{0x09, 0x32, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28}, true) {
 		t.Fatalf("wrong rawData")
 	}
+}
+
+func TestX_encode_GetRequestForNextDataBlock(t *testing.T) {
+	b := []byte{
+		0xC0, 0x02, 0x81,
+		0x00, 0x00, 0x00, 0x01}
+
+	//func encode_GetRequestForNextDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPriority, blockNumber uint32) (err error, pdu []byte) {
+	err, pdu := encode_GetRequestForNextDataBlock(0x81, 1)
+	if nil != err {
+		t.Fatalf("encode_GetRequestForNextDataBlock() failed, err: %v", err)
+	}
+
+	printBuffer(t, pdu)
+
+	if !byteEquals(t, pdu, b, true) {
+		t.Fatalf("wrong rawData")
+	}
+
 }

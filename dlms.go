@@ -193,7 +193,7 @@ func decode_GetResponseNormal(pdu []byte) (err error, invokeIdAndPriority tDlmsI
 }
 
 func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, classIds []tDlmsClassId, instanceIds []*tDlmsOid, attributeIds []tDlmsAttributeId, accessSelectors []*tDlmsAccessSelector, accessParameters []*tDlmsData) (err error, pdu []byte) {
-	var FNAME = "encode_GetRequestWithList"
+	var FNAME = "encode_GetRequestWithList()"
 
 	var w bytes.Buffer
 
@@ -361,4 +361,37 @@ func decode_GetResponsewithDataBlock(pdu []byte) (err error, invokeIdAndPriority
 	rawData = b
 
 	return nil, invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData
+}
+
+func encode_GetRequestForNextDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPriority, blockNumber uint32) (err error, pdu []byte) {
+	var FNAME = "encode_GetRequestForNextDataBlock()"
+
+	var w bytes.Buffer
+
+	_, err = w.Write([]byte{0xc0, 0x02})
+	if nil != err {
+		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		return err, nil
+	}
+
+	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
+	if nil != err {
+		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		return err, nil
+	}
+
+	var buf bytes.Buffer
+	err = binary.Write(&buf, binary.BigEndian, blockNumber)
+	if nil != err {
+		logger.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s", err))
+		return err, nil
+	}
+	b := buf.Bytes()
+	_, err = w.Write(b)
+	if nil != err {
+		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		return err, nil
+	}
+
+	return nil, w.Bytes()
 }
