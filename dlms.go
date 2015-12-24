@@ -102,13 +102,17 @@ func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAtt
 }
 
 func getResponse(pdu []byte) (err error, n int, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
+	var FNAME = "getResponse()"
+	var serr string
 	var nn = 0
 
 	b := pdu[0:]
 	n = 0
 
 	if len(b) < 1 {
-		return errors.New("short pdu"), 0, 0, nil
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, 0, nil
 	}
 	dataAccessResult = tDlmsDataAccessResult(b[0])
 	b = b[1:]
@@ -160,6 +164,7 @@ func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, class
 
 func decode_GetResponseNormal(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
 	var FNAME = "decode_GetResponsenormal()"
+	var serr string
 	b := pdu[0:]
 
 	if len(b) < 2 {
@@ -172,7 +177,9 @@ func decode_GetResponseNormal(pdu []byte) (err error, invokeIdAndPriority tDlmsI
 	b = b[2:]
 
 	if len(b) < 1 {
-		return errors.New("short pdu"), 0, 0, nil
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, 0, nil
 	}
 	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
 	b = b[1:]
@@ -230,10 +237,13 @@ func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, cla
 
 func decode_GetResponseWithList(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResults []tDlmsDataAccessResult, datas []*tDlmsData) {
 	var FNAME = "decode_GetResponseWithList()"
+	var serr string
 	b := pdu[0:]
 
 	if len(b) < 2 {
-		return errors.New("short pdu"), 0, nil, nil
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, nil, nil
 	}
 	if !bytes.Equal(b[0:2], []byte{0xC4, 0x03}) {
 		logger.Printf("%s: pdu is not GetResponseWithList: 0x%02X 0x%02X ", FNAME, b[0], b[1])
@@ -242,13 +252,17 @@ func decode_GetResponseWithList(pdu []byte) (err error, invokeIdAndPriority tDlm
 	b = b[2:]
 
 	if len(b) < 1 {
-		return errors.New("short pdu"), 0, nil, nil
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, nil, nil
 	}
 	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
 	b = b[1:]
 
 	if len(b) < 1 {
-		return errors.New("short pdu"), 0, nil, nil
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, nil, nil
 	}
 	count := int(b[0])
 	b = b[1:]
@@ -270,4 +284,81 @@ func decode_GetResponseWithList(pdu []byte) (err error, invokeIdAndPriority tDlm
 	}
 
 	return nil, invokeIdAndPriority, dataAccessResults, datas
+}
+
+func decode_GetResponsewithDataBlock(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, lastBlock bool, blockNumber uint32, dataAccessResult tDlmsDataAccessResult, rawData []byte) {
+	var FNAME = "decode_GetResponsewithDataBlock()"
+	var serr string
+	b := pdu[0:]
+
+	if len(b) < 2 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, false, 0, 0, nil
+	}
+	if !bytes.Equal(b[0:2], []byte{0xC4, 0x02}) {
+		serr = fmt.Sprintf("%s: pdu is not GetResponsewithDataBlock: 0x%02X 0x%02X ", FNAME, b[0], b[1])
+		logger.Printf(serr)
+		return errors.New(serr), 0, false, 0, 0, nil
+	}
+	b = b[2:]
+
+	if len(b) < 1 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, false, 0, 0, nil
+	}
+	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
+	b = b[1:]
+
+	if len(b) < 1 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, false, 0, 0, nil
+	}
+	if 0 == b[0] {
+		lastBlock = false
+	} else {
+		lastBlock = true
+	}
+	b = b[1:]
+
+	if len(b) < 4 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, false, 0, 0, nil
+	}
+	err = binary.Read(bytes.NewBuffer(b[0:4]), binary.BigEndian, &blockNumber)
+	if nil != err {
+		serr = fmt.Sprintf("%s: binary.Read() failed, err: %v", err)
+		logger.Printf(serr)
+		return errors.New(serr), 0, false, 0, 0, nil
+	}
+	b = b[4:]
+
+	if len(b) < 1 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, false, 0, 0, nil
+	}
+	dataAccessResult = tDlmsDataAccessResult(b[0])
+	b = b[1:]
+
+	if len(b) < 1 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, false, 0, 0, nil
+	}
+	tag := b[0]
+	b = b[1:]
+
+	if 0x1E != tag {
+		serr = fmt.Sprintf("%s: wrong raw data tag: 0X%02X", FNAME)
+		logger.Printf(serr)
+		return errors.New(serr), 0, false, 0, 0, nil
+	}
+
+	rawData = b
+
+	return nil, invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData
 }

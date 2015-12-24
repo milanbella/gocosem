@@ -111,14 +111,14 @@ func TestX_encode_AARQapdu(t *testing.T) {
 
 	err, b := encode_AARQapdu(&aarq)
 	if nil != err {
-		t.Errorf("encode_AARQapdu() failed")
+		t.Fatalf("encode_AARQapdu() failed")
 	}
 	printBuffer(t, b)
 
 	expectB := []byte{0x60, 0x36, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0x8A, 0x02, 0x07, 0x80, 0x8B, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01, 0xAC, 0x0A, 0x80, 0x08, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0xBE, 0x10, 0x04, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x7E, 0x1F, 0x04, 0xB0}
 
 	if !byteEquals(t, b, expectB, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -156,7 +156,7 @@ func TestX_decode_AAREapdu(t *testing.T) {
 	b := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x18, 0x1F, 0x08, 0x00, 0x00, 0x07}
 	err, aare := decode_AAREapdu(b)
 	if nil != err {
-		t.Errorf("decode_AAREapdu() failed")
+		t.Fatalf("decode_AAREapdu() failed")
 	}
 
 	t.Logf("%v", aare.applicationContextName)
@@ -166,19 +166,19 @@ func TestX_decode_AAREapdu(t *testing.T) {
 	printBuffer(t, *aare.userInformation)
 
 	if !uintEquals(t, aare.applicationContextName, []uint{2, 16, 756, 5, 8, 1, 1}, true) {
-		t.Errorf("aare.applicationContextName don't match")
+		t.Fatalf("aare.applicationContextName don't match")
 	}
 	if aare.result != 0 {
-		t.Errorf("aare.result don't match")
+		t.Fatalf("aare.result don't match")
 	}
 	if 1 != aare.resultSourceDiagnostic.getTag() {
-		t.Errorf("aare.resultSourceDiagnostic.tag don't match")
+		t.Fatalf("aare.resultSourceDiagnostic.tag don't match")
 	}
 	if 0 != aare.resultSourceDiagnostic.getVal().(int) {
-		t.Errorf("aare.resultSourceDiagnostic.val don't match")
+		t.Fatalf("aare.resultSourceDiagnostic.val don't match")
 	}
 	if !byteEquals(t, *aare.userInformation, []byte{0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x18, 0x1F, 0x08, 0x00, 0x00, 0x07}, true) {
-		t.Errorf(" are.userInformation don't match")
+		t.Fatalf(" are.userInformation don't match")
 	}
 }
 
@@ -188,13 +188,13 @@ func TestX_encode_Data_octet_string(t *testing.T) {
 	data.setVal(C_Data_PR_octet_string, (*tAsn1OctetString)(&b))
 	err, eb := encode_Data(data)
 	if nil != err {
-		t.Errorf("encode_Data() failed")
+		t.Fatalf("encode_Data() failed")
 	}
 
 	printBuffer(t, eb)
 
 	if !byteEquals(t, eb, []byte{0x09, 0x04, 0x81, 0xC2, 0x9A, 0xA5}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -204,18 +204,18 @@ func TestX_decode_Data_octet_string(t *testing.T) {
 
 	err, data, _ := decode_Data(b)
 	if nil != err {
-		t.Errorf("decode_Data() failed")
+		t.Fatalf("decode_Data() failed")
 	}
 
 	if C_Data_PR_octet_string != data.getTag() {
-		t.Errorf("wrong tag")
+		t.Fatalf("wrong tag")
 	}
 
 	db := *data.getVal().(*tAsn1OctetString)
 	printBuffer(t, db)
 
 	if !byteEquals(t, db, []byte{0x81, 0xC2, 0x9A, 0xA5}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -225,13 +225,13 @@ func TestX_encode_Data_visible_string(t *testing.T) {
 	data.setVal(C_Data_PR_visible_string, (*tAsn1VisibleString)(&b))
 	err, eb := encode_Data(data)
 	if nil != err {
-		t.Errorf("encode_Data() failed")
+		t.Fatalf("encode_Data() failed")
 	}
 
 	printBuffer(t, eb)
 
 	if !byteEquals(t, eb, []byte{0x0A, 0x03, 0x30, 0x30, 0x30}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -241,18 +241,18 @@ func TestX_decode_Data_visible_string(t *testing.T) {
 
 	err, data, _ := decode_Data(b)
 	if nil != err {
-		t.Errorf("decode_Data() failed")
+		t.Fatalf("decode_Data() failed")
 	}
 
 	if C_Data_PR_visible_string != data.getTag() {
-		t.Errorf("wrong tag")
+		t.Fatalf("wrong tag")
 	}
 
 	db := *data.getVal().(*tAsn1VisibleString)
 	printBuffer(t, db)
 
 	if !byteEquals(t, db, []byte{0x30, 0x30, 0x30}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -262,13 +262,13 @@ func TestX_encode_Data_double_long(t *testing.T) {
 	data.setVal(C_Data_PR_double_long, (*tAsn1Integer32)(&i))
 	err, eb := encode_Data(data)
 	if nil != err {
-		t.Errorf("encode_Data() failed")
+		t.Fatalf("encode_Data() failed")
 	}
 
 	printBuffer(t, eb)
 
 	if !byteEquals(t, eb, []byte{0x05, 0x01, 0x01}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -278,11 +278,11 @@ func TestX_decode_Data_double_long(t *testing.T) {
 
 	err, data, _ := decode_Data(b)
 	if nil != err {
-		t.Errorf("decode_Data() failed")
+		t.Fatalf("decode_Data() failed")
 	}
 
 	if C_Data_PR_double_long != data.getTag() {
-		t.Errorf("wrong tag")
+		t.Fatalf("wrong tag")
 	}
 
 	i := *data.getVal().(*tAsn1Integer32)
@@ -293,7 +293,7 @@ func TestX_decode_Data_double_long(t *testing.T) {
 	printBuffer(t, db)
 
 	if !byteEquals(t, db, []byte{0x00, 0x00, 0x00, 0x01}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -303,13 +303,13 @@ func TestX_encode_Data_long64(t *testing.T) {
 	data.setVal(C_Data_PR_long64, (*tAsn1Long64)(&i))
 	err, eb := encode_Data(data)
 	if nil != err {
-		t.Errorf("encode_Data() failed")
+		t.Fatalf("encode_Data() failed")
 	}
 
 	printBuffer(t, eb)
 
 	if !byteEquals(t, eb, []byte{0x14, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -319,11 +319,11 @@ func TestX_decode_Data_long64(t *testing.T) {
 
 	err, data, _ := decode_Data(b)
 	if nil != err {
-		t.Errorf("decode_Data() failed")
+		t.Fatalf("decode_Data() failed")
 	}
 
 	if C_Data_PR_long64 != data.getTag() {
-		t.Errorf("wrong tag")
+		t.Fatalf("wrong tag")
 	}
 
 	i := *data.getVal().(*tAsn1Long64)
@@ -334,7 +334,7 @@ func TestX_decode_Data_long64(t *testing.T) {
 	printBuffer(t, db)
 
 	if !byteEquals(t, db, []byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -344,13 +344,13 @@ func TestX_encode_Data_float32(t *testing.T) {
 	data.setVal(C_Data_PR_float32, (*tAsn1Float32)(&f))
 	err, eb := encode_Data(data)
 	if nil != err {
-		t.Errorf("encode_Data() failed")
+		t.Fatalf("encode_Data() failed")
 	}
 
 	printBuffer(t, eb)
 
 	if !byteEquals(t, eb, []byte{0x17, 0x3F, 0x80, 0x00, 0x00}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -360,11 +360,11 @@ func TestX_decode_Data_float32(t *testing.T) {
 
 	err, data, _ := decode_Data(b)
 	if nil != err {
-		t.Errorf("decode_Data() failed")
+		t.Fatalf("decode_Data() failed")
 	}
 
 	if C_Data_PR_float32 != data.getTag() {
-		t.Errorf("wrong tag")
+		t.Fatalf("wrong tag")
 	}
 
 	f := *data.getVal().(*tAsn1Float32)
@@ -376,7 +376,7 @@ func TestX_decode_Data_float32(t *testing.T) {
 	printBuffer(t, db)
 
 	if !byteEquals(t, db, []byte{0x3F, 0x80, 0x00, 0x00}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -386,13 +386,13 @@ func TestX_encode_Data_float64(t *testing.T) {
 	data.setVal(C_Data_PR_float64, (*tAsn1Float64)(&f))
 	err, eb := encode_Data(data)
 	if nil != err {
-		t.Errorf("encode_Data() failed")
+		t.Fatalf("encode_Data() failed")
 	}
 
 	printBuffer(t, eb)
 
 	if !byteEquals(t, eb, []byte{0x18, 0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
 
@@ -402,11 +402,11 @@ func TestX_decode_Data_float64(t *testing.T) {
 
 	err, data, _ := decode_Data(b)
 	if nil != err {
-		t.Errorf("decode_Data() failed")
+		t.Fatalf("decode_Data() failed")
 	}
 
 	if C_Data_PR_float64 != data.getTag() {
-		t.Errorf("wrong tag")
+		t.Fatalf("wrong tag")
 	}
 
 	f := *data.getVal().(*tAsn1Float64)
@@ -418,6 +418,6 @@ func TestX_decode_Data_float64(t *testing.T) {
 	printBuffer(t, db)
 
 	if !byteEquals(t, db, []byte{0x3F, 0xF0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, true) {
-		t.Errorf("bytes don't match")
+		t.Fatalf("bytes don't match")
 	}
 }
