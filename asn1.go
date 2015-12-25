@@ -952,7 +952,7 @@ func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 			C.hlp__fill_OCTET_STRING_t((*C.OCTET_STRING_t)(unsafe.Pointer(&(*av).choice[0])), &cb[0], C.int(len(cb)))
 		default:
 			serr = fmt.Sprintf("encode_AARQapdu() failed, unknown callingAuthenticationValue tag %v", _pdu.callingAuthenticationValue.getTag())
-			logger.Printf(serr)
+			errorLog.Println(serr)
 			return errors.New(serr), nil
 		}
 	}
@@ -971,7 +971,7 @@ func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 	if -1 == ret.encoded {
 		s := C.GoString(ret.failed_type.name)
 		serr = fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil
 	}
 	C.hlp__free_AARQ_apdu_t(pdu)
@@ -990,7 +990,7 @@ func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 	C.hlp__gc_free(unsafe.Pointer(&cb[0]))
 	if C.RC_OK != ret.code {
 		serr = fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil
 	}
 
@@ -1019,7 +1019,7 @@ func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 		pdu.resultSourceDiagnostic.setVal(int(C.Associate_source_diagnostic_PR_acse_service_provider), int(*(*C.long)(unsafe.Pointer(&b[0]))))
 	default:
 		serr = fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.result_source_diagnostic.present))
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil
 	}
 
@@ -1072,7 +1072,7 @@ func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_other), &other)
 		default:
 			serr = fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.responding_authentication_value.present))
-			logger.Printf(serr)
+			errorLog.Println(serr)
 			return errors.New(serr), nil
 		}
 	}
@@ -1130,12 +1130,12 @@ func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
 
 	case C.Data_PR_array:
 		serr = fmt.Sprintf("encode_Data(): array not implemnted")
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil
 
 	case C.Data_PR_structure:
 		serr = fmt.Sprintf("encode_Data(): structure not implemnted")
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil
 
 	case C.Data_PR_boolean:
@@ -1200,7 +1200,7 @@ func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
 
 	case C.Data_PR_compact_array:
 		serr = fmt.Sprintf("encode_Data(): compact_array not implemnted")
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil
 
 	case C.Data_PR_long64:
@@ -1215,7 +1215,7 @@ func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
 
 	case C.Data_PR_enum:
 		serr = fmt.Sprintf("encode_Data(): enum not implemnted")
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil
 
 	case C.Data_PR_float32:
@@ -1249,7 +1249,7 @@ func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
 
 	default:
 		serr = fmt.Sprintf("encode_Data(): unknown choice tag: %v", int((*_data).getTag()))
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil
 	}
 
@@ -1258,7 +1258,7 @@ func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
 	if -1 == ret.encoded {
 		s := C.GoString(ret.failed_type.name)
 		serr = fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil
 	}
 	C.hlp__free_Data_t(data)
@@ -1322,7 +1322,7 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 	C.hlp__gc_free(unsafe.Pointer(&cb[0]))
 	if C.RC_OK != ret.code {
 		serr = fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil, 0
 	}
 	n = int(ret.consumed) + nn
@@ -1340,12 +1340,12 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 
 	case C.Data_PR_structure:
 		serr = fmt.Sprintf("decode_Data(): array not implemnted")
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil, 0
 
 	case C.Data_PR_boolean:
 		serr = fmt.Sprintf("decode_Data(): structure not implemnted")
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil, 0
 
 	case C.Data_PR_bit_string:
@@ -1383,7 +1383,7 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 
 	case C.Data_PR_compact_array:
 		serr = fmt.Sprintf("decode_Data(): compact_array not implemnted")
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil, 0
 
 	case C.Data_PR_long64:
@@ -1394,7 +1394,7 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 
 	case C.Data_PR_enum:
 		serr = fmt.Sprintf("decode_Data(): enum not implemnted")
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil, 0
 
 	case C.Data_PR_float32:
@@ -1417,7 +1417,7 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 
 	default:
 		serr = fmt.Sprintf("decode_Data(): unknown choice tag: %v", int(cdata.present))
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), nil, 0
 	}
 

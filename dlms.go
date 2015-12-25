@@ -5,7 +5,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net"
+	"time"
+	"unsafe"
 )
 
 type tDlmsInvokeIdAndPriority uint8
@@ -36,7 +40,8 @@ const (
 	dataAccessResult_otherReason             = 250
 )
 
-var logger *log.Logger = getLogger()
+var errorLog *log.Logger = getErrorLogger()
+var debugLog *log.Logger = getDebugLogger()
 
 func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
 	var FNAME = "getRequest()"
@@ -46,25 +51,25 @@ func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAtt
 	var buf bytes.Buffer
 	err = binary.Write(&buf, binary.BigEndian, classId)
 	if nil != err {
-		logger.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s", err))
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", err))
 		return err, nil
 	}
 	b := buf.Bytes()
 	_, err = w.Write(b)
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
 	_, err = w.Write((*instanceId)[0:6])
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
 	_, err = w.Write([]byte{byte(attributeId)})
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
@@ -87,13 +92,13 @@ func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAtt
 
 		_, err = w.Write(as)
 		if nil != err {
-			logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 			return err, nil
 		}
 
 		_, err = w.Write(ap)
 		if nil != err {
-			logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 			return err, nil
 		}
 	}
@@ -111,7 +116,7 @@ func getResponse(pdu []byte) (err error, n int, dataAccessResult tDlmsDataAccess
 
 	if len(b) < 1 {
 		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, 0, nil
 	}
 	dataAccessResult = tDlmsDataAccessResult(b[0])
@@ -137,25 +142,25 @@ func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, class
 
 	_, err = w.Write([]byte{0xc0, 0x01})
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
 	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
 	err, pdu = getRequest(classId, instanceId, attributeId, accessSelector, accessParameters)
 	if nil != err {
-		logger.Printf("%s: getRequest() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: getRequest() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
 	_, err = w.Write(pdu)
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
@@ -171,14 +176,14 @@ func decode_GetResponseNormal(pdu []byte) (err error, invokeIdAndPriority tDlmsI
 		return errors.New("short pdu"), 0, 0, nil
 	}
 	if !bytes.Equal(b[0:2], []byte{0xC4, 0x01}) {
-		logger.Printf("%s: pdu is not GetResponsenormal: 0x%02X 0x%02X ", FNAME, b[0], b[1])
+		errorLog.Printf("%s: pdu is not GetResponsenormal: 0x%02X 0x%02X\n", FNAME, b[0], b[1])
 		return errors.New("pdu is not GetResponsenormal"), 0, 0, nil
 	}
 	b = b[2:]
 
 	if len(b) < 1 {
 		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, 0, nil
 	}
 	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
@@ -199,13 +204,13 @@ func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, cla
 
 	_, err = w.Write([]byte{0xc0, 0x03})
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
 	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
@@ -213,7 +218,7 @@ func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, cla
 
 	_, err = w.Write([]byte{byte(count)})
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
@@ -221,13 +226,13 @@ func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, cla
 
 		err, pdu = getRequest(classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
 		if nil != err {
-			logger.Printf("%s: getRequest() failed, err: %v", FNAME, err)
+			errorLog.Printf("%s: getRequest() failed, err: %v\n", FNAME, err)
 			return err, nil
 		}
 
 		_, err = w.Write(pdu)
 		if nil != err {
-			logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 			return err, nil
 		}
 	}
@@ -242,18 +247,18 @@ func decode_GetResponseWithList(pdu []byte) (err error, invokeIdAndPriority tDlm
 
 	if len(b) < 2 {
 		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, nil, nil
 	}
 	if !bytes.Equal(b[0:2], []byte{0xC4, 0x03}) {
-		logger.Printf("%s: pdu is not GetResponseWithList: 0x%02X 0x%02X ", FNAME, b[0], b[1])
+		errorLog.Printf("%s: pdu is not GetResponseWithList: 0x%02X 0x%02X\n", FNAME, b[0], b[1])
 		return errors.New("pdu is not GetResponseWithList"), 0, nil, nil
 	}
 	b = b[2:]
 
 	if len(b) < 1 {
 		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, nil, nil
 	}
 	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
@@ -261,7 +266,7 @@ func decode_GetResponseWithList(pdu []byte) (err error, invokeIdAndPriority tDlm
 
 	if len(b) < 1 {
 		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, nil, nil
 	}
 	count := int(b[0])
@@ -293,19 +298,19 @@ func decode_GetResponsewithDataBlock(pdu []byte) (err error, invokeIdAndPriority
 
 	if len(b) < 2 {
 		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, false, 0, 0, nil
 	}
 	if !bytes.Equal(b[0:2], []byte{0xC4, 0x02}) {
 		serr = fmt.Sprintf("%s: pdu is not GetResponsewithDataBlock: 0x%02X 0x%02X ", FNAME, b[0], b[1])
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, false, 0, 0, nil
 	}
 	b = b[2:]
 
 	if len(b) < 1 {
 		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, false, 0, 0, nil
 	}
 	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
@@ -313,7 +318,7 @@ func decode_GetResponsewithDataBlock(pdu []byte) (err error, invokeIdAndPriority
 
 	if len(b) < 1 {
 		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, false, 0, 0, nil
 	}
 	if 0 == b[0] {
@@ -325,20 +330,19 @@ func decode_GetResponsewithDataBlock(pdu []byte) (err error, invokeIdAndPriority
 
 	if len(b) < 4 {
 		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, false, 0, 0, nil
 	}
 	err = binary.Read(bytes.NewBuffer(b[0:4]), binary.BigEndian, &blockNumber)
 	if nil != err {
-		serr = fmt.Sprintf("%s: binary.Read() failed, err: %v", err)
-		logger.Printf(serr)
-		return errors.New(serr), 0, false, 0, 0, nil
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, 0, false, 0, 0, nil
 	}
 	b = b[4:]
 
 	if len(b) < 1 {
 		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, false, 0, 0, nil
 	}
 	dataAccessResult = tDlmsDataAccessResult(b[0])
@@ -346,7 +350,7 @@ func decode_GetResponsewithDataBlock(pdu []byte) (err error, invokeIdAndPriority
 
 	if len(b) < 1 {
 		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, false, 0, 0, nil
 	}
 	tag := b[0]
@@ -354,7 +358,7 @@ func decode_GetResponsewithDataBlock(pdu []byte) (err error, invokeIdAndPriority
 
 	if 0x1E != tag {
 		serr = fmt.Sprintf("%s: wrong raw data tag: 0X%02X", FNAME)
-		logger.Printf(serr)
+		errorLog.Println(serr)
 		return errors.New(serr), 0, false, 0, 0, nil
 	}
 
@@ -370,28 +374,336 @@ func encode_GetRequestForNextDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPrior
 
 	_, err = w.Write([]byte{0xc0, 0x02})
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
 	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
 	var buf bytes.Buffer
 	err = binary.Write(&buf, binary.BigEndian, blockNumber)
 	if nil != err {
-		logger.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s", err))
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", err))
 		return err, nil
 	}
 	b := buf.Bytes()
 	_, err = w.Write(b)
 	if nil != err {
-		logger.Printf("%s: w.Wite() failed, err: %v", FNAME, err)
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
 	return nil, w.Bytes()
+}
+
+const (
+	COSEM_lowest_level_security_mechanism_name           = uint(0)
+	COSEM_low_level_security_mechanism_name              = uint(1)
+	COSEM_high_level_security_mechanism_name             = uint(2)
+	COSEM_high_level_security_mechanism_name_using_MD5   = uint(3)
+	COSEM_high_level_security_mechanism_name_using_SHA_1 = uint(4)
+	COSEM_High_Level_Security_Mechanism_Name_Using_GMAC  = uint(5)
+)
+
+const (
+	Logical_Name_Referencing_No_Ciphering   = uint(1)
+	Short_Name_Referencing_No_Ciphering     = uint(2)
+	Logical_Name_Referencing_With_Ciphering = uint(3)
+	Short_Name_Referencing_With_Ciphering   = uint(4)
+)
+
+const (
+	ACSE_Requirements_authentication = byte(0x80) // bit 0
+)
+
+const (
+	Transport_HLDC = int(1)
+	Transport_UDP  = int(2)
+	Transport_TCP  = int(3)
+)
+
+type DlmsChannelMessage struct {
+	err  error
+	ctx  interface{}
+	data interface{}
+}
+
+type DlmsChannel chan *DlmsChannelMessage
+
+type tWrapperHeader struct {
+	protocolVersion uint16
+	srcWport        uint16
+	dstWport        uint16
+	dataLength      uint16
+}
+
+func (header *tWrapperHeader) String() string {
+	return fmt.Sprintf("tWrapperHeader {protocolVersion: %d, srcWport: %s, dstWport: %d, dataLength: %d}")
+}
+
+type tWrapperPdu struct {
+	tWrapperHeader
+	pdu []byte
+}
+
+type tDlmsValueRequest struct {
+	classId         tDlmsClassId
+	instanceId      *tDlmsOid
+	attributeId     tDlmsAttributeId
+	accessSelector  *tDlmsAccessSelector
+	accessParameter *tDlmsData
+}
+
+//func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
+type tDlmsRequest struct {
+	invokeIdAndPriority tDlmsInvokeIdAndPriority
+	valueRequests       []*tDlmsValueRequest
+}
+
+type DlmsConn struct {
+	rwc           io.ReadWriteCloser
+	transportType int
+}
+
+type AppConn struct {
+	dconn             *DlmsConn
+	applicationClient uint16
+	logicalDevice     uint16
+}
+
+var ErrorDlmsTimeout = errors.New("ErrorDlmsTimeout")
+
+func (dconn *DlmsConn) transportSend(ch DlmsChannel, ctx interface{}, applicationClient uint16, logicalDevice uint16, pdu []byte) {
+	go func() {
+		var (
+			FNAME string = "transportSend()"
+			serr  string
+		)
+
+		if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
+			err, wpdu := dconn.makeWpdu(applicationClient, logicalDevice, pdu)
+			if nil != err {
+				ch <- &DlmsChannelMessage{err, ctx, nil}
+				return
+			}
+			_, err = dconn.rwc.Write(wpdu)
+			if nil != err {
+				errorLog.Printf("%s: io.Write() failed, err: %v\n", FNAME, err)
+				ch <- &DlmsChannelMessage{err, ctx, nil}
+				return
+			}
+		} else {
+			serr = fmt.Sprintf("%s: unsupported transport type: %d", FNAME, dconn.transportType)
+			errorLog.Println(serr)
+			ch <- &DlmsChannelMessage{errors.New(serr), ctx, nil}
+		}
+		panic("assertion failed")
+	}()
+}
+
+func readLength(r io.Reader, length int) (err error, data []byte) {
+	var (
+		buf bytes.Buffer
+		n   int
+	)
+
+	p := make([]byte, length)
+	for {
+		n, err = r.Read(p[0 : length-buf.Len()])
+		if n > 0 {
+			buf.Write(p[0:n])
+			if length == buf.Len() {
+				return nil, data
+			} else if length < buf.Len() {
+				panic("assertion failed")
+			} else {
+			}
+		} else if 0 == n {
+			if nil != err {
+				errorLog.Printf("%s: io.Read() failed, err: %v", err)
+				return err, data
+			} else {
+				panic("assertion failed")
+			}
+		} else {
+			panic("assertion failed")
+		}
+	}
+	panic("assertion failed")
+}
+
+func (dconn *DlmsConn) transportReceive(ch DlmsChannel, ctx interface{}) {
+	go func() {
+		var (
+			FNAME     string = "transportRecive()"
+			serr      string
+			err       error
+			headerPdu []byte
+			header    tWrapperHeader
+		)
+
+		if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
+			err, headerPdu = readLength(dconn.rwc, int(unsafe.Sizeof(header)))
+			if nil != err {
+				ch <- &DlmsChannelMessage{err, ctx, nil}
+				return
+			}
+			err = binary.Read(bytes.NewBuffer(headerPdu), binary.BigEndian, header)
+			if nil != err {
+				errorLog.Printf("%s: binary.Read() failed, err: %v", err)
+				ch <- &DlmsChannelMessage{err, ctx, nil}
+				return
+			}
+			if header.dataLength <= 0 {
+				serr = fmt.Sprintf("%s: wrong pdu length: %d", FNAME, header.dataLength)
+				errorLog.Println(serr)
+				ch <- &DlmsChannelMessage{errors.New(serr), ctx, nil}
+				return
+			}
+			debugLog.Printf("%s: %s", FNAME, header)
+			err, pdu := readLength(dconn.rwc, int(header.dataLength))
+			if nil != err {
+				ch <- &DlmsChannelMessage{err, ctx, nil}
+				return
+			}
+			debugLog.Printf("%s: pdu: %X\n", FNAME, pdu)
+			ch <- &DlmsChannelMessage{nil, ctx, pdu}
+			return
+
+		} else {
+			serr = fmt.Sprintf("%s: unsupported transport type: %d", FNAME, dconn.transportType)
+			errorLog.Println(serr)
+			ch <- &DlmsChannelMessage{errors.New(serr), ctx, nil}
+			return
+		}
+	}()
+}
+
+func (dconn *DlmsConn) AppConnectWithPassword(ch DlmsChannel, ctx interface{}, msecTimeout int64, applicationClient uint16, logicalDevice uint16, password string) {
+	var (
+		serr string
+		err  error
+		aarq AARQapdu
+		pdu  []byte
+	)
+
+	_ch := make(DlmsChannel)
+	go func() {
+
+		aarq.applicationContextName = tAsn1ObjectIdentifier([]uint{2, 16, 756, 5, 8, 1, Logical_Name_Referencing_No_Ciphering})
+		aarq.senderAcseRequirements = &tAsn1BitString{
+			buf:        []byte{ACSE_Requirements_authentication},
+			bitsUnused: 7,
+		}
+		mechanismName := (tAsn1ObjectIdentifier)([]uint{2, 16, 756, 5, 8, 2, COSEM_low_level_security_mechanism_name})
+		aarq.mechanismName = &mechanismName
+		aarq.callingAuthenticationValue = new(tAsn1Choice)
+		_password := tAsn1GraphicString([]byte(password))
+		aarq.callingAuthenticationValue.setVal(int(C_Authentication_value_PR_charstring), &_password)
+
+		//TODO A-XDR encoding of userInformation
+		userInformation := tAsn1OctetString([]byte{0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x7E, 0x1F, 0x04, 0xB0})
+
+		aarq.userInformation = &userInformation
+
+		err, pdu = encode_AARQapdu(&aarq)
+		if nil != err {
+			_ch <- &DlmsChannelMessage{err, nil, nil}
+			return
+		}
+
+		dconn.transportSend(_ch, nil, applicationClient, logicalDevice, pdu)
+		msg := <-_ch
+		if nil != msg.err {
+			_ch <- &DlmsChannelMessage{msg.err, nil, nil}
+			return
+		}
+		dconn.transportReceive(_ch, nil)
+		msg = <-ch
+		if nil != msg.err {
+			_ch <- &DlmsChannelMessage{msg.err, nil, nil}
+			return
+		}
+		err, aare := decode_AAREapdu((msg.data).([]byte))
+		if nil != err {
+			_ch <- &DlmsChannelMessage{msg.err, nil, nil}
+			return
+		}
+		if C_Association_result_accepted != int(aare.result) {
+			serr = fmt.Sprintf("%s: app connect failed, aare.result %d, aare.resultSourceDiagnostic: %d", aare.result, aare.resultSourceDiagnostic)
+			errorLog.Println(serr)
+			_ch <- &DlmsChannelMessage{errors.New(serr), nil, nil}
+			return
+		} else {
+			_ch <- &DlmsChannelMessage{nil, nil, nil}
+		}
+
+	}()
+
+	select {
+	case msg := <-_ch:
+		if nil == msg.err {
+			ch <- &DlmsChannelMessage{msg.err, ctx, &AppConn{dconn, applicationClient, logicalDevice}}
+		} else {
+			ch <- &DlmsChannelMessage{msg.err, ctx, nil}
+		}
+		//./dlms.go:656: invalid operation: time.Millisecond * msecTimeout (mismatched types time.Duration and int64)
+	case <-time.After(time.Millisecond * time.Duration(msecTimeout)):
+		ch <- &DlmsChannelMessage{ErrorDlmsTimeout, ctx, nil}
+	}
+
+}
+
+func (dconn *DlmsConn) makeWpdu(applicationClient uint16, logicalDevice uint16, pdu []byte) (err error, wpdu []byte) {
+	var (
+		FNAME   string = "makeWpdu()"
+		buf     bytes.Buffer
+		wrapper tWrapperPdu
+	)
+
+	wrapper.protocolVersion = 0x00001
+	wrapper.srcWport = applicationClient
+	wrapper.dstWport = logicalDevice
+	wrapper.dataLength = uint16(len(pdu))
+	wrapper.pdu = pdu
+
+	err = binary.Write(&buf, binary.BigEndian, &wpdu)
+	if nil != err {
+		errorLog.Printf("%s:  binary.Write() failed, err: %v\n", FNAME, err)
+		return err, nil
+	}
+	return nil, buf.Bytes()
+
+}
+
+func (dconn *DlmsConn) TcpConnect(ch DlmsChannel, ctx interface{}, msecTimeout int64, ipAddr string, port int) {
+	var (
+		FNAME string = "connectTCP()"
+		conn  net.Conn
+		err   error
+	)
+
+	_ch := make(DlmsChannel)
+
+	go func() {
+		conn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", ipAddr, port))
+		if nil != err {
+			errorLog.Printf("%s: net.Dial() failed, err: %v", FNAME, err)
+			_ch <- &DlmsChannelMessage{err, nil, nil}
+			return
+		}
+		dconn.rwc = conn
+	}()
+
+	select {
+	case msg := <-_ch:
+		ch <- &DlmsChannelMessage{msg.err, ctx, msg.data}
+	case <-time.After(time.Millisecond * time.Duration(msecTimeout)):
+		ch <- &DlmsChannelMessage{ErrorDlmsTimeout, ctx, nil}
+	}
+
 }
