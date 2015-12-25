@@ -449,20 +449,6 @@ type tWrapperPdu struct {
 	pdu []byte
 }
 
-type tDlmsValueRequest struct {
-	classId         tDlmsClassId
-	instanceId      *tDlmsOid
-	attributeId     tDlmsAttributeId
-	accessSelector  *tDlmsAccessSelector
-	accessParameter *tDlmsData
-}
-
-//func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
-type tDlmsRequest struct {
-	invokeIdAndPriority tDlmsInvokeIdAndPriority
-	valueRequests       []*tDlmsValueRequest
-}
-
 type DlmsConn struct {
 	rwc           io.ReadWriteCloser
 	transportType int
@@ -481,6 +467,28 @@ type DlmsTransportReceiveRequest struct {
 }
 
 var ErrorDlmsTimeout = errors.New("ErrorDlmsTimeout")
+
+func (dconn *DlmsConn) makeWpdu(applicationClient uint16, logicalDevice uint16, pdu []byte) (err error, wpdu []byte) {
+	var (
+		FNAME   string = "makeWpdu()"
+		buf     bytes.Buffer
+		wrapper tWrapperPdu
+	)
+
+	wrapper.protocolVersion = 0x00001
+	wrapper.srcWport = applicationClient
+	wrapper.dstWport = logicalDevice
+	wrapper.dataLength = uint16(len(pdu))
+	wrapper.pdu = pdu
+
+	err = binary.Write(&buf, binary.BigEndian, &wpdu)
+	if nil != err {
+		errorLog.Printf("%s:  binary.Write() failed, err: %v\n", FNAME, err)
+		return err, nil
+	}
+	return nil, buf.Bytes()
+
+}
 
 // Never call this method directly or else you risk race condtitions on io.Writer() in case of paralell call.
 // Use instead proxy variant 'transportSend()' which queues this method call on sync channel.
@@ -510,17 +518,19 @@ func (dconn *DlmsConn) doTransportSend(ch DlmsChannel, applicationClient uint16,
 }
 
 func (dconn *DlmsConn) transportSend(ch DlmsChannel, applicationClient uint16, logicalDevice uint16, pdu []byte) {
-	msg := new(DlmsChannelMessage)
+	go func() {
+		msg := new(DlmsChannelMessage)
 
-	data := new(DlmsTransportSendRequest)
-	data.ch = ch
-	data.applicationClient = applicationClient
-	data.logicalDevice = logicalDevice
-	data.pdu = pdu
+		data := new(DlmsTransportSendRequest)
+		data.ch = ch
+		data.applicationClient = applicationClient
+		data.logicalDevice = logicalDevice
+		data.pdu = pdu
 
-	msg.data = data
+		msg.data = data
 
-	dconn.ch <- msg
+		dconn.ch <- msg
+	}()
 }
 
 func readLength(r io.Reader, length int) (err error, data []byte) {
@@ -603,26 +613,30 @@ func (dconn *DlmsConn) doTransportReceive(ch DlmsChannel) {
 }
 
 func (dconn *DlmsConn) transportReceive(ch DlmsChannel) {
-	msg := new(DlmsChannelMessage)
-	data := new(DlmsTransportReceiveRequest)
-	data.ch = ch
-	msg.data = data
-	dconn.ch <- msg
+	go func() {
+		msg := new(DlmsChannelMessage)
+		data := new(DlmsTransportReceiveRequest)
+		data.ch = ch
+		msg.data = data
+		dconn.ch <- msg
+	}()
 }
 
 func (dconn *DlmsConn) handleTransportRequests() {
 
-	for {
-		msg := <-dconn.ch
-		switch v := msg.data.(type) {
-		case *DlmsTransportSendRequest:
-			dconn.transportSend(v.ch, v.applicationClient, v.logicalDevice, v.pdu)
-		case *DlmsTransportReceiveRequest:
-			dconn.transportReceive(v.ch)
-		default:
-			panic(fmt.Sprintf("unknown request type: %T", v))
+	go func() {
+		for {
+			msg := <-dconn.ch
+			switch v := msg.data.(type) {
+			case *DlmsTransportSendRequest:
+				dconn.transportSend(v.ch, v.applicationClient, v.logicalDevice, v.pdu)
+			case *DlmsTransportReceiveRequest:
+				dconn.transportReceive(v.ch)
+			default:
+				panic(fmt.Sprintf("unknown request type: %T", v))
+			}
 		}
-	}
+	}()
 }
 
 func (dconn *DlmsConn) AppConnectWithPassword(ch DlmsChannel, msecTimeout int64, applicationClient uint16, logicalDevice uint16, password string) {
@@ -689,35 +703,14 @@ func (dconn *DlmsConn) AppConnectWithPassword(ch DlmsChannel, msecTimeout int64,
 	select {
 	case msg := <-_ch:
 		if nil == msg.err {
-			ch <- &DlmsChannelMessage{msg.err, &AppConn{dconn, applicationClient, logicalDevice}}
+			aconn := NewAppConn(dconn, applicationClient, logicalDevice)
+			ch <- &DlmsChannelMessage{msg.err, aconn}
 		} else {
 			ch <- &DlmsChannelMessage{msg.err, nil}
 		}
 	case <-time.After(time.Millisecond * time.Duration(msecTimeout)):
 		ch <- &DlmsChannelMessage{ErrorDlmsTimeout, nil}
 	}
-
-}
-
-func (dconn *DlmsConn) makeWpdu(applicationClient uint16, logicalDevice uint16, pdu []byte) (err error, wpdu []byte) {
-	var (
-		FNAME   string = "makeWpdu()"
-		buf     bytes.Buffer
-		wrapper tWrapperPdu
-	)
-
-	wrapper.protocolVersion = 0x00001
-	wrapper.srcWport = applicationClient
-	wrapper.dstWport = logicalDevice
-	wrapper.dataLength = uint16(len(pdu))
-	wrapper.pdu = pdu
-
-	err = binary.Write(&buf, binary.BigEndian, &wpdu)
-	if nil != err {
-		errorLog.Printf("%s:  binary.Write() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-	return nil, buf.Bytes()
 
 }
 
@@ -749,7 +742,7 @@ func TcpConnect(ch DlmsChannel, msecTimeout int64, ipAddr string, port int) {
 		if nil == msg.err {
 			debugLog.Printf("%s: tcp transport connected: %s:%d\n", ipAddr, port)
 			dconn.ch = make(DlmsChannel)
-			go dconn.handleTransportRequests()
+			dconn.handleTransportRequests()
 		} else {
 			debugLog.Printf("%s: tcp transport connection failed: %s:%d, err: %v\n", ipAddr, port, msg.err)
 			ch <- &DlmsChannelMessage{msg.err, msg.data}
