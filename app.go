@@ -12,17 +12,23 @@ type DlmsValueRequest struct {
 	attributeId     tDlmsAttributeId
 	accessSelector  *tDlmsAccessSelector
 	accessParameter *tDlmsData
+}
 
+type DlmsValueResponse struct {
+	dataAccessResult tDlmsDataAccessResult
+	data             *tDlmsData
+}
+
+type DlmsValueRequestResponse struct {
+	req *DlmsValueRequest
+	rep *DlmsValueResponse
+
+	invokeId           uint8
 	ch                 DlmsChannel // channel to deliver reply
 	requestSubmittedAt time.Time
 	timeoutAt          *time.Time
-}
-
-type DlmsValueReply struct {
-	req              *DlmsValueRequest
-	invokeId         uint8
-	dataAccessResult tDlmsDataAccessResult
-	data             *tDlmsData
+	highPriority       bool
+	rawData            []byte
 }
 
 type AppConn struct {
@@ -31,8 +37,8 @@ type AppConn struct {
 	applicationClient uint16
 	logicalDevice     uint16
 	invokeIdsCh       chan uint8
-	requests          map[uint8][]DlmsValueReply // requests waiting for reply to arrive
 	finishChannels    []chan string
+	rips              map[uint8][]*DlmsValueRequestResponse // requests in progress
 }
 
 func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16) (aconn *AppConn) {
@@ -55,6 +61,7 @@ func (aconn *AppConn) Close() {
 		aconn.finishChannels[i] <- "close"
 	}
 	aconn.closed = true
+	aconn.dconn.Close()
 }
 
 func (aconn *AppConn) deliverTimeouts() {
@@ -67,31 +74,23 @@ func (aconn *AppConn) deliverTimeouts() {
 	aconn.finishChannels = append(aconn.finishChannels, finish)
 
 	var deliver func()
+
 	deliver = func() {
 
 		select {
 		case <-finish:
 			return
 		case <-time.After(time.Millisecond * 100):
-			for invokeId, replies := range aconn.requests {
+			for invokeId, rips := range aconn.rips {
 
-				// all replies point to same request so we just can pick request from first reply
-				//./app.go:74: invalid operation: replies[0] (type *[]DlmsValueReply does not support indexing)
-				req := replies[0].req
+				rip := rips[0]
+				ch := rips[0].ch
 
-				if nil == req {
-					panic("assertion failed")
-				}
-				ch := req.ch
-				if nil == ch {
-					panic("assertion failed")
-				}
-
-				if (nil != req.timeoutAt) && req.timeoutAt.After(time.Now()) {
+				if (nil != rip.timeoutAt) && rip.timeoutAt.After(time.Now()) {
 					serr = fmt.Sprintf("%s: request timeout, invokeId: %d", invokeId)
 					errorLog.Println(serr)
 
-					delete(aconn.requests, invokeId)
+					delete(aconn.rips, invokeId)
 					aconn.invokeIdsCh <- invokeId
 
 					ch <- &DlmsChannelMessage{errors.New(serr), nil}
@@ -104,6 +103,51 @@ func (aconn *AppConn) deliverTimeouts() {
 	deliver()
 }
 
+func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse, pdu []byte) {
+
+	rip := rips[0]
+	ch := rip.ch
+
+	err, _, dataAccessResult, data := decode_GetResponseNormal(pdu)
+	if nil != err {
+		delete(aconn.rips, rip.invokeId)
+		aconn.invokeIdsCh <- rip.invokeId
+		ch <- &DlmsChannelMessage{err, nil}
+		return
+	}
+
+	rip.rep.dataAccessResult = dataAccessResult
+	rip.rep.data = data
+	delete(aconn.rips, rip.invokeId)
+	aconn.invokeIdsCh <- rip.invokeId
+	ch <- &DlmsChannelMessage{nil, rips}
+
+	return
+}
+
+func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestResponse, pdu []byte) {
+
+	err, _, dataAccessResults, datas := decode_GetResponseWithList(pdu)
+	if nil != err {
+		delete(aconn.rips, rips[0].invokeId)
+		aconn.invokeIdsCh <- rips[0].invokeId
+		rips[0].ch <- &DlmsChannelMessage{err, nil}
+		return
+	}
+
+	for i := 0; i < len(dataAccessResults); i += 1 {
+		rip := rips[i]
+
+		rip.rep = new(DlmsValueResponse)
+		rip.rep.dataAccessResult = dataAccessResults[i]
+		rip.rep.data = datas[i]
+	}
+
+	delete(aconn.rips, rips[0].invokeId)
+	aconn.invokeIdsCh <- rips[0].invokeId
+	rips[0].ch <- &DlmsChannelMessage{nil, rips}
+}
+
 func (aconn *AppConn) processReply(pdu []byte) {
 	var (
 		serr string
@@ -111,39 +155,86 @@ func (aconn *AppConn) processReply(pdu []byte) {
 
 	invokeId := uint8((pdu[2] & 0xF0) >> 4)
 
-	replies := aconn.requests[invokeId]
-
-	if nil == replies {
-		errorLog.Printf("%s: no request for invokeId %d, pdu is discarded", invokeId)
+	rips := aconn.rips[invokeId]
+	if nil == rips {
+		errorLog.Printf("%s: no request in progresss for invokeId %d, pdu is discarded", invokeId)
 		return
 	}
-	if len(replies) < 1 {
-		panic("assertion failed")
-	}
-	rep := replies[0]
-	if nil == replies[0].req {
-		panic("assertion failed")
-	}
-	req := replies[0].req
-	if nil == req.ch {
-		panic("assertion failed")
-	}
-	ch := req.ch
 
 	if (0xC4 == pdu[0]) && (0x01 == pdu[1]) {
-		err, invokeIdAndPriority, dataAccessResult, data := decode_GetResponseNormal(pdu)
-		if invokeId != uint8((invokeIdAndPriority&0xF0)>>4) {
-			panic("ivoke id differs")
-		}
+
+		aconn.processGetResponseNormal(rips, pdu)
+
+	} else if (0xC4 == pdu[0]) && (0x03 == pdu[1]) {
+
+		aconn.processGetResponseWithList(rips, pdu)
+
+	} else if (0xC4 == pdu[0]) && (0x02 == pdu[1]) {
+		// data blocks response
+
+		err, invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData := decode_GetResponsewithDataBlock(pdu)
 		if nil != err {
-			ch <- &DlmsChannelMessage{errors.New(serr), nil}
+			delete(aconn.rips, rips[0].invokeId)
+			aconn.invokeIdsCh <- invokeId
+			rips[0].ch <- &DlmsChannelMessage{err, nil}
+			return
 		}
-		rep.dataAccessResult = dataAccessResult
-		rep.data = data
+		if 0 != dataAccessResult {
+			serr = fmt.Sprintf("%s: error occured receiving response block, invokeId: %d, blockNumber: %d, dataAccessResult: %d", invokeId, blockNumber, dataAccessResult)
+			errorLog.Println(serr)
+			delete(aconn.rips, rips[0].invokeId)
+			aconn.invokeIdsCh <- invokeId
+			rips[0].ch <- &DlmsChannelMessage{errors.New(serr), nil}
+			return
+		}
+
+		if nil != rips[0].rawData {
+			rips[0].rawData = rawData
+		} else {
+			rips[0].rawData = append(rips[0].rawData, rawData...)
+		}
+
+		if lastBlock {
+			if 1 == len(rips) {
+				// normal get
+				h := []byte{0xC4, 0x01, byte(invokeIdAndPriority), 0x00}
+				_pdu := make([]byte, 0, len(h)+len(rips[0].rawData))
+				_pdu = append(_pdu, h...)
+				_pdu = append(_pdu, rips[0].rawData...)
+				aconn.processGetResponseNormal(rips, _pdu)
+			} else {
+				// get with list
+				h := []byte{0xC4, 0x02, byte(invokeIdAndPriority), 0x00}
+				_pdu := make([]byte, 0, len(h)+len(rips[0].rawData))
+				_pdu = append(_pdu, h...)
+				_pdu = append(_pdu, rips[0].rawData...)
+				aconn.processGetResponseWithList(rips, _pdu)
+			}
+		} else {
+			// requests next data block
+			//func encode_GetRequestForNextDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPriority, blockNumber uint32) (err error, pdu []byte) {
+			err, _pdu := encode_GetRequestForNextDataBlock(invokeIdAndPriority, blockNumber)
+			if nil != err {
+				delete(aconn.rips, rips[0].invokeId)
+				aconn.invokeIdsCh <- invokeId
+				rips[0].ch <- &DlmsChannelMessage{err, nil}
+				return
+			}
+
+			_ch := make(DlmsChannel)
+			aconn.dconn.transportSend(_ch, aconn.applicationClient, aconn.logicalDevice, _pdu)
+			msg := <-_ch
+			if nil != msg.err {
+				delete(aconn.rips, rips[0].invokeId)
+				aconn.invokeIdsCh <- rips[0].invokeId
+				rips[0].ch <- &DlmsChannelMessage{err, nil}
+				return
+			}
+		}
+
 	} else {
-		serr = fmt.Sprintf("%s: unknown tag: %02X %02X", pdu[0], pdu[1])
+		serr = fmt.Sprintf("%s: received pdu discarded due to unknown tag: %02X %02X", pdu[0], pdu[1])
 		errorLog.Println(serr)
-		ch <- &DlmsChannelMessage{errors.New(serr), nil}
 		return
 	}
 }
@@ -157,7 +248,6 @@ func (aconn *AppConn) receiveReplies() {
 		aconn.dconn.transportReceive(ch)
 		msg := <-ch
 		if nil != msg.err {
-			ch <- &DlmsChannelMessage{msg.err, nil}
 			aconn.Close()
 			return
 		}
@@ -166,11 +256,16 @@ func (aconn *AppConn) receiveReplies() {
 	}
 }
 
-func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority bool, classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameter *tDlmsData) {
+func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
 	var (
 		FNAME string = "AppConn.getRquest()"
 		serr  string
 	)
+
+	if 0 == len(vals) {
+		ch <- &DlmsChannelMessage{nil, nil}
+		return
+	}
 
 	if aconn.closed {
 		serr := fmt.Sprintf("%s: connection closed", FNAME)
@@ -179,18 +274,21 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 		return
 	}
 
-	req := new(DlmsValueRequest)
+	currentTime := time.Now()
+	timeoutAt := currentTime.Add(time.Millisecond * time.Duration(msecTimeout))
 
-	req.classId = classId
-	req.instanceId = instanceId
-	req.attributeId = attributeId
-	req.accessSelector = accessSelector
-	req.accessParameter = accessParameter
+	//map[uint8][]*DlmsValueRequestResponse
+	rips := make([]*DlmsValueRequestResponse, len(vals))
+	for i := 0; i < len(vals); i += 1 {
+		rip := new(DlmsValueRequestResponse)
+		rip.req = vals[i]
 
-	req.requestSubmittedAt = time.Now()
-	timeoutAt := req.requestSubmittedAt.Add(time.Millisecond * time.Duration(msecTimeout))
-	req.timeoutAt = &timeoutAt
-	req.ch = ch
+		rip.requestSubmittedAt = currentTime
+		rip.timeoutAt = &timeoutAt
+		rip.ch = ch
+		rip.highPriority = highPriority
+		rips[i] = rip
+	}
 
 	finish := make(chan string)
 	_ch := make(DlmsChannel)
@@ -203,13 +301,23 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 		case invokeId = <-aconn.invokeIdsCh:
 		case reason := <-finish:
 			serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, reason)
+			errorLog.Println(serr)
 			_ch <- &DlmsChannelMessage{errors.New(serr), nil}
 			return
 		}
-		aconn.requests[invokeId] = make([]DlmsValueReply, 1)
-		rep := &aconn.requests[invokeId][0]
+		rips := make([]*DlmsValueRequestResponse, len(vals))
+		for i := 0; i < len(vals); i += 1 {
+			rip := new(DlmsValueRequestResponse)
+			rip.req = vals[i]
 
-		rep.invokeId = invokeId
+			rip.invokeId = invokeId
+			rip.requestSubmittedAt = currentTime
+			rip.timeoutAt = &timeoutAt
+			rip.ch = ch
+			rip.highPriority = highPriority
+			rips[i] = rip
+		}
+		aconn.rips[invokeId] = rips
 
 		// build and forward pdu to transport
 
@@ -219,41 +327,64 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 		} else {
 			invokeIdAndPriority = tDlmsInvokeIdAndPriority(invokeId << 4)
 		}
-		err, pdu := encode_GetRequestNormal(invokeIdAndPriority, req.classId, req.instanceId, req.attributeId, req.accessSelector, req.accessParameter)
+
+		var (
+			err error
+			pdu []byte
+		)
+
+		if 1 == len(vals) {
+			err, pdu = encode_GetRequestNormal(invokeIdAndPriority, vals[0].classId, vals[0].instanceId, vals[0].attributeId, vals[0].accessSelector, vals[0].accessParameter)
+		} else {
+			var (
+				classIds         []tDlmsClassId         = make([]tDlmsClassId, len(vals))
+				instanceIds      []*tDlmsOid            = make([]*tDlmsOid, len(vals))
+				attributeIds     []tDlmsAttributeId     = make([]tDlmsAttributeId, len(vals))
+				accessSelectors  []*tDlmsAccessSelector = make([]*tDlmsAccessSelector, len(vals))
+				accessParameters []*tDlmsData           = make([]*tDlmsData, len(vals))
+			)
+			for i := 0; i < len(vals); i += 1 {
+				classIds[i] = vals[i].classId
+				instanceIds[i] = vals[i].instanceId
+				attributeIds[i] = vals[i].attributeId
+				accessSelectors[i] = vals[i].accessSelector
+				accessParameters[i] = vals[i].accessParameter
+			}
+			err, pdu = encode_GetRequestWithList(invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters)
+		}
+
 		if nil != err {
-			errorLog.Printf("%s: encode_GetRequestNormal() failed, err: %v\n", FNAME, err)
-			delete(aconn.requests, rep.invokeId)
-			aconn.invokeIdsCh <- invokeId
+			delete(aconn.rips, rips[0].invokeId)
+			aconn.invokeIdsCh <- rips[0].invokeId
 			_ch <- &DlmsChannelMessage{err, nil}
 			return
 		}
+
 		aconn.dconn.transportSend(_ch, aconn.applicationClient, aconn.logicalDevice, pdu)
 		select {
 		case msg := <-_ch:
 			if nil != msg.err {
-				errorLog.Printf("%s: encode_GetRequestNormal() failed, err: %v\n", FNAME, err)
-				delete(aconn.requests, rep.invokeId)
-				aconn.invokeIdsCh <- invokeId
+				delete(aconn.rips, rips[0].invokeId)
+				aconn.invokeIdsCh <- rips[0].invokeId
 				_ch <- &DlmsChannelMessage{err, nil}
 				return
 			}
 			_ch <- &DlmsChannelMessage{nil, nil}
 		case reason := <-finish:
 			serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, reason)
-			delete(aconn.requests, rep.invokeId)
-			aconn.invokeIdsCh <- invokeId
+			errorLog.Println(serr)
+			delete(aconn.rips, rips[0].invokeId)
+			aconn.invokeIdsCh <- rips[0].invokeId
 			_ch <- &DlmsChannelMessage{errors.New(serr), nil}
 			return
 		}
-
-		// wait for reply to arrive
 
 	}()
 
 	select {
 	case msg := <-_ch:
 		if nil == msg.err {
-			// just return, reply shall be forarded to channel 'ch' later upon arrival of reply pdu
+			// just return, reply will be forarded to channel 'ch'
 			return
 		} else {
 			ch <- &DlmsChannelMessage{msg.err, msg.data}

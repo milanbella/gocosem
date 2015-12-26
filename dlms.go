@@ -450,6 +450,7 @@ type tWrapperPdu struct {
 }
 
 type DlmsConn struct {
+	closed        bool
 	rwc           io.ReadWriteCloser
 	transportType int
 	ch            DlmsChannel // channel used to serialize inbound requests
@@ -518,19 +519,17 @@ func (dconn *DlmsConn) doTransportSend(ch DlmsChannel, applicationClient uint16,
 }
 
 func (dconn *DlmsConn) transportSend(ch DlmsChannel, applicationClient uint16, logicalDevice uint16, pdu []byte) {
-	go func() {
-		msg := new(DlmsChannelMessage)
+	msg := new(DlmsChannelMessage)
 
-		data := new(DlmsTransportSendRequest)
-		data.ch = ch
-		data.applicationClient = applicationClient
-		data.logicalDevice = logicalDevice
-		data.pdu = pdu
+	data := new(DlmsTransportSendRequest)
+	data.ch = ch
+	data.applicationClient = applicationClient
+	data.logicalDevice = logicalDevice
+	data.pdu = pdu
 
-		msg.data = data
+	msg.data = data
 
-		dconn.ch <- msg
-	}()
+	dconn.ch <- msg
 }
 
 func readLength(r io.Reader, length int) (err error, data []byte) {
@@ -613,24 +612,36 @@ func (dconn *DlmsConn) doTransportReceive(ch DlmsChannel) {
 }
 
 func (dconn *DlmsConn) transportReceive(ch DlmsChannel) {
-	go func() {
-		msg := new(DlmsChannelMessage)
-		data := new(DlmsTransportReceiveRequest)
-		data.ch = ch
-		msg.data = data
-		dconn.ch <- msg
-	}()
+	data := new(DlmsTransportReceiveRequest)
+	data.ch = ch
+	msg := new(DlmsChannelMessage)
+	msg.data = data
+	dconn.ch <- msg
 }
 
 func (dconn *DlmsConn) handleTransportRequests() {
+	var (
+		FNAME string = "DlmsConn.handleTransportRequests()"
+		serr  string
+	)
 
 	go func() {
 		for {
 			msg := <-dconn.ch
 			switch v := msg.data.(type) {
 			case *DlmsTransportSendRequest:
+				if dconn.closed {
+					serr = fmt.Sprintf("%s: transport connection closed", FNAME)
+					errorLog.Println(serr)
+					v.ch <- &DlmsChannelMessage{errors.New(serr), nil}
+				}
 				dconn.transportSend(v.ch, v.applicationClient, v.logicalDevice, v.pdu)
 			case *DlmsTransportReceiveRequest:
+				if dconn.closed {
+					serr = fmt.Sprintf("%s: transport connection closed", FNAME)
+					errorLog.Println(serr)
+					v.ch <- &DlmsChannelMessage{errors.New(serr), nil}
+				}
 				dconn.transportReceive(v.ch)
 			default:
 				panic(fmt.Sprintf("unknown request type: %T", v))
@@ -638,7 +649,6 @@ func (dconn *DlmsConn) handleTransportRequests() {
 		}
 	}()
 }
-
 func (dconn *DlmsConn) AppConnectWithPassword(ch DlmsChannel, msecTimeout int64, applicationClient uint16, logicalDevice uint16, password string) {
 	var (
 		serr string
@@ -722,8 +732,10 @@ func TcpConnect(ch DlmsChannel, msecTimeout int64, ipAddr string, port int) {
 	)
 
 	dconn := new(DlmsConn)
-	_ch := make(DlmsChannel)
+	dconn.closed = false
+	dconn.ch = make(DlmsChannel)
 
+	_ch := make(DlmsChannel)
 	go func() {
 
 		debugLog.Printf("%s: connecting tcp transport: %s:%d\n", ipAddr, port)
@@ -741,8 +753,8 @@ func TcpConnect(ch DlmsChannel, msecTimeout int64, ipAddr string, port int) {
 	case msg := <-_ch:
 		if nil == msg.err {
 			debugLog.Printf("%s: tcp transport connected: %s:%d\n", ipAddr, port)
-			dconn.ch = make(DlmsChannel)
 			dconn.handleTransportRequests()
+			ch <- &DlmsChannelMessage{nil, dconn}
 		} else {
 			debugLog.Printf("%s: tcp transport connection failed: %s:%d, err: %v\n", ipAddr, port, msg.err)
 			ch <- &DlmsChannelMessage{msg.err, msg.data}
@@ -752,4 +764,9 @@ func TcpConnect(ch DlmsChannel, msecTimeout int64, ipAddr string, port int) {
 		ch <- &DlmsChannelMessage{ErrorDlmsTimeout, nil}
 	}
 
+}
+
+func (dconn *DlmsConn) Close() {
+	dconn.closed = true
+	dconn.rwc.Close()
 }
