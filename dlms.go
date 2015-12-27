@@ -496,8 +496,10 @@ func (dconn *DlmsConn) makeWpdu(applicationClient uint16, logicalDevice uint16, 
 
 func (dconn *DlmsConn) doTransportSend(ch DlmsChannel, applicationClient uint16, logicalDevice uint16, pdu []byte) {
 	var (
-		FNAME string = "transportSend()"
+		FNAME string = "doTransportSend()"
 	)
+
+	debugLog.Printf("%s: trnascport type: %d, applicationClient: %d, logicalDevice: %d\n", FNAME, dconn.transportType, applicationClient, logicalDevice)
 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 		err, wpdu := dconn.makeWpdu(applicationClient, logicalDevice, pdu)
@@ -505,12 +507,14 @@ func (dconn *DlmsConn) doTransportSend(ch DlmsChannel, applicationClient uint16,
 			ch <- &DlmsChannelMessage{err, nil}
 			return
 		}
+		debugLog.Printf("%s: sending: %02X\n", FNAME, wpdu)
 		_, err = dconn.rwc.Write(wpdu)
 		if nil != err {
 			errorLog.Printf("%s: io.Write() failed, err: %v\n", FNAME, err)
 			ch <- &DlmsChannelMessage{err, nil}
 			return
 		}
+		debugLog.Printf("%s: sending: ok", wpdu)
 		ch <- &DlmsChannelMessage{nil, nil}
 	} else {
 		panic(fmt.Sprintf("%s: unsupported transport type: %d", FNAME, dconn.transportType))
@@ -544,10 +548,11 @@ func readLength(r io.Reader, length int) (err error, data []byte) {
 		if n > 0 {
 			buf.Write(p[0:n])
 			if length == buf.Len() {
-				return nil, data
+				return nil, buf.Bytes()
 			} else if length < buf.Len() {
 				panic("assertion failed")
 			} else {
+				continue
 			}
 		} else if 0 == n {
 			if nil != err {
@@ -575,31 +580,34 @@ func (dconn *DlmsConn) doTransportReceive(ch DlmsChannel) {
 		header    tWrapperHeader
 	)
 
+	debugLog.Printf("%s: trnascport type: %d\n", FNAME, dconn.transportType)
+
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 		err, headerPdu = readLength(dconn.rwc, int(unsafe.Sizeof(header)))
 		if nil != err {
 			ch <- &DlmsChannelMessage{err, nil}
 			return
 		}
+		debugLog.Printf("%s: receiving pdu ...\n", FNAME)
 		err = binary.Read(bytes.NewBuffer(headerPdu), binary.BigEndian, header)
 		if nil != err {
-			errorLog.Printf("%s: binary.Read() failed, err: %v", err)
+			errorLog.Printf("%s: binary.Read() failed, err: %v\n", err)
 			ch <- &DlmsChannelMessage{err, nil}
 			return
 		}
+		debugLog.Printf("%s: header: ok\n", FNAME)
 		if header.dataLength <= 0 {
 			serr = fmt.Sprintf("%s: wrong pdu length: %d", FNAME, header.dataLength)
 			errorLog.Println(serr)
 			ch <- &DlmsChannelMessage{errors.New(serr), nil}
 			return
 		}
-		debugLog.Printf("%s: %s", FNAME, header)
 		err, pdu := readLength(dconn.rwc, int(header.dataLength))
 		if nil != err {
 			ch <- &DlmsChannelMessage{err, nil}
 			return
 		}
-		debugLog.Printf("%s: pdu: %X\n", FNAME, pdu)
+		debugLog.Printf("%s: pdu: %02X\n", FNAME, pdu)
 		ch <- &DlmsChannelMessage{nil, pdu}
 		return
 
@@ -626,19 +634,18 @@ func (dconn *DlmsConn) handleTransportRequests() {
 	)
 
 	go func() {
-		for {
-			msg := <-dconn.ch
+		for msg := range dconn.ch {
 			switch v := msg.data.(type) {
 			case *DlmsTransportSendRequest:
 				if dconn.closed {
-					serr = fmt.Sprintf("%s: transport connection closed", FNAME)
+					serr = fmt.Sprintf("%s: tansport send request ignored, transport connection closed", FNAME)
 					errorLog.Println(serr)
 					v.ch <- &DlmsChannelMessage{errors.New(serr), nil}
 				}
 				dconn.transportSend(v.ch, v.applicationClient, v.logicalDevice, v.pdu)
 			case *DlmsTransportReceiveRequest:
 				if dconn.closed {
-					serr = fmt.Sprintf("%s: transport connection closed", FNAME)
+					serr = fmt.Sprintf("%s: transport receive request ignored, transport connection closed", FNAME)
 					errorLog.Println(serr)
 					v.ch <- &DlmsChannelMessage{errors.New(serr), nil}
 				}
@@ -647,8 +654,10 @@ func (dconn *DlmsConn) handleTransportRequests() {
 				panic(fmt.Sprintf("unknown request type: %T", v))
 			}
 		}
+		dconn.rwc.Close()
 	}()
 }
+
 func (dconn *DlmsConn) AppConnectWithPassword(ch DlmsChannel, msecTimeout int64, applicationClient uint16, logicalDevice uint16, password string) {
 	var (
 		serr string
@@ -701,7 +710,7 @@ func (dconn *DlmsConn) AppConnectWithPassword(ch DlmsChannel, msecTimeout int64,
 		}
 		if C_Association_result_accepted != int(aare.result) {
 			serr = fmt.Sprintf("%s: app connect failed, aare.result %d, aare.resultSourceDiagnostic: %d", aare.result, aare.resultSourceDiagnostic)
-			errorLog.Println(serr)
+			debugLog.Println(serr)
 			_ch <- &DlmsChannelMessage{errors.New(serr), nil}
 			return
 		} else {
@@ -767,6 +776,9 @@ func TcpConnect(ch DlmsChannel, msecTimeout int64, ipAddr string, port int) {
 }
 
 func (dconn *DlmsConn) Close() {
+	if dconn.closed {
+		return
+	}
 	dconn.closed = true
-	dconn.rwc.Close()
+	close(dconn.ch)
 }

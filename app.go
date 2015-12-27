@@ -24,6 +24,7 @@ type DlmsValueRequestResponse struct {
 	rep *DlmsValueResponse
 
 	invokeId           uint8
+	dead               *string     // If non nil then this request is already dead from whatever reason (e.g. timeot) and MUST NOT be used anymore. String value indicates reason.
 	ch                 DlmsChannel // channel to deliver reply
 	requestSubmittedAt time.Time
 	timeoutAt          *time.Time
@@ -32,13 +33,13 @@ type DlmsValueRequestResponse struct {
 }
 
 type AppConn struct {
-	closed            bool
-	dconn             *DlmsConn
-	applicationClient uint16
-	logicalDevice     uint16
-	invokeIdsCh       chan uint8
-	finishChannels    []chan string
-	rips              map[uint8][]*DlmsValueRequestResponse // requests in progress
+	closed                 bool
+	dconn                  *DlmsConn
+	applicationClient      uint16
+	logicalDevice          uint16
+	invokeIdsCh            chan uint8
+	channelsToCloseOnClose []chan string
+	rips                   map[uint8][]*DlmsValueRequestResponse // requests in progress
 }
 
 func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16) (aconn *AppConn) {
@@ -52,26 +53,72 @@ func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16)
 		aconn.invokeIdsCh <- uint8(i)
 	}
 
-	aconn.finishChannels = make([]chan string, 0, 10)
+	aconn.channelsToCloseOnClose = make([]chan string, 0, 10)
+
 	return aconn
 }
 
 func (aconn *AppConn) Close() {
-	for i := 0; i < len(aconn.finishChannels); i++ {
-		aconn.finishChannels[i] <- "close"
+	if aconn.closed {
+		return
 	}
 	aconn.closed = true
+	for i := 0; i < len(aconn.channelsToCloseOnClose); i++ {
+		aconn.channelsToCloseOnClose[i] <- "app connection closed"
+	}
 	aconn.dconn.Close()
+	for invokeId, _ := range aconn.rips {
+		aconn.killRequest(invokeId, errors.New("app connection closed"))
+	}
+}
+
+func (aconn *AppConn) killRequest(invokeId uint8, err error) {
+	var (
+		serr string
+	)
+	rips, ok := aconn.rips[invokeId]
+	if !ok {
+		return
+	}
+	if nil != rips[0].dead {
+		return
+	}
+	for _, rip := range rips {
+		rip.dead = new(string)
+		*rip.dead = err.Error()
+	}
+	serr = fmt.Sprintf("%s: request killed, invokeId: %d, reason: %s", invokeId, *rips[0].dead)
+	errorLog.Println(serr)
+	rips[0].ch <- &DlmsChannelMessage{err, nil}
+	aconn.invokeIdsCh <- invokeId
+}
+
+func (aconn *AppConn) deliverReply(invokeId uint8) {
+	var (
+		FNAME string = "AppConn.deliverReply()"
+	)
+	rips, ok := aconn.rips[invokeId]
+	if !ok {
+		debugLog.Printf("%s: no such request, invokeId: %d", FNAME, invokeId)
+		return
+	}
+	if nil != rips[0].dead {
+		debugLog.Printf("%s: dead request, invokeId: %d", FNAME, invokeId)
+		return
+	}
+	for _, rip := range rips {
+		rip.dead = new(string)
+		*rip.dead = "reply delivered"
+	}
+	debugLog.Printf("%s: reply delivered, invokeId: %d\n", invokeId)
+	rips[0].ch <- &DlmsChannelMessage{nil, rips}
+	aconn.invokeIdsCh <- invokeId
 }
 
 func (aconn *AppConn) deliverTimeouts() {
 
-	var (
-		serr string
-	)
-
 	finish := make(chan string)
-	aconn.finishChannels = append(aconn.finishChannels, finish)
+	aconn.channelsToCloseOnClose = append(aconn.channelsToCloseOnClose, finish)
 
 	var deliver func()
 
@@ -83,55 +130,36 @@ func (aconn *AppConn) deliverTimeouts() {
 		case <-time.After(time.Millisecond * 100):
 			for invokeId, rips := range aconn.rips {
 
-				rip := rips[0]
-				ch := rips[0].ch
-
-				if (nil != rip.timeoutAt) && rip.timeoutAt.After(time.Now()) {
-					serr = fmt.Sprintf("%s: request timeout, invokeId: %d", invokeId)
-					errorLog.Println(serr)
-
-					delete(aconn.rips, invokeId)
-					aconn.invokeIdsCh <- invokeId
-
-					ch <- &DlmsChannelMessage{errors.New(serr), nil}
+				if (nil != rips[0].timeoutAt) && rips[0].timeoutAt.After(time.Now()) {
+					aconn.killRequest(invokeId, errors.New("request timeout"))
 				}
 			}
-			deliver()
+			go deliver()
 		}
 
 	}
-	deliver()
+	go deliver()
 }
 
 func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse, pdu []byte) {
 
-	rip := rips[0]
-	ch := rip.ch
-
 	err, _, dataAccessResult, data := decode_GetResponseNormal(pdu)
 	if nil != err {
-		delete(aconn.rips, rip.invokeId)
-		aconn.invokeIdsCh <- rip.invokeId
-		ch <- &DlmsChannelMessage{err, nil}
+		aconn.killRequest(rips[0].invokeId, err)
 		return
 	}
 
-	rip.rep.dataAccessResult = dataAccessResult
-	rip.rep.data = data
-	delete(aconn.rips, rip.invokeId)
-	aconn.invokeIdsCh <- rip.invokeId
-	ch <- &DlmsChannelMessage{nil, rips}
+	rips[0].rep.dataAccessResult = dataAccessResult
+	rips[0].rep.data = data
 
-	return
+	aconn.deliverReply(rips[0].invokeId)
 }
 
 func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestResponse, pdu []byte) {
 
 	err, _, dataAccessResults, datas := decode_GetResponseWithList(pdu)
 	if nil != err {
-		delete(aconn.rips, rips[0].invokeId)
-		aconn.invokeIdsCh <- rips[0].invokeId
-		rips[0].ch <- &DlmsChannelMessage{err, nil}
+		aconn.killRequest(rips[0].invokeId, err)
 		return
 	}
 
@@ -143,21 +171,24 @@ func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestRespons
 		rip.rep.data = datas[i]
 	}
 
-	delete(aconn.rips, rips[0].invokeId)
-	aconn.invokeIdsCh <- rips[0].invokeId
-	rips[0].ch <- &DlmsChannelMessage{nil, rips}
+	aconn.deliverReply(rips[0].invokeId)
 }
 
 func (aconn *AppConn) processReply(pdu []byte) {
 	var (
-		serr string
+		FNAME string = "processReply()"
+		serr  string
 	)
 
 	invokeId := uint8((pdu[2] & 0xF0) >> 4)
 
 	rips := aconn.rips[invokeId]
 	if nil == rips {
-		errorLog.Printf("%s: no request in progresss for invokeId %d, pdu is discarded", invokeId)
+		errorLog.Printf("%s: no request in progresss for invokeId %d, pdu is discarded", FNAME, invokeId)
+		return
+	}
+	if nil != rips[0].dead {
+		debugLog.Printf("%s: ignore pdu, request is dead, invokeId %d, reason: %s\n", FNAME, rips[0].invokeId, *rips[0].dead)
 		return
 	}
 
@@ -174,17 +205,13 @@ func (aconn *AppConn) processReply(pdu []byte) {
 
 		err, invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData := decode_GetResponsewithDataBlock(pdu)
 		if nil != err {
-			delete(aconn.rips, rips[0].invokeId)
-			aconn.invokeIdsCh <- invokeId
-			rips[0].ch <- &DlmsChannelMessage{err, nil}
+			aconn.killRequest(rips[0].invokeId, err)
 			return
 		}
 		if 0 != dataAccessResult {
 			serr = fmt.Sprintf("%s: error occured receiving response block, invokeId: %d, blockNumber: %d, dataAccessResult: %d", invokeId, blockNumber, dataAccessResult)
 			errorLog.Println(serr)
-			delete(aconn.rips, rips[0].invokeId)
-			aconn.invokeIdsCh <- invokeId
-			rips[0].ch <- &DlmsChannelMessage{errors.New(serr), nil}
+			aconn.killRequest(rips[0].invokeId, err)
 			return
 		}
 
@@ -212,12 +239,10 @@ func (aconn *AppConn) processReply(pdu []byte) {
 			}
 		} else {
 			// requests next data block
-			//func encode_GetRequestForNextDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPriority, blockNumber uint32) (err error, pdu []byte) {
+			//TODO:
 			err, _pdu := encode_GetRequestForNextDataBlock(invokeIdAndPriority, blockNumber)
 			if nil != err {
-				delete(aconn.rips, rips[0].invokeId)
-				aconn.invokeIdsCh <- invokeId
-				rips[0].ch <- &DlmsChannelMessage{err, nil}
+				aconn.killRequest(rips[0].invokeId, err)
 				return
 			}
 
@@ -225,9 +250,7 @@ func (aconn *AppConn) processReply(pdu []byte) {
 			aconn.dconn.transportSend(_ch, aconn.applicationClient, aconn.logicalDevice, _pdu)
 			msg := <-_ch
 			if nil != msg.err {
-				delete(aconn.rips, rips[0].invokeId)
-				aconn.invokeIdsCh <- rips[0].invokeId
-				rips[0].ch <- &DlmsChannelMessage{err, nil}
+				aconn.killRequest(rips[0].invokeId, msg.err)
 				return
 			}
 		}
@@ -240,26 +263,54 @@ func (aconn *AppConn) processReply(pdu []byte) {
 }
 
 func (aconn *AppConn) receiveReplies() {
-	ch := make(DlmsChannel)
-	for {
-		if aconn.closed {
-			return
+	var (
+		FNAME string = "AppConn.receiveReplies()"
+	)
+
+	go func() {
+		for {
+			ch := make(DlmsChannel)
+			aconn.dconn.transportReceive(ch)
+			msg := <-ch
+			if nil != msg.err {
+				errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, msg.err)
+				aconn.Close()
+				return
+			}
+			pdu := msg.data.([]byte)
+			go aconn.processReply(pdu)
 		}
-		aconn.dconn.transportReceive(ch)
-		msg := <-ch
-		if nil != msg.err {
-			aconn.Close()
-			return
-		}
-		pdu := msg.data.([]byte)
-		go aconn.processReply(pdu)
+	}()
+}
+
+func (aconn *AppConn) getInvokeId(ch DlmsChannel, msecTimeout int64) {
+	var (
+		FNAME string = "AppConn.getInvokeId()"
+		serr  string
+	)
+
+	finish := make(chan string)
+	aconn.channelsToCloseOnClose = append(aconn.channelsToCloseOnClose, finish)
+
+	select {
+	case invokeId := <-aconn.invokeIdsCh:
+		ch <- &DlmsChannelMessage{nil, invokeId}
+	case reason := <-finish:
+		serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, reason)
+		errorLog.Println(serr)
+		ch <- &DlmsChannelMessage{errors.New(serr), nil}
+		return
+	case <-time.After(time.Millisecond * time.Duration(msecTimeout)):
+		serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, "timeout")
+		errorLog.Println(serr)
+		ch <- &DlmsChannelMessage{errors.New(serr), nil}
+		return
 	}
 }
 
 func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
 	var (
 		FNAME string = "AppConn.getRquest()"
-		serr  string
 	)
 
 	if 0 == len(vals) {
@@ -277,34 +328,24 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 	currentTime := time.Now()
 	timeoutAt := currentTime.Add(time.Millisecond * time.Duration(msecTimeout))
 
-	//map[uint8][]*DlmsValueRequestResponse
-	rips := make([]*DlmsValueRequestResponse, len(vals))
-	for i := 0; i < len(vals); i += 1 {
-		rip := new(DlmsValueRequestResponse)
-		rip.req = vals[i]
-
-		rip.requestSubmittedAt = currentTime
-		rip.timeoutAt = &timeoutAt
-		rip.ch = ch
-		rip.highPriority = highPriority
-		rips[i] = rip
-	}
-
 	finish := make(chan string)
+	aconn.channelsToCloseOnClose = append(aconn.channelsToCloseOnClose, finish)
 	_ch := make(DlmsChannel)
+
+	go aconn.getInvokeId(_ch, msecTimeout)
 
 	go func() {
 
-		// wait for free invokeId slot
 		var invokeId uint8
 		select {
-		case invokeId = <-aconn.invokeIdsCh:
-		case reason := <-finish:
-			serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, reason)
-			errorLog.Println(serr)
-			_ch <- &DlmsChannelMessage{errors.New(serr), nil}
-			return
+		case msg := <-_ch:
+			if nil != msg.err {
+				ch <- &DlmsChannelMessage{msg.err, nil}
+				return
+			}
+			invokeId = msg.data.(uint8)
 		}
+
 		rips := make([]*DlmsValueRequestResponse, len(vals))
 		for i := 0; i < len(vals); i += 1 {
 			rip := new(DlmsValueRequestResponse)
@@ -354,42 +395,22 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 		}
 
 		if nil != err {
-			delete(aconn.rips, rips[0].invokeId)
-			aconn.invokeIdsCh <- rips[0].invokeId
-			_ch <- &DlmsChannelMessage{err, nil}
+			aconn.killRequest(invokeId, err)
 			return
 		}
 
-		aconn.dconn.transportSend(_ch, aconn.applicationClient, aconn.logicalDevice, pdu)
-		select {
-		case msg := <-_ch:
-			if nil != msg.err {
-				delete(aconn.rips, rips[0].invokeId)
-				aconn.invokeIdsCh <- rips[0].invokeId
-				_ch <- &DlmsChannelMessage{err, nil}
-				return
+		go func() {
+			aconn.dconn.transportSend(_ch, aconn.applicationClient, aconn.logicalDevice, pdu)
+			select {
+			case msg := <-_ch:
+				if nil != msg.err {
+					aconn.killRequest(invokeId, msg.err)
+					errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, msg.err)
+					aconn.Close()
+					return
+				}
 			}
-			_ch <- &DlmsChannelMessage{nil, nil}
-		case reason := <-finish:
-			serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, reason)
-			errorLog.Println(serr)
-			delete(aconn.rips, rips[0].invokeId)
-			aconn.invokeIdsCh <- rips[0].invokeId
-			_ch <- &DlmsChannelMessage{errors.New(serr), nil}
-			return
-		}
-
+		}()
 	}()
 
-	select {
-	case msg := <-_ch:
-		if nil == msg.err {
-			// just return, reply will be forarded to channel 'ch'
-			return
-		} else {
-			ch <- &DlmsChannelMessage{msg.err, msg.data}
-		}
-	case <-time.After(time.Millisecond * time.Duration(msecTimeout)):
-		finish <- "timeout"
-	}
 }
