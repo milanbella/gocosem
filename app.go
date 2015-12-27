@@ -72,6 +72,25 @@ func (aconn *AppConn) Close() {
 	}
 }
 
+func (aconn *AppConn) transportSend(invokeId uint8, pdu []byte) {
+	var (
+		FNAME string = "AppConn.transportSend()"
+	)
+	go func() {
+		ch := make(DlmsChannel)
+		aconn.dconn.transportSend(ch, aconn.applicationClient, aconn.logicalDevice, pdu)
+		select {
+		case msg := <-ch:
+			if nil != msg.err {
+				aconn.killRequest(invokeId, msg.err)
+				errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, msg.err)
+				aconn.Close()
+				return
+			}
+		}
+	}()
+}
+
 func (aconn *AppConn) killRequest(invokeId uint8, err error) {
 	var (
 		serr string
@@ -239,20 +258,13 @@ func (aconn *AppConn) processReply(pdu []byte) {
 			}
 		} else {
 			// requests next data block
-			//TODO:
+
 			err, _pdu := encode_GetRequestForNextDataBlock(invokeIdAndPriority, blockNumber)
 			if nil != err {
 				aconn.killRequest(rips[0].invokeId, err)
 				return
 			}
-
-			_ch := make(DlmsChannel)
-			aconn.dconn.transportSend(_ch, aconn.applicationClient, aconn.logicalDevice, _pdu)
-			msg := <-_ch
-			if nil != msg.err {
-				aconn.killRequest(rips[0].invokeId, msg.err)
-				return
-			}
+			aconn.transportSend(rips[0].invokeId, _pdu)
 		}
 
 	} else {
@@ -398,19 +410,7 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 			aconn.killRequest(invokeId, err)
 			return
 		}
-
-		go func() {
-			aconn.dconn.transportSend(_ch, aconn.applicationClient, aconn.logicalDevice, pdu)
-			select {
-			case msg := <-_ch:
-				if nil != msg.err {
-					aconn.killRequest(invokeId, msg.err)
-					errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, msg.err)
-					aconn.Close()
-					return
-				}
-			}
-		}()
+		aconn.transportSend(invokeId, pdu)
 	}()
 
 }
