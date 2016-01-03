@@ -469,7 +469,7 @@ type DlmsTransportReceiveRequest struct {
 
 var ErrorDlmsTimeout = errors.New("ErrorDlmsTimeout")
 
-func (dconn *DlmsConn) makeWpdu(applicationClient uint16, logicalDevice uint16, pdu []byte) (err error, wpdu []byte) {
+func makeWpdu(applicationClient uint16, logicalDevice uint16, pdu []byte) (err error, wpdu []byte) {
 	var (
 		FNAME   string = "makeWpdu()"
 		buf     bytes.Buffer
@@ -491,6 +491,27 @@ func (dconn *DlmsConn) makeWpdu(applicationClient uint16, logicalDevice uint16, 
 
 }
 
+func ipTransportSend(ch DlmsChannel, rwc io.ReadWriteCloser, applicationClient uint16, logicalDevice uint16, pdu []byte) {
+	var (
+		FNAME string = "ipTransportSend()"
+	)
+
+	err, wpdu := makeWpdu(applicationClient, logicalDevice, pdu)
+	if nil != err {
+		ch <- &DlmsChannelMessage{err, nil}
+		return
+	}
+	debugLog.Printf("%s: sending: %02X\n", FNAME, wpdu)
+	_, err = rwc.Write(wpdu)
+	if nil != err {
+		errorLog.Printf("%s: io.Write() failed, err: %v\n", FNAME, err)
+		ch <- &DlmsChannelMessage{err, nil}
+		return
+	}
+	debugLog.Printf("%s: sending: ok", wpdu)
+	ch <- &DlmsChannelMessage{nil, nil}
+}
+
 // Never call this method directly or else you risk race condtitions on io.Writer() in case of paralell call.
 // Use instead proxy variant 'transportSend()' which queues this method call on sync channel.
 
@@ -502,20 +523,7 @@ func (dconn *DlmsConn) doTransportSend(ch DlmsChannel, applicationClient uint16,
 	debugLog.Printf("%s: trnascport type: %d, applicationClient: %d, logicalDevice: %d\n", FNAME, dconn.transportType, applicationClient, logicalDevice)
 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
-		err, wpdu := dconn.makeWpdu(applicationClient, logicalDevice, pdu)
-		if nil != err {
-			ch <- &DlmsChannelMessage{err, nil}
-			return
-		}
-		debugLog.Printf("%s: sending: %02X\n", FNAME, wpdu)
-		_, err = dconn.rwc.Write(wpdu)
-		if nil != err {
-			errorLog.Printf("%s: io.Write() failed, err: %v\n", FNAME, err)
-			ch <- &DlmsChannelMessage{err, nil}
-			return
-		}
-		debugLog.Printf("%s: sending: ok", wpdu)
-		ch <- &DlmsChannelMessage{nil, nil}
+		ipTransportSend(ch, dconn.rwc, applicationClient, logicalDevice, pdu)
 	} else {
 		panic(fmt.Sprintf("%s: unsupported transport type: %d", FNAME, dconn.transportType))
 	}
@@ -568,48 +576,59 @@ func readLength(r io.Reader, length int) (err error, data []byte) {
 	panic("assertion failed")
 }
 
-// Never call this method directly or else you risk race condtitions on io.Writer() in case of paralell call.
-// Use instead proxy variant 'transportReceive()' which queues this method call on sync channel.
-
-func (dconn *DlmsConn) doTransportReceive(ch DlmsChannel) {
+func ipTransportReceive(ch DlmsChannel, rwc io.ReadWriteCloser) {
 	var (
-		FNAME     string = "transportRecive()"
+		FNAME     string = "ipTransportReceive()"
 		serr      string
 		err       error
 		headerPdu []byte
 		header    tWrapperHeader
 	)
 
+	err, headerPdu = readLength(rwc, int(unsafe.Sizeof(header)))
+	if nil != err {
+		ch <- &DlmsChannelMessage{err, nil}
+		return
+	}
+	debugLog.Printf("%s: receiving pdu ...\n", FNAME)
+	err = binary.Read(bytes.NewBuffer(headerPdu), binary.BigEndian, header)
+	if nil != err {
+		errorLog.Printf("%s: binary.Read() failed, err: %v\n", err)
+		ch <- &DlmsChannelMessage{err, nil}
+		return
+	}
+	debugLog.Printf("%s: header: ok\n", FNAME)
+	if header.dataLength <= 0 {
+		serr = fmt.Sprintf("%s: wrong pdu length: %d", FNAME, header.dataLength)
+		errorLog.Println(serr)
+		ch <- &DlmsChannelMessage{errors.New(serr), nil}
+		return
+	}
+	err, pdu := readLength(rwc, int(header.dataLength))
+	if nil != err {
+		ch <- &DlmsChannelMessage{err, nil}
+		return
+	}
+	debugLog.Printf("%s: pdu: %02X\n", FNAME, pdu)
+	ch <- &DlmsChannelMessage{nil, pdu}
+	return
+
+}
+
+// Never call this method directly or else you risk race condtitions on io.Writer() in case of paralell call.
+// Use instead proxy variant 'transportReceive()' which queues this method call on sync channel.
+
+func (dconn *DlmsConn) doTransportReceive(ch DlmsChannel) {
+	var (
+		FNAME string = "transportRecive()"
+		serr  string
+	)
+
 	debugLog.Printf("%s: trnascport type: %d\n", FNAME, dconn.transportType)
 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
-		err, headerPdu = readLength(dconn.rwc, int(unsafe.Sizeof(header)))
-		if nil != err {
-			ch <- &DlmsChannelMessage{err, nil}
-			return
-		}
-		debugLog.Printf("%s: receiving pdu ...\n", FNAME)
-		err = binary.Read(bytes.NewBuffer(headerPdu), binary.BigEndian, header)
-		if nil != err {
-			errorLog.Printf("%s: binary.Read() failed, err: %v\n", err)
-			ch <- &DlmsChannelMessage{err, nil}
-			return
-		}
-		debugLog.Printf("%s: header: ok\n", FNAME)
-		if header.dataLength <= 0 {
-			serr = fmt.Sprintf("%s: wrong pdu length: %d", FNAME, header.dataLength)
-			errorLog.Println(serr)
-			ch <- &DlmsChannelMessage{errors.New(serr), nil}
-			return
-		}
-		err, pdu := readLength(dconn.rwc, int(header.dataLength))
-		if nil != err {
-			ch <- &DlmsChannelMessage{err, nil}
-			return
-		}
-		debugLog.Printf("%s: pdu: %02X\n", FNAME, pdu)
-		ch <- &DlmsChannelMessage{nil, pdu}
-		return
+
+		ipTransportReceive(ch, dconn.rwc)
 
 	} else {
 		serr = fmt.Sprintf("%s: unsupported transport type: %d", FNAME, dconn.transportType)
