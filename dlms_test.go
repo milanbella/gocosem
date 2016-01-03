@@ -29,7 +29,6 @@ func TestX_decode_GetResponseNormal(t *testing.T) {
 		0x09, 0x06,
 		0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
 
-	//func decode_GetResponsenormal(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
 	err, invokeIdAndPriority, dataAccessResult, data := decode_GetResponseNormal(pdu)
 	if nil != err {
 		t.Fatalf("decode_GetResponseNormal() failed, err %v", err)
