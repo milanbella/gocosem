@@ -45,6 +45,7 @@ type AppConn struct {
 func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16) (aconn *AppConn) {
 	aconn = new(AppConn)
 	aconn.closed = false
+	aconn.dconn = dconn
 	aconn.applicationClient = applicationClient
 	aconn.logicalDevice = logicalDevice
 
@@ -54,6 +55,8 @@ func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16)
 	}
 
 	aconn.channelsToCloseOnClose = make([]chan string, 0, 10)
+
+	aconn.receiveReplies()
 
 	return aconn
 }
@@ -275,12 +278,15 @@ func (aconn *AppConn) processReply(pdu []byte) {
 }
 
 func (aconn *AppConn) receiveReplies() {
-	var (
-		FNAME string = "AppConn.receiveReplies()"
-	)
-
 	go func() {
+		var (
+			FNAME string = "AppConn.receiveReplies()"
+		)
+
 		for {
+			if aconn.closed {
+				break
+			}
 			ch := make(DlmsChannel)
 			aconn.dconn.transportReceive(ch)
 			msg := <-ch
@@ -296,57 +302,58 @@ func (aconn *AppConn) receiveReplies() {
 }
 
 func (aconn *AppConn) getInvokeId(ch DlmsChannel, msecTimeout int64) {
-	var (
-		FNAME string = "AppConn.getInvokeId()"
-		serr  string
-	)
+	go func() {
+		var (
+			FNAME string = "AppConn.getInvokeId()"
+			serr  string
+		)
 
-	finish := make(chan string)
-	aconn.channelsToCloseOnClose = append(aconn.channelsToCloseOnClose, finish)
+		finish := make(chan string)
+		aconn.channelsToCloseOnClose = append(aconn.channelsToCloseOnClose, finish)
 
-	select {
-	case invokeId := <-aconn.invokeIdsCh:
-		ch <- &DlmsChannelMessage{nil, invokeId}
-	case reason := <-finish:
-		serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, reason)
-		errorLog.Println(serr)
-		ch <- &DlmsChannelMessage{errors.New(serr), nil}
-		return
-	case <-time.After(time.Millisecond * time.Duration(msecTimeout)):
-		serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, "timeout")
-		errorLog.Println(serr)
-		ch <- &DlmsChannelMessage{errors.New(serr), nil}
-		return
-	}
+		select {
+		case invokeId := <-aconn.invokeIdsCh:
+			ch <- &DlmsChannelMessage{nil, invokeId}
+		case reason := <-finish:
+			serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, reason)
+			errorLog.Println(serr)
+			ch <- &DlmsChannelMessage{errors.New(serr), nil}
+			return
+		case <-time.After(time.Millisecond * time.Duration(msecTimeout)):
+			serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, "timeout")
+			errorLog.Println(serr)
+			ch <- &DlmsChannelMessage{errors.New(serr), nil}
+			return
+		}
+	}()
 }
 
 func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
-	var (
-		FNAME string = "AppConn.getRquest()"
-	)
-
-	if 0 == len(vals) {
-		ch <- &DlmsChannelMessage{nil, nil}
-		return
-	}
-
-	if aconn.closed {
-		serr := fmt.Sprintf("%s: connection closed", FNAME)
-		errorLog.Println(serr)
-		ch <- &DlmsChannelMessage{errors.New(serr), nil}
-		return
-	}
-
-	currentTime := time.Now()
-	timeoutAt := currentTime.Add(time.Millisecond * time.Duration(msecTimeout))
-
-	finish := make(chan string)
-	aconn.channelsToCloseOnClose = append(aconn.channelsToCloseOnClose, finish)
-	_ch := make(DlmsChannel)
-
-	go aconn.getInvokeId(_ch, msecTimeout)
-
 	go func() {
+		var (
+			FNAME string = "AppConn.getRquest()"
+		)
+
+		if 0 == len(vals) {
+			ch <- &DlmsChannelMessage{nil, nil}
+			return
+		}
+
+		if aconn.closed {
+			serr := fmt.Sprintf("%s: connection closed", FNAME)
+			errorLog.Println(serr)
+			ch <- &DlmsChannelMessage{errors.New(serr), nil}
+			return
+		}
+
+		currentTime := time.Now()
+		timeoutAt := currentTime.Add(time.Millisecond * time.Duration(msecTimeout))
+
+		finish := make(chan string)
+		aconn.channelsToCloseOnClose = append(aconn.channelsToCloseOnClose, finish)
+		_ch := make(DlmsChannel)
+
+		go aconn.getInvokeId(_ch, msecTimeout)
 
 		var invokeId uint8
 		select {
