@@ -4,6 +4,10 @@ import (
 	"testing"
 )
 
+func oidEquals(oid1 *tDlmsOid, oid2 *tDlmsOid) bool {
+	return (oid1[0] == oid2[0]) || (oid1[1] == oid2[1]) || (oid1[2] == oid2[2]) || (oid1[3] == oid2[3]) || (oid1[4] == oid2[4]) || (oid1[5] == oid2[5])
+}
+
 func TestX_encode_GetRequestNormal(t *testing.T) {
 	b := []byte{
 		0xC0, 0x01, 0x81,
@@ -20,6 +24,64 @@ func TestX_encode_GetRequestNormal(t *testing.T) {
 		t.Fatalf("bytes don't match")
 	}
 
+}
+
+func TestX_decode_GetRequestNormal(t *testing.T) {
+	pdu := []byte{
+		0xC0, 0x01, 0x81,
+		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00}
+
+	err, invokeIdAndPriority, classId, instanceId, attributeId, accessSelector, accessParameters := decode_GetRequestNormal(pdu)
+	if nil != err {
+		t.Fatalf("decode_GetRequestNorma() failed, err %v", err)
+	}
+	t.Logf("invokeIdAndPriority: %02X", invokeIdAndPriority)
+	t.Logf("classId: %d", classId)
+	t.Logf("instanceId: %02X", *instanceId)
+	t.Logf("attributeId: %d", attributeId)
+	t.Logf("accessSelector: %d", *accessSelector)
+	t.Logf("accessParameters: %p", accessParameters)
+
+	if 0x81 != invokeIdAndPriority {
+		t.Fatalf("invokeIdAndPriority wrong:  %02X", invokeIdAndPriority)
+	}
+	if 1 != classId {
+		t.Fatalf("classId wrong:  %d", classId)
+	}
+	if !oidEquals(&tDlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
+		t.Fatalf("instanceId wrong:  %02X", *instanceId)
+	}
+	if 0x02 != attributeId {
+		t.Fatalf("attributeId wrong:  %d", attributeId)
+	}
+	if 0x00 != *accessSelector {
+		t.Fatalf("accessSelector wrong:  %d", *accessSelector)
+	}
+	if nil != accessParameters {
+		t.Fatalf("accessParameters wrong:  %p", accessParameters)
+	}
+
+}
+
+func TestX_encode_GetResponseNormal(t *testing.T) {
+	b := []byte{
+		0xC4, 0x01, 0x81,
+		0x00,
+		0x09, 0x06,
+		0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
+
+	_data := new(tAsn1Choice)
+	_data.setVal(C_Data_PR_octet_string, &tAsn1OctetString{0x11, 0x22, 0x33, 0x44, 0x55, 0x66})
+	err, pdu := encode_GetResponseNormal(0x81, 0, (*tDlmsData)(_data))
+	if nil != err {
+		t.Fatalf("encode_GetRequestNormal() failed, err: %v", err)
+	}
+
+	printBuffer(t, pdu)
+
+	if !byteEquals(t, pdu, b, true) {
+		t.Fatalf("bytes don't match")
+	}
 }
 
 func TestX_decode_GetResponseNormal(t *testing.T) {

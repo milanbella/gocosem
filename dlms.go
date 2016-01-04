@@ -17,8 +17,37 @@ type tDlmsClassId uint16
 type tDlmsOid [6]uint8
 type tDlmsAttributeId uint8
 type tDlmsAccessSelector uint8
-type tDlmsData tAsn1Choice
 
+const (
+	C_Dlms_Data_PR_NOTHING              = iota
+	C_Dlms_Data_PR_null_data            = iota
+	C_Dlms_Data_PR_array                = iota
+	C_Dlms_Data_PR_structure            = iota
+	C_Dlms_Data_PR_boolean              = iota
+	C_Dlms_Data_PR_bit_string           = iota
+	C_Dlms_Data_PR_double_long          = iota
+	C_Dlms_Data_PR_double_long_unsigned = iota
+	C_Dlms_Data_PR_floating_point       = iota
+	C_Dlms_Data_PR_octet_string         = iota
+	C_Dlms_Data_PR_visible_string       = iota
+	C_Dlms_Data_PR_bcd                  = iota
+	C_Dlms_Data_PR_integer              = iota
+	C_Dlms_Data_PR_long                 = iota
+	C_Dlms_Data_PR_unsigned             = iota
+	C_Dlms_Data_PR_long_unsigned        = iota
+	C_Dlms_Data_PR_compact_array        = iota
+	C_Dlms_Data_PR_long64               = iota
+	C_Dlms_Data_PR_long64_unsigned      = iota
+	C_Dlms_Data_PR_enum                 = iota
+	C_Dlms_Data_PR_float32              = iota
+	C_Dlms_Data_PR_float64              = iota
+	C_Dlms_Data_PR_date_time            = iota
+	C_Dlms_Data_PR_date                 = iota
+	C_Dlms_Data_PR_time                 = iota
+	C_Dlms_Data_PR_dont_care            = iota
+)
+
+type tDlmsData tAsn1Choice
 type tDlmsDataAccessResult uint8
 
 const (
@@ -43,15 +72,15 @@ const (
 var errorLog *log.Logger = getErrorLogger()
 var debugLog *log.Logger = getDebugLogger()
 
-func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
-	var FNAME = "getRequest()"
+func encode_getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
+	var FNAME = "encode_getRequest()"
 
 	var w bytes.Buffer
 
 	var buf bytes.Buffer
 	err = binary.Write(&buf, binary.BigEndian, classId)
 	if nil != err {
-		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", err))
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
 		return err, nil
 	}
 	b := buf.Bytes()
@@ -106,8 +135,113 @@ func getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAtt
 	return nil, w.Bytes()
 }
 
-func getResponse(pdu []byte) (err error, n int, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
-	var FNAME = "getResponse()"
+func decode_getRequest(pdu []byte) (err error, n int, classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) {
+	var FNAME = "decode_getRequest()"
+	var serr string
+
+	b := pdu[0:]
+	n = 0
+
+	if len(b) < 2 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		errorLog.Println(serr)
+		return errors.New(serr), 0, 0, nil, 0, nil, nil
+	}
+	err = binary.Read(bytes.NewBuffer(b[0:2]), binary.BigEndian, &classId)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return errors.New(serr), 0, 0, nil, 0, nil, nil
+	}
+	b = b[2:]
+	n += 2
+
+	if len(b) < 6 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		errorLog.Println(serr)
+		return errors.New(serr), 0, 0, nil, 0, nil, nil
+	}
+	instanceId = new(tDlmsOid)
+	err = binary.Read(bytes.NewBuffer(b[0:6]), binary.BigEndian, instanceId)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return errors.New(serr), 0, 0, nil, 0, nil, nil
+	}
+	b = b[6:]
+	n += 6
+
+	if len(b) < 1 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		errorLog.Println(serr)
+		return errors.New(serr), 0, 0, nil, 0, nil, nil
+	}
+	err = binary.Read(bytes.NewBuffer(b[0:1]), binary.BigEndian, &attributeId)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return errors.New(serr), 0, 0, nil, 0, nil, nil
+	}
+	b = b[1:]
+	n += 1
+
+	if len(b) >= 1 {
+		accessSelector = new(tDlmsAccessSelector)
+		err = binary.Read(bytes.NewBuffer(b[0:1]), binary.BigEndian, accessSelector)
+		if nil != err {
+			errorLog.Println("%s: binary.Read() failed, err: %v", err)
+			return errors.New(serr), 0, 0, nil, 0, nil, nil
+		}
+		b = b[1:]
+		n += 1
+	}
+
+	if len(b) >= 1 {
+		var nn int
+		var data *tAsn1Choice
+		err, data, nn = decode_Data(b)
+		if nil != err {
+			return err, 0, 0, nil, 0, nil, nil
+		}
+		accessParameters = (*tDlmsData)(data)
+		b = b[nn:]
+		n += nn
+	}
+	return nil, n, classId, instanceId, attributeId, accessSelector, accessParameters
+}
+
+func encode_getResponse(dataAccessResult tDlmsDataAccessResult, data *tDlmsData) (err error, pdu []byte) {
+	var FNAME = "encode_getResponse()"
+
+	var w bytes.Buffer
+
+	var buf bytes.Buffer
+	err = binary.Write(&buf, binary.BigEndian, dataAccessResult)
+	if nil != err {
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err, nil
+	}
+	b := buf.Bytes()
+	_, err = w.Write(b)
+	if nil != err {
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
+		return err, nil
+	}
+
+	if nil != data {
+		err, b = encode_Data((*tAsn1Choice)(data))
+		if nil != err {
+			return err, nil
+		}
+		_, err = w.Write(b)
+		if nil != err {
+			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
+			return err, nil
+		}
+	}
+
+	return nil, w.Bytes()
+}
+
+func decode_getResponse(pdu []byte) (err error, n int, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
+	var FNAME = "decode_getResponse()"
 	var serr string
 	var nn = 0
 
@@ -152,13 +286,75 @@ func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, class
 		return err, nil
 	}
 
-	err, pdu = getRequest(classId, instanceId, attributeId, accessSelector, accessParameters)
+	err, pdu = encode_getRequest(classId, instanceId, attributeId, accessSelector, accessParameters)
 	if nil != err {
-		errorLog.Printf("%s: getRequest() failed, err: %v\n", FNAME, err)
+		errorLog.Printf("%s: encode_getRequest() failed, err: %v\n", FNAME, err)
 		return err, nil
 	}
 
 	_, err = w.Write(pdu)
+	if nil != err {
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
+		return err, nil
+	}
+
+	return nil, w.Bytes()
+}
+
+func decode_GetRequestNormal(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) {
+	var FNAME = "decode_GetRequestNormal"
+	var serr string
+	b := pdu[0:]
+
+	if len(b) < 2 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		errorLog.Println(serr)
+		return errors.New(serr), 0, 0, nil, 0, nil, nil
+	}
+	if !bytes.Equal(b[0:2], []byte{0xC0, 0x01}) {
+		errorLog.Printf("%s: pdu is not GetRequestNormal: 0x%02X 0x%02X\n", FNAME, b[0], b[1])
+		return errors.New("pdu is not GetRequestNormal"), 0, 0, nil, 0, nil, nil
+	}
+	b = b[2:]
+
+	if len(b) < 1 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		errorLog.Println(serr)
+		return errors.New(serr), 0, 0, nil, 0, nil, nil
+	}
+	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
+	b = b[1:]
+
+	err, _, classId, instanceId, attributeId, accessSelector, accessParameters = decode_getRequest(b)
+	if nil != err {
+		return err, 0, 0, nil, 0, nil, nil
+	}
+	return nil, invokeIdAndPriority, classId, instanceId, attributeId, accessSelector, accessParameters
+}
+
+func encode_GetResponseNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResult tDlmsDataAccessResult, data *tDlmsData) (err error, pdu []byte) {
+	var FNAME = "encode_GetResponseNormal()"
+
+	var w bytes.Buffer
+	var b []byte
+
+	_, err = w.Write([]byte{0xC4, 0x01})
+	if nil != err {
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
+		return err, nil
+	}
+
+	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
+	if nil != err {
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
+		return err, nil
+	}
+
+	err, b = encode_getResponse(dataAccessResult, data)
+	if nil != err {
+		return err, nil
+	}
+	_, err = w.Write(b)
 	if nil != err {
 		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 		return err, nil
@@ -189,7 +385,7 @@ func decode_GetResponseNormal(pdu []byte) (err error, invokeIdAndPriority tDlmsI
 	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
 	b = b[1:]
 
-	err, _, dataAccessResult, data = getResponse(b)
+	err, _, dataAccessResult, data = decode_getResponse(b)
 	if nil != err {
 		return err, 0, 0, nil
 	}
@@ -224,9 +420,9 @@ func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, cla
 
 	for i := 0; i < count; i += 1 {
 
-		err, pdu = getRequest(classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
+		err, pdu = encode_getRequest(classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
 		if nil != err {
-			errorLog.Printf("%s: getRequest() failed, err: %v\n", FNAME, err)
+			errorLog.Printf("%s: encode_getRequest() failed, err: %v\n", FNAME, err)
 			return err, nil
 		}
 
@@ -279,7 +475,7 @@ func decode_GetResponseWithList(pdu []byte) (err error, invokeIdAndPriority tDlm
 	var data *tDlmsData
 	var n int
 	for i := 0; i < count; i += 1 {
-		err, n, dataAccessResult, data = getResponse(b)
+		err, n, dataAccessResult, data = decode_getResponse(b)
 		if nil != err {
 			return err, 0, nil, nil
 		}
