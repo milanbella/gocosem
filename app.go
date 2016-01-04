@@ -33,13 +33,13 @@ type DlmsValueRequestResponse struct {
 }
 
 type AppConn struct {
-	closed                 bool
-	dconn                  *DlmsConn
-	applicationClient      uint16
-	logicalDevice          uint16
-	invokeIdsCh            chan uint8
-	channelsToCloseOnClose []chan string
-	rips                   map[uint8][]*DlmsValueRequestResponse // requests in progress
+	closed            bool
+	dconn             *DlmsConn
+	applicationClient uint16
+	logicalDevice     uint16
+	invokeIdsCh       chan uint8
+	finish            chan string
+	rips              map[uint8][]*DlmsValueRequestResponse // requests in progress
 }
 
 func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16) (aconn *AppConn) {
@@ -54,7 +54,9 @@ func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16)
 		aconn.invokeIdsCh <- uint8(i)
 	}
 
-	aconn.channelsToCloseOnClose = make([]chan string, 0, 10)
+	aconn.rips = make(map[uint8][]*DlmsValueRequestResponse)
+
+	aconn.finish = make(chan string)
 
 	aconn.receiveReplies()
 
@@ -66,9 +68,7 @@ func (aconn *AppConn) Close() {
 		return
 	}
 	aconn.closed = true
-	for i := 0; i < len(aconn.channelsToCloseOnClose); i++ {
-		aconn.channelsToCloseOnClose[i] <- "app connection closed"
-	}
+	close(aconn.finish)
 	aconn.dconn.Close()
 	for invokeId, _ := range aconn.rips {
 		aconn.killRequest(invokeId, errors.New("app connection closed"))
@@ -76,10 +76,10 @@ func (aconn *AppConn) Close() {
 }
 
 func (aconn *AppConn) transportSend(invokeId uint8, pdu []byte) {
-	var (
-		FNAME string = "AppConn.transportSend()"
-	)
 	go func() {
+		var (
+			FNAME string = "AppConn.transportSend()"
+		)
 		ch := make(DlmsChannel)
 		aconn.dconn.transportSend(ch, aconn.applicationClient, aconn.logicalDevice, pdu)
 		select {
@@ -139,15 +139,12 @@ func (aconn *AppConn) deliverReply(invokeId uint8) {
 
 func (aconn *AppConn) deliverTimeouts() {
 
-	finish := make(chan string)
-	aconn.channelsToCloseOnClose = append(aconn.channelsToCloseOnClose, finish)
-
 	var deliver func()
 
 	deliver = func() {
 
 		select {
-		case <-finish:
+		case <-aconn.finish:
 			return
 		case <-time.After(time.Millisecond * 100):
 			for invokeId, rips := range aconn.rips {
@@ -171,6 +168,7 @@ func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse,
 		return
 	}
 
+	rips[0].rep = new(DlmsValueResponse)
 	rips[0].rep.dataAccessResult = dataAccessResult
 	rips[0].rep.data = data
 
@@ -308,19 +306,16 @@ func (aconn *AppConn) getInvokeId(ch DlmsChannel, msecTimeout int64) {
 			serr  string
 		)
 
-		finish := make(chan string)
-		aconn.channelsToCloseOnClose = append(aconn.channelsToCloseOnClose, finish)
-
 		select {
 		case invokeId := <-aconn.invokeIdsCh:
 			ch <- &DlmsChannelMessage{nil, invokeId}
-		case reason := <-finish:
-			serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, reason)
+		case <-aconn.finish:
+			serr = fmt.Sprintf("%s: aborted, reason: app connection closed", FNAME)
 			errorLog.Println(serr)
 			ch <- &DlmsChannelMessage{errors.New(serr), nil}
 			return
 		case <-time.After(time.Millisecond * time.Duration(msecTimeout)):
-			serr = fmt.Sprintf("%s: aborted, reason: %v\n", FNAME, "timeout")
+			serr = fmt.Sprintf("%s: aborted, reason timeout", FNAME)
 			errorLog.Println(serr)
 			ch <- &DlmsChannelMessage{errors.New(serr), nil}
 			return
@@ -349,13 +344,10 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 		currentTime := time.Now()
 		timeoutAt := currentTime.Add(time.Millisecond * time.Duration(msecTimeout))
 
-		finish := make(chan string)
-		aconn.channelsToCloseOnClose = append(aconn.channelsToCloseOnClose, finish)
 		_ch := make(DlmsChannel)
 
-		go aconn.getInvokeId(_ch, msecTimeout)
-
 		var invokeId uint8
+		aconn.getInvokeId(_ch, msecTimeout)
 		select {
 		case msg := <-_ch:
 			if nil != msg.err {
@@ -364,6 +356,7 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 			}
 			invokeId = msg.data.(uint8)
 		}
+		debugLog.Printf("%s: invokeId %d\n", FNAME, invokeId)
 
 		rips := make([]*DlmsValueRequestResponse, len(vals))
 		for i := 0; i < len(vals); i += 1 {

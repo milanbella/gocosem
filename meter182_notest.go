@@ -41,3 +41,39 @@ func TestX_meter182_AppConnect(t *testing.T) {
 	aconn := msg.data.(*AppConn)
 	aconn.Close()
 }
+
+func TestX_meter182_get_time(t *testing.T) {
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, ipAddr, 4059)
+	msg := <-ch
+	if nil != msg.err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+	}
+	t.Logf("transport connected")
+	dconn := msg.data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+	}
+	t.Logf("application connected")
+	aconn := msg.data.(*AppConn)
+
+	//func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
+	val := new(DlmsValueRequest)
+	val.classId = 1
+	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.attributeId = 0x02
+	vals := make([]*DlmsValueRequest, 1)
+	vals[0] = val
+	aconn.getRquest(ch, 10000, true, vals)
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+	}
+	t.Logf("value read")
+	aconn.Close()
+
+}
