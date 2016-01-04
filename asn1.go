@@ -1337,16 +1337,17 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 		data.setVal(int(C.Data_PR_null_data), goAsn1Null())
 
 	case C.Data_PR_array:
-
-	case C.Data_PR_structure:
 		serr = fmt.Sprintf("decode_Data(): array not implemnted")
 		errorLog.Println(serr)
 		return errors.New(serr), nil, 0
 
-	case C.Data_PR_boolean:
+	case C.Data_PR_structure:
 		serr = fmt.Sprintf("decode_Data(): structure not implemnted")
 		errorLog.Println(serr)
 		return errors.New(serr), nil, 0
+
+	case C.Data_PR_boolean:
+		data.setVal(int(C.Data_PR_boolean), goAsn1Boolean((*C.BOOLEAN_t)(choice)))
 
 	case C.Data_PR_bit_string:
 		data.setVal(int(C.Data_PR_bit_string), goAsn1BitString((*C.BIT_STRING_t)(choice)))

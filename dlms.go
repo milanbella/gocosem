@@ -12,12 +12,6 @@ import (
 	"unsafe"
 )
 
-type tDlmsInvokeIdAndPriority uint8
-type tDlmsClassId uint16
-type tDlmsOid [6]uint8
-type tDlmsAttributeId uint8
-type tDlmsAccessSelector uint8
-
 const (
 	C_Dlms_Data_PR_NOTHING              = iota
 	C_Dlms_Data_PR_null_data            = iota
@@ -47,9 +41,6 @@ const (
 	C_Dlms_Data_PR_dont_care            = iota
 )
 
-type tDlmsData tAsn1Choice
-type tDlmsDataAccessResult uint8
-
 const (
 	dataAccessResult_success                 = 0
 	dataAccessResult_hardwareFault           = 1
@@ -69,8 +60,94 @@ const (
 	dataAccessResult_otherReason             = 250
 )
 
+type tDlmsInvokeIdAndPriority uint8
+type tDlmsClassId uint16
+type tDlmsOid [6]uint8
+type tDlmsAttributeId uint8
+type tDlmsAccessSelector uint8
+
+type tDlmsData tAsn1Choice
+type tDlmsDataAccessResult uint8
+
+type tDlmsAsn1Data struct {
+	adata *tAsn1Choice
+}
+
 var errorLog *log.Logger = getErrorLogger()
 var debugLog *log.Logger = getDebugLogger()
+
+func NewDlmsData() (data *tDlmsData) {
+
+	return (*tDlmsData)(new(tAsn1Choice))
+}
+
+func (data *tDlmsData) setNothing() {
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_NOTHING, nil)
+}
+
+func (data *tDlmsData) setNil() {
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_null_data, nil)
+}
+
+func (data *tDlmsData) setBool(b bool) {
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_boolean, (*tAsn1Boolean)(&b))
+}
+
+// 'unusedBits' is number of unused bits in last octet of 'b'
+func (data *tDlmsData) setBitString(b []byte, unusedBits int) {
+
+	if !((unusedBits >= 0) && (unusedBits <= 7)) {
+		panic("assertion failed")
+	}
+
+	adata := (*tAsn1Choice)(data)
+
+	abitString := new(tAsn1BitString)
+	abitString.buf = b
+	abitString.bitsUnused = unusedBits
+
+	adata.setVal(C_Data_PR_bit_string, abitString)
+}
+
+func (data *tDlmsData) setInt32(i int32) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_double_long, (*tAsn1Integer32)(&i))
+}
+
+func (data *tDlmsData) setUint32(i uint32) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_double_long_unsigned, (*tAsn1Unsigned32)(&i))
+}
+
+func (data *tDlmsData) setFloat32(f float32) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_floating_point, (*tAsn1Float)(&f))
+}
+
+func (data *tDlmsData) setBytes(b []byte) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_octet_string, (*tAsn1OctetString)(&b))
+}
+
+func (data *tDlmsData) setVisibleString(s string) {
+
+	adata := (*tAsn1Choice)(data)
+	b := ([]byte)(s)
+	adata.setVal(C_Data_PR_visible_string, (*tAsn1VisibleString)(&b))
+}
+
+func (data *tDlmsData) setBcd(bcd int8) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_bcd, (*tAsn1Integer8)(&bcd))
+}
 
 func encode_getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
 	var FNAME = "encode_getRequest()"
