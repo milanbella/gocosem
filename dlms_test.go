@@ -195,6 +195,43 @@ func TestX_decode_GetRequestWithList(t *testing.T) {
 	}
 }
 
+func TestX_encode_GetResponseWithList(t *testing.T) {
+	b := []byte{
+		0xC4, 0x03, 0x81,
+		0x02,
+		0x00,
+		0x09, 0x04,
+		0x01, 0x02, 0x03, 0x04,
+		0x00,
+		0x0A, 0x03,
+		0x30, 0x30, 0x30}
+
+	data1 := new(tDlmsData)
+	data1.setBytes([]byte{0x01, 0x02, 0x03, 0x04})
+	data2 := new(tDlmsData)
+	data2.setVisibleString("000")
+
+	dataAccessResults := make([]tDlmsDataAccessResult, 2)
+	datas := make([]*tDlmsData, 2)
+
+	dataAccessResults[0] = 0
+	datas[0] = data1
+
+	dataAccessResults[1] = 0
+	datas[1] = data2
+
+	err, pdu := encode_GetResponseWithList(0x81, dataAccessResults, datas)
+	if nil != err {
+		t.Fatalf("encode_GetResponseWithList() failed, err: %v", err)
+	}
+
+	printBuffer(t, pdu)
+
+	if !byteEquals(t, pdu, b, true) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
 func TestX_decode_GetResponseWithList(t *testing.T) {
 	b := []byte{
 		0xC4, 0x03, 0x81,
@@ -246,6 +283,30 @@ func TestX_decode_GetResponseWithList(t *testing.T) {
 	printBuffer(t, vs)
 	if !byteEquals(t, vs, []byte{0x30, 0x30, 0x30}, true) {
 		t.Fatalf("wrong data[1]")
+	}
+}
+
+//@@@@@@@@@@@@@@@@@@@@@@
+func TestX_encode_GetResponsewithDataBlock(t *testing.T) {
+	b := []byte{
+		0xC4, 0x02, 0x81,
+		0x00,
+		0x00, 0x00, 0x00, 0x01,
+		0x00,
+		0x1E,
+		0x09, 0x32, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13,
+		0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28}
+
+	//func encode_GetResponsewithDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPriority, lastBlock bool, blockNumber uint32, dataAccessResult tDlmsDataAccessResult, rawData []byte) (err error, pdu []byte) {
+	err, pdu := encode_GetResponsewithDataBlock(0x81, false, 1, 0, []byte{0x09, 0x32, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28})
+	if nil != err {
+		t.Fatalf("encode_GetResponsewithDataBlock() failed, err: %v", err)
+	}
+
+	printBuffer(t, pdu)
+
+	if !byteEquals(t, pdu, b, true) {
+		t.Fatalf("bytes don't match")
 	}
 }
 
