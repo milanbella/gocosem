@@ -1101,7 +1101,6 @@ func decode_GetResponseWithList(pdu []byte) (err error, invokeIdAndPriority tDlm
 	return nil, invokeIdAndPriority, dataAccessResults, datas
 }
 
-//@@@@@@@@@@@@@@@@@@@@@@@@
 func encode_GetResponsewithDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPriority, lastBlock bool, blockNumber uint32, dataAccessResult tDlmsDataAccessResult, rawData []byte) (err error, pdu []byte) {
 	var FNAME = "encode_GetResponsewithDataBlock()"
 
@@ -1275,6 +1274,47 @@ func encode_GetRequestForNextDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPrior
 	}
 
 	return nil, w.Bytes()
+}
+
+//@@@@@@@@@@@@@@@@@@@@@@@
+func decode_GetRequestForNextDataBlock(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, blockNumber uint32) {
+	var FNAME = "decode_GetRequestForNextDataBlock()"
+	var serr string
+	b := pdu[0:]
+
+	if len(b) < 2 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		errorLog.Println(serr)
+		return errors.New(serr), 0, 0
+	}
+	if !bytes.Equal(b[0:2], []byte{0xc0, 0x02}) {
+		serr = fmt.Sprintf("%s: pdu is not GetRequestForNextDataBlock: 0x%02X 0x%02X ", FNAME, b[0], b[1])
+		errorLog.Println(serr)
+		return errors.New(serr), 0, 0
+	}
+	b = b[2:]
+
+	if len(b) < 1 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		errorLog.Println(serr)
+		return errors.New(serr), 0, 0
+	}
+	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
+	b = b[1:]
+
+	if len(b) < 4 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		errorLog.Println(serr)
+		return errors.New(serr), 0, 0
+	}
+	err = binary.Read(bytes.NewBuffer(b[0:4]), binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, 0, 0
+	}
+	b = b[4:]
+
+	return nil, invokeIdAndPriority, blockNumber
 }
 
 const (
