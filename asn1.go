@@ -838,14 +838,6 @@ func goAsn1Time(d *C.OCTET_STRING_t) *tAsn1Time {
 	return (*tAsn1Time)(&ad)
 }
 
-//@@@@@@@@@@@@@@@@@@@@@
-func alloc_pokus() unsafe.Pointer {
-	pdu := C.hlp__calloc_AARQ_apdu_t()
-	return unsafe.Pointer(pdu)
-}
-
-//@@@@@@@@@@@@@@@@@@@@@
-
 func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 	var ret C.asn_enc_rval_t
 	var pdu *C.AARQ_apdu_t

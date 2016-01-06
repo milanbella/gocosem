@@ -279,6 +279,7 @@ func (aconn *AppConn) receiveReplies() {
 	go func() {
 		var (
 			FNAME string = "AppConn.receiveReplies()"
+			serr  string
 		)
 
 		for {
@@ -286,14 +287,27 @@ func (aconn *AppConn) receiveReplies() {
 				break
 			}
 			ch := make(DlmsChannel)
-			aconn.dconn.transportReceive(ch)
+			aconn.dconn.transportReceive(ch, aconn.logicalDevice, aconn.applicationClient)
 			msg := <-ch
 			if nil != msg.err {
 				errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, msg.err)
 				aconn.Close()
 				return
 			}
-			pdu := msg.data.([]byte)
+			m := msg.data.(map[string]interface{})
+			if m["srcWport"] != aconn.logicalDevice {
+				serr = fmt.Sprintf("%s: incorret srcWport in received pdu: ", FNAME, m["srcWport"])
+				errorLog.Println(serr)
+				aconn.Close()
+				return
+			}
+			if m["dstWport"] != aconn.applicationClient {
+				serr = fmt.Sprintf("%s: incorret dstWport in received pdu: ", FNAME, m["dstWport"])
+				errorLog.Println(serr)
+				aconn.Close()
+				return
+			}
+			pdu := m["pdu"].([]byte)
 			go aconn.processReply(pdu)
 		}
 	}()
