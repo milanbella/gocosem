@@ -711,7 +711,7 @@ func decode_getRequest(pdu []byte) (err error, n int, classId tDlmsClassId, inst
 		n += 1
 	}
 
-	//TODO: Fucking cosem green book full of garbage is not precise on how and when access selector parameters are to be encoded/decoded
+	//TODO: Cosem green book full of garbage is not precise on how and when access selector parameters are to be encoded/decoded
 	// We skip this to avoid reading too much into next item in case of decoding GetRequestWithList.
 	//if len(b) >= 1 {
 	if false {

@@ -8,27 +8,91 @@ import (
 	"testing"
 )
 
-type MockCosemServer struct {
-	closed      bool
-	ln          net.Listener
-	connections *list.List // list of *MockCosemServerConnection
+type tMockCosemObject struct {
+	classId    tDlmsClassId
+	attributes map[tDlmsAttributeId]*tDlmsData
 }
 
-type MockCosemServerConnection struct {
-	srv               *MockCosemServer
+type tMockCosemServer struct {
+	closed      bool
+	ln          net.Listener
+	connections *list.List // list of *tMockCosemServerConnection
+	objects     map[string]*tMockCosemObject
+}
+
+type tMockCosemServerConnection struct {
+	srv               *tMockCosemServer
 	closed            bool
 	rwc               io.ReadWriteCloser
 	logicalDevice     uint16
 	applicationClient uint16
 }
 
-func (conn *MockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte) {
-	//TODO:
+func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte) {
+	var (
+		FNAME string = "tMockCosemServerConnection.replyToRequest()"
+	)
+
+	if bytes.Equal(b[0:2], []byte{0xC0, 0x01}) {
+		err, invokeIdAndPriority, classId, instanceId, attributeId, accessSelector, accessParameters := decode_GetRequestNormal(pdu)
+		if nil != err {
+			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			return
+		}
+		dataAccessResult, data = srv.getData(classId, instanceId, attributeId, accessSelector, accessParameters)
+		var rawData []byte
+		var buf bytes.Buffer
+		err := binary.Write(&buf, binary.BigEndian, dataAccessResult)
+		if nil != err {
+			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			return
+		}
+		if 0 == dataAccessResult {
+			_, err = buf.Write(data)
+			if nil != err {
+				t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+				return
+			}
+		}
+		rawData = buf.Bytes()
+	} else if bytes.Equal([]byte{0xC0, 0x03}) {
+		err, invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters := decode_GetRequestWithList(pdu)
+		if nil != err {
+			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			return
+		}
+		count := len(classIds)
+		var rawData []byte
+		var buf bytes.Buffer
+		err := binary.Write(&buf, binary.BigEndian, uint8(count))
+		if nil != err {
+			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			return
+		}
+		for i = 0; i < count; i += 1 {
+			dataAccessResult, data := srv.getData(classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
+			err := binary.Write(&buf, binary.BigEndian, dataAccessResult)
+			if nil != err {
+				t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+				return
+			}
+			if 0 == dataAccessResult {
+				_, err = buf.Write(data)
+				if nil != err {
+					t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+					return
+				}
+			}
+		}
+		rawData = buf.Bytes()
+	} else {
+		panic("assertion failed")
+	}
 }
 
-func (conn *MockCosemServerConnection) receiveAndReply(t *testing.T) {
+func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) {
 	var (
-		FNAME string = "MockCosemServerConnection.receiveAndReply()"
+		FNAME string = "tMockCosemServerConnection.receiveAndReply()"
 	)
 
 	for (!conn.closed) && (!conn.srv.closed) {
@@ -38,6 +102,7 @@ func (conn *MockCosemServerConnection) receiveAndReply(t *testing.T) {
 		msg := <-ch
 		if nil != msg.err {
 			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			return
 		}
 		m := msg.data.(map[string]interface{})
 		if nil == m["pdu"] {
@@ -50,9 +115,9 @@ func (conn *MockCosemServerConnection) receiveAndReply(t *testing.T) {
 	conn.rwc.Close()
 }
 
-func (srv *MockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aare []byte) {
+func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aare []byte) {
 	var (
-		FNAME string = "MockCosemServer.acceptApp()"
+		FNAME string = "tMockCosemServer.acceptApp()"
 	)
 
 	t.Logf("%s: mock server waiting for client to connect", FNAME)
@@ -63,6 +128,7 @@ func (srv *MockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aare
 	msg := <-ch
 	if nil != msg.err {
 		t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+		return
 	}
 	m := msg.data.(map[string]interface{})
 
@@ -74,9 +140,10 @@ func (srv *MockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aare
 	msg = <-ch
 	if nil != msg.err {
 		t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+		return
 	}
 
-	conn := new(MockCosemServerConnection)
+	conn := new(tMockCosemServerConnection)
 	conn.srv = srv
 	conn.rwc = rwc
 	conn.logicalDevice = logicalDevice
@@ -86,13 +153,38 @@ func (srv *MockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aare
 	go conn.receiveAndReply(t)
 }
 
-func (srv *MockCosemServer) Close(t *testing.T) {
+func (srv *tMockCosemServer) objectKey(instanceId *tDlmsOid) string {
+	return fmt.Sprintf("%d_%d_%d_%d_%d_%d_%d", instanceId[0], instanceId[1], instanceId[2], instanceId[3], instanceId[4], instanceId[5])
+}
+
+func (srv *tMockCosemServer) getData(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
+	if nil == tDlmsOid {
+		panic("assertion failed")
+	}
+	key := objectKey(instanceId)
+	obj, ok = srv.objects[objectKey]
+	if !ok {
+		return 1, nil
+	} else {
+		if obj.classId == classId {
+			data, ok = obj.attributes[attributeId]
+			if !ok {
+				return 1, nil
+			}
+			return 0, data
+		} else {
+			return 1, nil
+		}
+	}
+}
+
+func (srv *tMockCosemServer) Close(t *testing.T) {
 	var (
-		FNAME string = "MockCosemServer.Close()"
+		FNAME string = "tMockCosemServer.Close()"
 	)
 	t.Logf("%s: mock server closing ...", FNAME)
 	for e := srv.connections.Front(); e != nil; e = e.Next() {
-		sconn := e.Value.(*MockCosemServerConnection)
+		sconn := e.Value.(*tMockCosemServerConnection)
 		if !sconn.closed {
 			sconn.closed = true
 			sconn.rwc.Close()
@@ -102,14 +194,15 @@ func (srv *MockCosemServer) Close(t *testing.T) {
 	t.Logf("%s: mock server closed", FNAME)
 }
 
-func (srv *MockCosemServer) accept(t *testing.T, tcpAddr string, aare []byte) {
+func (srv *tMockCosemServer) accept(t *testing.T, tcpAddr string, aare []byte) {
 	var (
-		FNAME string = "MockCosemServer.accept()"
+		FNAME string = "tMockCosemServer.accept()"
 	)
 
 	ln, err := net.Listen("tcp", tcpAddr)
 	if err != nil {
 		t.Fatalf(fmt.Sprintf("net.Listen() failed: %v\n", err))
+		return
 	}
 	srv.ln = ln
 
@@ -119,17 +212,18 @@ func (srv *MockCosemServer) accept(t *testing.T, tcpAddr string, aare []byte) {
 		conn, err := srv.ln.Accept()
 		if err != nil {
 			t.Fatalf(fmt.Sprintf("net.Accept() failed: %v\n", err))
+			return
 		}
 		go srv.acceptApp(t, conn, aare)
 	}
 
 }
 
-func StartMockCosemServer(t *testing.T, addr string, port int, aare []byte) (srv *MockCosemServer) {
+func startMockCosemServer(t *testing.T, addr string, port int, aare []byte) (srv *tMockCosemServer) {
 
 	tcpAddr := fmt.Sprintf("%s:%d", addr, port)
 
-	srv = new(MockCosemServer)
+	srv = new(tMockCosemServer)
 	srv.connections = list.New()
 	go srv.accept(t, tcpAddr, aare)
 	return srv
@@ -142,7 +236,7 @@ var c_TEST_AARE = []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0
 
 func TestX__TcpConnect(t *testing.T) {
 
-	srv := StartMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
+	srv := startMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
@@ -158,7 +252,7 @@ func TestX__TcpConnect(t *testing.T) {
 
 func TestX_AppConnect(t *testing.T) {
 
-	srv := StartMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
+	srv := startMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
