@@ -13,32 +13,27 @@ import (
 )
 
 const (
-	C_Dlms_Data_PR_NOTHING              = iota
-	C_Dlms_Data_PR_null_data            = iota
-	C_Dlms_Data_PR_array                = iota
-	C_Dlms_Data_PR_structure            = iota
-	C_Dlms_Data_PR_boolean              = iota
-	C_Dlms_Data_PR_bit_string           = iota
-	C_Dlms_Data_PR_double_long          = iota
-	C_Dlms_Data_PR_double_long_unsigned = iota
-	C_Dlms_Data_PR_floating_point       = iota
-	C_Dlms_Data_PR_octet_string         = iota
-	C_Dlms_Data_PR_visible_string       = iota
-	C_Dlms_Data_PR_bcd                  = iota
-	C_Dlms_Data_PR_integer              = iota
-	C_Dlms_Data_PR_long                 = iota
-	C_Dlms_Data_PR_unsigned             = iota
-	C_Dlms_Data_PR_long_unsigned        = iota
-	C_Dlms_Data_PR_compact_array        = iota
-	C_Dlms_Data_PR_long64               = iota
-	C_Dlms_Data_PR_long64_unsigned      = iota
-	C_Dlms_Data_PR_enum                 = iota
-	C_Dlms_Data_PR_float32              = iota
-	C_Dlms_Data_PR_float64              = iota
-	C_Dlms_Data_PR_date_time            = iota
-	C_Dlms_Data_PR_date                 = iota
-	C_Dlms_Data_PR_time                 = iota
-	C_Dlms_Data_PR_dont_care            = iota
+	C_Dlms_Data_Nothing       = iota
+	C_Dlms_Data_Nil           = iota
+	C_Dlms_Data_Bool          = iota
+	C_Dlms_Data_BitString     = iota
+	C_Dlms_Data_Int32         = iota
+	C_Dlms_Data_Uint32        = iota
+	C_Dlms_Data_Bytes         = iota
+	C_Dlms_Data_VisibleString = iota
+	C_Dlms_Data_Bcd           = iota
+	C_Dlms_Data_Int8          = iota
+	C_Dlms_Data_Int16         = iota
+	C_Dlms_Data_Uint8         = iota
+	C_Dlms_Data_Uint16        = iota
+	C_Dlms_Data_Int64         = iota
+	C_Dlms_Data_Uint64        = iota
+	C_Dlms_Data_Float32       = iota
+	C_Dlms_Data_Float64       = iota
+	C_Dlms_Data_DateTime      = iota
+	C_Dlms_Data_Date          = iota
+	C_Dlms_Data_Time          = iota
+	C_Dlms_Data_DontCare      = iota
 )
 
 const (
@@ -69,12 +64,227 @@ type tDlmsAccessSelector uint8
 type tDlmsData tAsn1Choice
 type tDlmsDataAccessResult uint8
 
+type tDlmsDate struct {
+	year       uint16
+	month      uint8
+	dayOfMonth uint8
+	dayOfWeek  uint8
+}
+
+type tDlmsTime struct {
+	hour       uint8
+	minute     uint8
+	second     uint8
+	hundredths uint8
+}
+
+type tDlmsDateTime struct {
+	tDlmsDate
+	tDlmsTime
+	deviation   int16
+	clockStatus uint8
+}
+
 type tDlmsAsn1Data struct {
 	adata *tAsn1Choice
 }
 
 var errorLog *log.Logger = getErrorLogger()
 var debugLog *log.Logger = getDebugLogger()
+
+func DlmsDateFromBytes(b []byte) (date *tDlmsDate) {
+	date = new(tDlmsDate)
+	by := (*[2]byte)(unsafe.Pointer(&date.year))
+	by[0] = b[0]
+	by[1] = b[1]
+	date.month = b[2]
+	date.dayOfMonth = b[3]
+	date.dayOfWeek = b[4]
+	return date
+}
+
+func (date *tDlmsDate) toBytes() []byte {
+	b := make([]byte, 5)
+	b[0] = byte((date.year & 0xFF00) >> 8)
+	b[1] = byte(date.year & 0x00FF)
+	b[2] = date.month
+	b[3] = date.dayOfMonth
+	b[4] = date.dayOfWeek
+	return b
+}
+
+func (date *tDlmsDate) setYearWildcard() {
+	date.year = 0xFFFF
+}
+
+func (date *tDlmsDate) isYearWildcard() bool {
+	return date.year == 0xFFFF
+}
+
+func (date *tDlmsDate) setMonthWildcard() {
+	date.month = 0xFF
+}
+
+func (date *tDlmsDate) isMonthWildcard() bool {
+	return date.month == 0xFF
+}
+
+func (date *tDlmsDate) setDaylightSavingsEnd() {
+	date.month = 0xFD
+}
+
+func (date *tDlmsDate) isDaylightSavingsEnd() bool {
+	return date.month == 0xFD
+}
+
+func (date *tDlmsDate) setDaylightSavingsBegin() {
+	date.month = 0xFE
+}
+
+func (date *tDlmsDate) isDaylightSavingsBegin() bool {
+	return date.month == 0xFE
+}
+
+func (date *tDlmsDate) setDayOfWeekWildcard() {
+	date.dayOfWeek = 0xFF
+}
+
+func (date *tDlmsDate) isDayOfWeekWildcard() bool {
+	return date.dayOfWeek == 0xFF
+}
+
+func DlmsTimeFromBytes(b []byte) (tim *tDlmsTime) {
+	tim = new(tDlmsTime)
+	tim.hour = b[0]
+	tim.minute = b[1]
+	tim.second = b[2]
+	tim.hundredths = b[3]
+	return tim
+}
+
+func (tim *tDlmsTime) toBytes() []byte {
+	b := make([]byte, 4)
+	b[0] = tim.hour
+	b[1] = tim.minute
+	b[2] = tim.second
+	b[3] = tim.hundredths
+	return b
+}
+
+func (tim *tDlmsTime) setHourWildcard() {
+	tim.hour = 0xFF
+}
+
+func (tim *tDlmsTime) isHourWildcard() bool {
+	return tim.hour == 0xFF
+}
+
+func (tim *tDlmsTime) setMinuteWildcard() {
+	tim.minute = 0xFF
+}
+
+func (tim *tDlmsTime) isMinuteWildcard() bool {
+	return tim.minute == 0xFF
+}
+
+func (tim *tDlmsTime) setSecondWildcard() {
+	tim.second = 0xFF
+}
+
+func (tim *tDlmsTime) isSecondWildcard() bool {
+	return tim.second == 0xFF
+}
+
+func (tim *tDlmsTime) setHundredthsWildcard() {
+	tim.hundredths = 0xFF
+}
+
+func (tim *tDlmsTime) isHundredthsWildcard() bool {
+	return tim.hundredths == 0xFF
+}
+
+func DlmsDateTimeFromBytes(b []byte) (dateTime *tDlmsDateTime) {
+
+	dateTime = new(tDlmsDateTime)
+	b2 := (*[2]byte)(unsafe.Pointer(&dateTime.year))
+	b2[0] = b[0]
+	b2[1] = b[1]
+	dateTime.month = b[2]
+	dateTime.dayOfMonth = b[3]
+	dateTime.dayOfWeek = b[4]
+	dateTime.hour = b[5]
+	dateTime.minute = b[6]
+	dateTime.second = b[7]
+	dateTime.hundredths = b[8]
+	b2 = (*[2]byte)(unsafe.Pointer(&dateTime.deviation))
+	b2[0] = b[9]
+	b2[1] = b[10]
+	dateTime.clockStatus = b[11]
+
+	return dateTime
+}
+
+func (dateTime *tDlmsDateTime) toBytes() []byte {
+	b := make([]byte, 12)
+	b2 := (*[2]byte)(unsafe.Pointer(&dateTime.year))
+	b[0] = b2[0]
+	b[1] = b2[1]
+	b[2] = dateTime.month
+	b[3] = dateTime.dayOfMonth
+	b[4] = dateTime.dayOfWeek
+	b[5] = dateTime.hour
+	b[6] = dateTime.minute
+	b[7] = dateTime.second
+	b[8] = dateTime.hundredths
+	b2 = (*[2]byte)(unsafe.Pointer(&dateTime.deviation))
+	b[9] = b[0]
+	b[10] = b[1]
+	b[11] = dateTime.clockStatus
+	return b
+}
+
+func (dateTime *tDlmsDateTime) setDeviationWildcard() {
+	b := (*[2]byte)(unsafe.Pointer(&dateTime.deviation))
+	b[0] = 0x80
+	b[1] = 0x00
+}
+
+func (dateTime *tDlmsDateTime) isDeviationWildcard() bool {
+	b := (*[2]byte)(unsafe.Pointer(&dateTime.deviation))
+	return (b[0] == 0x80) && (b[1] == 0x00)
+}
+
+func (dateTime *tDlmsDateTime) setClockStatusInvalid() {
+	dateTime.clockStatus |= 0x01
+}
+
+func (dateTime *tDlmsDateTime) isClockStatusInvalid() bool {
+	return dateTime.clockStatus&0x01 > 0
+}
+
+func (dateTime *tDlmsDateTime) setClockStatusDoubtful() {
+	dateTime.clockStatus |= 0x02
+}
+
+func (dateTime *tDlmsDateTime) isClockStatusDoubtful() bool {
+	return dateTime.clockStatus&0x02 > 0
+}
+
+func (dateTime *tDlmsDateTime) setClockStatusDifferentClockBase() {
+	dateTime.clockStatus |= 0x04
+}
+
+func (dateTime *tDlmsDateTime) isClockStatusDifferentClockBase() bool {
+	return dateTime.clockStatus&0x04 > 0
+}
+
+func (dateTime *tDlmsDateTime) setClockStatusDaylightSavingActive() {
+	dateTime.clockStatus |= 0x80
+}
+
+func (dateTime *tDlmsDateTime) isClockStatusDaylightSavingActive() bool {
+	return dateTime.clockStatus&0x80 > 0
+}
 
 func NewDlmsData() (data *tDlmsData) {
 
@@ -96,6 +306,12 @@ func (data *tDlmsData) setBool(b bool) {
 	adata.setVal(C_Data_PR_boolean, (*tAsn1Boolean)(&b))
 }
 
+func (data *tDlmsData) getBool() bool {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Boolean)
+	return bool(*v)
+}
+
 // 'unusedBits' is number of unused bits in last octet of 'b'
 func (data *tDlmsData) setBitString(b []byte, unusedBits int) {
 
@@ -112,10 +328,24 @@ func (data *tDlmsData) setBitString(b []byte, unusedBits int) {
 	adata.setVal(C_Data_PR_bit_string, abitString)
 }
 
+func (data *tDlmsData) getBitString() (b []byte, unusedBits int) {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1BitString)
+	b = v.buf
+	unusedBits = v.bitsUnused
+	return b, unusedBits
+}
+
 func (data *tDlmsData) setInt32(i int32) {
 
 	adata := (*tAsn1Choice)(data)
 	adata.setVal(C_Data_PR_double_long, (*tAsn1Integer32)(&i))
+}
+
+func (data *tDlmsData) getInt32() int32 {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Integer32)
+	return int32(*v)
 }
 
 func (data *tDlmsData) setUint32(i uint32) {
@@ -124,16 +354,22 @@ func (data *tDlmsData) setUint32(i uint32) {
 	adata.setVal(C_Data_PR_double_long_unsigned, (*tAsn1Unsigned32)(&i))
 }
 
-func (data *tDlmsData) setFloat32(f float32) {
-
+func (data *tDlmsData) getUint32() uint32 {
 	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_floating_point, (*tAsn1Float)(&f))
+	v := adata.getVal().(*tAsn1Unsigned32)
+	return uint32(*v)
 }
 
 func (data *tDlmsData) setBytes(b []byte) {
 
 	adata := (*tAsn1Choice)(data)
 	adata.setVal(C_Data_PR_octet_string, (*tAsn1OctetString)(&b))
+}
+
+func (data *tDlmsData) getBytes() []byte {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1OctetString)
+	return ([]byte)(*v)
 }
 
 func (data *tDlmsData) setVisibleString(s string) {
@@ -143,10 +379,215 @@ func (data *tDlmsData) setVisibleString(s string) {
 	adata.setVal(C_Data_PR_visible_string, (*tAsn1VisibleString)(&b))
 }
 
+func (data *tDlmsData) getVisibleString() string {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1VisibleString)
+	return string(*v)
+}
+
 func (data *tDlmsData) setBcd(bcd int8) {
 
 	adata := (*tAsn1Choice)(data)
 	adata.setVal(C_Data_PR_bcd, (*tAsn1Integer8)(&bcd))
+}
+
+func (data *tDlmsData) getBcd() int8 {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Integer8)
+	return int8(*v)
+}
+
+func (data *tDlmsData) setInt8(i int8) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_integer, (*tAsn1Integer8)(&i))
+}
+
+func (data *tDlmsData) getInt8() int8 {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Integer8)
+	return int8(*v)
+}
+
+func (data *tDlmsData) setIn16(i int16) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_long, (*tAsn1Integer16)(&i))
+}
+
+func (data *tDlmsData) getInt16() int16 {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Integer16)
+	return int16(*v)
+}
+
+func (data *tDlmsData) setUint8(i uint8) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_unsigned, (*tAsn1Unsigned8)(&i))
+}
+
+func (data *tDlmsData) getUint8() uint8 {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Unsigned8)
+	return uint8(*v)
+}
+
+func (data *tDlmsData) setUint16(i uint16) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_long_unsigned, (*tAsn1Unsigned16)(&i))
+}
+
+func (data *tDlmsData) getUint16() uint16 {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Unsigned16)
+	return uint16(*v)
+}
+
+func (data *tDlmsData) setInt64(i int64) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_long64, (*tAsn1Long64)(&i))
+}
+
+func (data *tDlmsData) getInt64() int64 {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Long64)
+	return int64(*v)
+}
+
+func (data *tDlmsData) setUint64(i uint64) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_long64_unsigned, (*tAsn1UnsignedLong64)(&i))
+}
+
+func (data *tDlmsData) getUint64() uint64 {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1UnsignedLong64)
+	return uint64(*v)
+}
+
+func (data *tDlmsData) setFloat32(f float32) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_float32, (*tAsn1Float32)(&f))
+}
+
+func (data *tDlmsData) getFloat32() (f float32) {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Float32)
+	return float32(*v)
+}
+
+func (data *tDlmsData) setFloat64(f float64) {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_float64, (*tAsn1Float64)(&f))
+}
+
+func (data *tDlmsData) getFloat64() float64 {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Float64)
+	return float64(*v)
+}
+
+func (data *tDlmsData) setDateTime(dateTime *tDlmsDateTime) {
+
+	adata := (*tAsn1Choice)(data)
+	b := dateTime.toBytes()
+	adata.setVal(C_Data_PR_date_time, (*tAsn1DateTime)(&b))
+}
+
+func (data *tDlmsData) getDateTime() *tDlmsDateTime {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1DateTime)
+	return DlmsDateTimeFromBytes(([]byte)(*v))
+}
+
+func (data *tDlmsData) setDate(date *tDlmsDate) {
+
+	adata := (*tAsn1Choice)(data)
+	b := date.toBytes()
+	adata.setVal(C_Data_PR_date, (*tAsn1Date)(&b))
+}
+
+func (data *tDlmsData) getDate() *tDlmsDate {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Date)
+	return DlmsDateFromBytes(([]byte)(*v))
+}
+
+func (data *tDlmsData) setTime(tim *tDlmsTime) {
+
+	adata := (*tAsn1Choice)(data)
+	b := tim.toBytes()
+	adata.setVal(C_Data_PR_time, (*tAsn1Time)(&b))
+}
+
+func (data *tDlmsData) getTime() *tDlmsTime {
+	adata := (*tAsn1Choice)(data)
+	v := adata.getVal().(*tAsn1Time)
+	return DlmsTimeFromBytes(([]byte)(*v))
+}
+
+func (data *tDlmsData) setDontCare() {
+
+	adata := (*tAsn1Choice)(data)
+	adata.setVal(C_Data_PR_dont_care, nil)
+}
+
+func (data *tDlmsData) getTag() int {
+
+	adata := (*tAsn1Choice)(data)
+
+	switch adata.getTag() {
+	case C_Data_PR_NOTHING:
+		return C_Dlms_Data_Nothing
+	case C_Data_PR_null_data:
+		return C_Dlms_Data_Nil
+	case C_Data_PR_boolean:
+		return C_Dlms_Data_Bool
+	case C_Data_PR_bit_string:
+		return C_Dlms_Data_BitString
+	case C_Data_PR_double_long:
+		return C_Dlms_Data_Int32
+	case C_Data_PR_double_long_unsigned:
+		return C_Dlms_Data_Uint32
+	case C_Data_PR_octet_string:
+		return C_Dlms_Data_Bytes
+	case C_Data_PR_visible_string:
+		return C_Dlms_Data_VisibleString
+	case C_Data_PR_bcd:
+		return C_Dlms_Data_Bcd
+	case C_Data_PR_integer:
+		return C_Dlms_Data_Int8
+	case C_Data_PR_long:
+		return C_Dlms_Data_Int16
+	case C_Data_PR_unsigned:
+		return C_Dlms_Data_Uint8
+	case C_Data_PR_long_unsigned:
+		return C_Dlms_Data_Uint16
+	case C_Data_PR_long64:
+		return C_Dlms_Data_Int64
+	case C_Data_PR_long64_unsigned:
+		return C_Dlms_Data_Uint64
+	case C_Data_PR_float32:
+		return C_Dlms_Data_Float32
+	case C_Data_PR_float64:
+		return C_Dlms_Data_Float64
+	case C_Data_PR_date_time:
+		return C_Dlms_Data_DateTime
+	case C_Data_PR_date:
+		return C_Dlms_Data_Date
+	case C_Data_PR_time:
+		return C_Dlms_Data_Time
+	case C_Data_PR_dont_care:
+		return C_Dlms_Data_DontCare
+	default:
+		panic("assertion failed")
+	}
 }
 
 func encode_getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
