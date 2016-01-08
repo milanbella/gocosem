@@ -143,6 +143,58 @@ func TestX_encode_GetRequestWithList(t *testing.T) {
 	}
 }
 
+func TestX_decode_GetRequestWithList(t *testing.T) {
+	b := []byte{
+		0xC0, 0x03, 0x81,
+		0x02,
+		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
+		0x00, 0x01, 0x00, 0x00, 0x80, 0x01, 0x00, 0xFF, 0x02, 0x00}
+	err, invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters := decode_GetRequestWithList(b)
+	if nil != err {
+		t.Fatalf("decode_GetRequestWithList() failed, err: %v", err)
+	}
+
+	if 2 != len(classIds) {
+		t.Fatalf("wrong count")
+	}
+
+	if 0x81 != invokeIdAndPriority {
+		t.Fatalf("wrong invokeIdAndPriority ")
+	}
+
+	if 0x0001 != classIds[0] {
+		t.Fatalf("wrong classId[0] ")
+	}
+	if !oidEquals(&tDlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceIds[0]) {
+		t.Fatalf("wrong instanceId[0] ")
+	}
+	if 0x02 != attributeIds[0] {
+		t.Fatalf("wrong attributeId[0] ")
+	}
+	if 0x00 != *accessSelectors[0] {
+		t.Fatalf("wrong accessSelector[0] ")
+	}
+	if nil != accessParameters[0] {
+		t.Fatalf("wrong accessParameters[0]")
+	}
+
+	if 0x0001 != classIds[1] {
+		t.Fatalf("wrong classId[1] ")
+	}
+	if !oidEquals(&tDlmsOid{0x00, 0x00, 0x80, 0x01, 0x00, 0xFF}, instanceIds[1]) {
+		t.Fatalf("wrong instanceId[1] ")
+	}
+	if 0x02 != attributeIds[1] {
+		t.Fatalf("wrong attributeId[1] ")
+	}
+	if 0x00 != *accessSelectors[1] {
+		t.Fatalf("wrong accessSelector[1] ")
+	}
+	if nil != accessParameters[1] {
+		t.Fatalf("wrong accessParameters[0]")
+	}
+}
+
 func TestX_decode_GetResponseWithList(t *testing.T) {
 	b := []byte{
 		0xC4, 0x03, 0x81,

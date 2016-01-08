@@ -668,7 +668,7 @@ func decode_getRequest(pdu []byte) (err error, n int, classId tDlmsClassId, inst
 	err = binary.Read(bytes.NewBuffer(b[0:2]), binary.BigEndian, &classId)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", err)
-		return errors.New(serr), 0, 0, nil, 0, nil, nil
+		return err, 0, 0, nil, 0, nil, nil
 	}
 	b = b[2:]
 	n += 2
@@ -682,7 +682,7 @@ func decode_getRequest(pdu []byte) (err error, n int, classId tDlmsClassId, inst
 	err = binary.Read(bytes.NewBuffer(b[0:6]), binary.BigEndian, instanceId)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", err)
-		return errors.New(serr), 0, 0, nil, 0, nil, nil
+		return err, 0, 0, nil, 0, nil, nil
 	}
 	b = b[6:]
 	n += 6
@@ -695,7 +695,7 @@ func decode_getRequest(pdu []byte) (err error, n int, classId tDlmsClassId, inst
 	err = binary.Read(bytes.NewBuffer(b[0:1]), binary.BigEndian, &attributeId)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", err)
-		return errors.New(serr), 0, 0, nil, 0, nil, nil
+		return err, 0, 0, nil, 0, nil, nil
 	}
 	b = b[1:]
 	n += 1
@@ -705,13 +705,16 @@ func decode_getRequest(pdu []byte) (err error, n int, classId tDlmsClassId, inst
 		err = binary.Read(bytes.NewBuffer(b[0:1]), binary.BigEndian, accessSelector)
 		if nil != err {
 			errorLog.Println("%s: binary.Read() failed, err: %v", err)
-			return errors.New(serr), 0, 0, nil, 0, nil, nil
+			return err, 0, 0, nil, 0, nil, nil
 		}
 		b = b[1:]
 		n += 1
 	}
 
-	if len(b) >= 1 {
+	//TODO: Fucking cosem green book full of garbage is not precise on how and when access selector parameters are to be encoded/decoded
+	// We skip this to avoid reading too much into next item in case of decoding GetRequestWithList.
+	//if len(b) >= 1 {
+	if false {
 		var nn int
 		var data *tAsn1Choice
 		err, data, nn = decode_Data(b)
@@ -952,6 +955,58 @@ func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, cla
 	}
 
 	return nil, w.Bytes()
+}
+
+func decode_GetRequestWithList(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, classIds []tDlmsClassId, instanceIds []*tDlmsOid, attributeIds []tDlmsAttributeId, accessSelectors []*tDlmsAccessSelector, accessParameters []*tDlmsData) {
+	var FNAME = "decode_GetRequestWithList()"
+	var serr string
+	b := pdu[0:]
+
+	if len(b) < 2 {
+		return errors.New("short pdu"), 0, nil, nil, nil, nil, nil
+	}
+	if !bytes.Equal(b[0:2], []byte{0xC0, 0x03}) {
+		errorLog.Printf("%s: pdu is not GetRequestWithList: 0x%02X 0x%02X\n", FNAME, b[0], b[1])
+		return errors.New("pdu is not GetRequestWithList"), 0, nil, nil, nil, nil, nil
+	}
+	b = b[2:]
+
+	if len(b) < 1 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		errorLog.Println(serr)
+		return errors.New(serr), 0, nil, nil, nil, nil, nil
+	}
+	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
+	b = b[1:]
+
+	if len(b) < 1 {
+		serr = fmt.Sprintf("%s: short pdu", FNAME)
+		errorLog.Println(serr)
+		return errors.New(serr), 0, nil, nil, nil, nil, nil
+	}
+	count := int(b[0])
+	b = b[1:]
+
+	classIds = make([]tDlmsClassId, count)
+	instanceIds = make([]*tDlmsOid, count)
+	attributeIds = make([]tDlmsAttributeId, count)
+	accessSelectors = make([]*tDlmsAccessSelector, count)
+	accessParameters = make([]*tDlmsData, count)
+
+	for i := 0; i < count; i += 1 {
+		err, n, classId, instanceId, attributeId, accessSelector, accessParameter := decode_getRequest(b)
+		if nil != err {
+			return err, 0, nil, nil, nil, nil, nil
+		}
+		classIds[i] = classId
+		instanceIds[i] = instanceId
+		attributeIds[i] = attributeId
+		accessSelectors[i] = accessSelector
+		accessParameters[i] = accessParameter
+		b = b[n:]
+	}
+	return nil, invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters
+
 }
 
 func decode_GetResponseWithList(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResults []tDlmsDataAccessResult, datas []*tDlmsData) {
