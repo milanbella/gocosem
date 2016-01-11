@@ -1469,8 +1469,9 @@ func (dconn *DlmsConn) transportSend(ch DlmsChannel, srcWport uint16, dstWport u
 
 func readLength(r io.Reader, length int) (err error, data []byte) {
 	var (
-		buf bytes.Buffer
-		n   int
+		FNAME string = "readLength()"
+		buf   bytes.Buffer
+		n     int
 	)
 
 	p := make([]byte, length)
@@ -1487,7 +1488,7 @@ func readLength(r io.Reader, length int) (err error, data []byte) {
 			}
 		} else if 0 == n {
 			if nil != err {
-				errorLog.Printf("%s: io.Read() failed, err: %v", err)
+				errorLog.Printf("%s: io.Read() failed, err: %v", FNAME, err)
 				return err, data
 			} else {
 				panic("assertion failed")
@@ -1518,7 +1519,6 @@ func ipTransportReceive(ch DlmsChannel, rwc io.ReadWriteCloser, srcWport *uint16
 		)
 
 		debugLog.Printf("%s: receiving pdu ...\n", FNAME)
-		errorLog.Printf("@@@@@@@@@@@@@@@@@@ cp 300: rwc: %v\n", rwc)
 		err, headerPdu = readLength(rwc, int(unsafe.Sizeof(header)))
 		if nil != err {
 			ch <- &DlmsChannelMessage{err, nil}
@@ -1582,7 +1582,6 @@ func (dconn *DlmsConn) doTransportReceive(ch DlmsChannel, srcWport uint16, dstWp
 
 		if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 
-			errorLog.Printf("@@@@@@@@@@@@@@@@@@ cp 200: dconn.rwc: %v\n", dconn.rwc)
 			ipTransportReceiveForApp(ch, dconn.rwc, srcWport, srcWport)
 
 		} else {

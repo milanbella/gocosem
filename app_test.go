@@ -10,6 +10,7 @@ import (
 
 type MockCosemServer struct {
 	closed      bool
+	ln          net.Listener
 	connections *list.List // list of *MockCosemServerConnection
 }
 
@@ -57,12 +58,7 @@ func (srv *MockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aare
 	t.Logf("%s: mock server waiting for client to connect", FNAME)
 
 	// receive aarq
-	if srv.closed {
-		rwc.Close()
-		return
-	}
 	ch := make(DlmsChannel)
-	errorLog.Printf("@@@@@@@@@@@@@@@@@@ cp 100: %v\n", rwc)
 	ipTransportReceive(ch, rwc, nil, nil)
 	msg := <-ch
 	if nil != msg.err {
@@ -74,10 +70,6 @@ func (srv *MockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aare
 	applicationClient := m["srcWport"].(uint16)
 
 	// reply with aare
-	if srv.closed {
-		rwc.Close()
-		return
-	}
 	ipTransportSend(ch, rwc, logicalDevice, applicationClient, aare)
 	msg = <-ch
 	if nil != msg.err {
@@ -86,11 +78,28 @@ func (srv *MockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aare
 
 	conn := new(MockCosemServerConnection)
 	conn.srv = srv
+	conn.rwc = rwc
 	conn.logicalDevice = logicalDevice
 	conn.applicationClient = applicationClient
 	srv.connections.PushBack(conn)
 
 	go conn.receiveAndReply(t)
+}
+
+func (srv *MockCosemServer) Close(t *testing.T) {
+	var (
+		FNAME string = "MockCosemServer.Close()"
+	)
+	t.Logf("%s: mock server closing ...", FNAME)
+	for e := srv.connections.Front(); e != nil; e = e.Next() {
+		sconn := e.Value.(*MockCosemServerConnection)
+		if !sconn.closed {
+			sconn.closed = true
+			sconn.rwc.Close()
+		}
+	}
+	srv.ln.Close()
+	t.Logf("%s: mock server closed", FNAME)
 }
 
 func (srv *MockCosemServer) accept(t *testing.T, tcpAddr string, aare []byte) {
@@ -102,25 +111,18 @@ func (srv *MockCosemServer) accept(t *testing.T, tcpAddr string, aare []byte) {
 	if err != nil {
 		t.Fatalf(fmt.Sprintf("net.Listen() failed: %v\n", err))
 	}
+	srv.ln = ln
 
 	t.Logf("%s: mock server bound to %s", FNAME, tcpAddr)
 
 	for !srv.closed {
-		conn, err := ln.Accept()
+		conn, err := srv.ln.Accept()
 		if err != nil {
 			t.Fatalf(fmt.Sprintf("net.Accept() failed: %v\n", err))
 		}
 		go srv.acceptApp(t, conn, aare)
 	}
 
-	t.Logf("%s: mock server closing ...", FNAME)
-	for e := srv.connections.Front(); e != nil; e = e.Next() {
-		sconn := e.Value.(*MockCosemServerConnection)
-		if !sconn.closed {
-			sconn.closed = true
-		}
-	}
-	t.Logf("%s: mock server closed", FNAME)
 }
 
 func StartMockCosemServer(t *testing.T, addr string, port int, aare []byte) (srv *MockCosemServer) {
@@ -140,13 +142,7 @@ var c_TEST_AARE = []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0
 
 func TestX__TcpConnect(t *testing.T) {
 
-	finish := make(chan string)
-	defer func() { finish <- "finished" }()
-	go func() {
-		srv := StartMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
-		<-finish
-		srv.closed = true
-	}()
+	srv := StartMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
@@ -157,18 +153,12 @@ func TestX__TcpConnect(t *testing.T) {
 	t.Logf("transport connected")
 	dconn := msg.data.(*DlmsConn)
 	dconn.Close()
+	srv.Close(t)
 }
 
 func TestX_AppConnect(t *testing.T) {
 
-	finish := make(chan string)
-	defer func() { finish <- "finished" }()
-
-	go func() {
-		srv := StartMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
-		<-finish
-		srv.closed = true
-	}()
+	srv := StartMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
@@ -187,4 +177,5 @@ func TestX_AppConnect(t *testing.T) {
 	t.Logf("application connected")
 	aconn := msg.data.(*AppConn)
 	aconn.Close()
+	srv.Close(t)
 }
