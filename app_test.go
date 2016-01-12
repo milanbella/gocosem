@@ -1,7 +1,9 @@
 package gocosem
 
 import (
+	"bytes"
 	"container/list"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -28,63 +30,70 @@ type tMockCosemServerConnection struct {
 	applicationClient uint16
 }
 
-func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte) {
-	var (
-		FNAME string = "tMockCosemServerConnection.replyToRequest()"
-	)
+func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, invokeIdAndPriority tDlmsInvokeIdAndPriority, reply []byte) {
+}
 
-	if bytes.Equal(b[0:2], []byte{0xC0, 0x01}) {
+func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte) {
+
+	if bytes.Equal(pdu[0:2], []byte{0xC0, 0x01}) {
 		err, invokeIdAndPriority, classId, instanceId, attributeId, accessSelector, accessParameters := decode_GetRequestNormal(pdu)
 		if nil != err {
-			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			t.Fatalf(fmt.Sprintf("%v\n", err))
 			return
 		}
-		dataAccessResult, data = srv.getData(classId, instanceId, attributeId, accessSelector, accessParameters)
-		var rawData []byte
+		dataAccessResult, data := conn.srv.getData(classId, instanceId, attributeId, accessSelector, accessParameters)
 		var buf bytes.Buffer
-		err := binary.Write(&buf, binary.BigEndian, dataAccessResult)
+		err = binary.Write(&buf, binary.BigEndian, dataAccessResult)
 		if nil != err {
-			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			t.Fatalf(fmt.Sprintf("%v\n", err))
 			return
 		}
 		if 0 == dataAccessResult {
-			_, err = buf.Write(data)
+			err, bdata := data.Encode()
 			if nil != err {
-				t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+				t.Fatalf(fmt.Sprintf("%v\n", err))
+				return
+			}
+			_, err = buf.Write(bdata)
+			if nil != err {
+				t.Fatalf(fmt.Sprintf("%v\n", err))
 				return
 			}
 		}
-		rawData = buf.Bytes()
-	} else if bytes.Equal([]byte{0xC0, 0x03}) {
+		rawData := buf.Bytes()
+		conn.sendEncodedReply(t, invokeIdAndPriority, rawData)
+	} else if bytes.Equal(pdu[0:2], []byte{0xC0, 0x03}) {
 		err, invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters := decode_GetRequestWithList(pdu)
 		if nil != err {
-			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			t.Fatalf(fmt.Sprintf("%v\n", err))
 			return
 		}
 		count := len(classIds)
 		var rawData []byte
 		var buf bytes.Buffer
-		err := binary.Write(&buf, binary.BigEndian, uint8(count))
+		err = binary.Write(&buf, binary.BigEndian, uint8(count))
 		if nil != err {
-			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			t.Fatalf(fmt.Sprintf("%v\n", err))
 			return
 		}
-		for i = 0; i < count; i += 1 {
-			dataAccessResult, data := srv.getData(classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
+		for i := 0; i < count; i += 1 {
+			dataAccessResult, data := conn.srv.getData(classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
 			err := binary.Write(&buf, binary.BigEndian, dataAccessResult)
 			if nil != err {
-				t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+				t.Fatalf(fmt.Sprintf("%v\n", err))
 				return
 			}
+			err, bdata := data.Encode()
 			if 0 == dataAccessResult {
-				_, err = buf.Write(data)
+				_, err = buf.Write(bdata)
 				if nil != err {
-					t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+					t.Fatalf(fmt.Sprintf("%v\n", err))
 					return
 				}
 			}
 		}
 		rawData = buf.Bytes()
+		conn.sendEncodedReply(t, invokeIdAndPriority, rawData)
 	} else {
 		panic("assertion failed")
 	}
@@ -158,11 +167,11 @@ func (srv *tMockCosemServer) objectKey(instanceId *tDlmsOid) string {
 }
 
 func (srv *tMockCosemServer) getData(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
-	if nil == tDlmsOid {
+	if nil == instanceId {
 		panic("assertion failed")
 	}
-	key := objectKey(instanceId)
-	obj, ok = srv.objects[objectKey]
+	key := srv.objectKey(instanceId)
+	obj, ok := srv.objects[key]
 	if !ok {
 		return 1, nil
 	} else {

@@ -291,6 +291,23 @@ func NewDlmsData() (data *tDlmsData) {
 	return (*tDlmsData)(new(tAsn1Choice))
 }
 
+func DecodeDlmsData(b []byte) (err error, data *tDlmsData, n int) {
+	err, adata, n := decode_Data(b)
+	if nil != err {
+		return err, nil, 0
+	}
+	return nil, (*tDlmsData)(adata), n
+}
+
+func (data *tDlmsData) Encode() (err error, b []byte) {
+	adata := (*tAsn1Choice)(data)
+	err, b = encode_Data(adata)
+	if nil != err {
+		return err, nil
+	}
+	return nil, b
+}
+
 func (data *tDlmsData) setNothing() {
 	adata := (*tAsn1Choice)(data)
 	adata.setVal(C_Data_PR_NOTHING, nil)
