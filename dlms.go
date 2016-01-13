@@ -1167,17 +1167,18 @@ func encode_GetResponsewithDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPriorit
 		return err, nil
 	}
 
-	// raw data tag
-	_, err = w.Write([]byte{0x1E})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
+	if nil != rawData {
+		_, err = w.Write([]byte{0x1E}) // raw data tag
+		if nil != err {
+			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
+			return err, nil
+		}
 
-	_, err = w.Write(rawData)
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
+		_, err = w.Write(rawData)
+		if nil != err {
+			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
+			return err, nil
+		}
 	}
 
 	return nil, w.Bytes()

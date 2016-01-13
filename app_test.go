@@ -3,7 +3,6 @@ package gocosem
 import (
 	"bytes"
 	"container/list"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -28,9 +27,48 @@ type tMockCosemServerConnection struct {
 	rwc               io.ReadWriteCloser
 	logicalDevice     uint16
 	applicationClient uint16
+	blocks            map[uint8][][]byte // invoke id bolocks to be sent in case of block transfer
 }
 
 func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, invokeIdAndPriority tDlmsInvokeIdAndPriority, reply []byte) {
+
+	invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
+	l := 10 // block length
+	if len(reply) > l {
+		// use block transfer
+
+		blocks := make([][]byte, len(reply)/10+1)
+		b := reply[0:]
+		var i int
+		for i = 0; len(b) > l; i += 1 {
+			blocks[i] = b[0:l]
+			b = b[l:]
+		}
+		blocks[i] = b
+		conn.blocks[invokeId] = blocks
+
+		err, reply := encode_GetResponsewithDataBlock(invokeIdAndPriority, false, 0, 1, blocks[0])
+		if nil != err {
+			t.Fatalf(fmt.Sprintf("%v\n", err))
+			return
+		}
+		ch := make(DlmsChannel)
+		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
+		msg := <-ch
+		if nil != msg.err {
+			t.Fatalf(fmt.Sprintf("%v\n", err))
+			return
+		}
+
+	} else {
+		ch := make(DlmsChannel)
+		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
+		msg := <-ch
+		if nil != msg.err {
+			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			return
+		}
+	}
 }
 
 func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte) {
@@ -41,26 +79,12 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 			t.Fatalf(fmt.Sprintf("%v\n", err))
 			return
 		}
-		dataAccessResult, data := conn.srv.getData(classId, instanceId, attributeId, accessSelector, accessParameters)
-		var buf bytes.Buffer
-		err = binary.Write(&buf, binary.BigEndian, dataAccessResult)
+		dataAccessResult, data := conn.srv.getData(t, classId, instanceId, attributeId, accessSelector, accessParameters)
+		err, rawData := encode_GetResponseNormal(invokeIdAndPriority, dataAccessResult, data)
 		if nil != err {
 			t.Fatalf(fmt.Sprintf("%v\n", err))
 			return
 		}
-		if 0 == dataAccessResult {
-			err, bdata := data.Encode()
-			if nil != err {
-				t.Fatalf(fmt.Sprintf("%v\n", err))
-				return
-			}
-			_, err = buf.Write(bdata)
-			if nil != err {
-				t.Fatalf(fmt.Sprintf("%v\n", err))
-				return
-			}
-		}
-		rawData := buf.Bytes()
 		conn.sendEncodedReply(t, invokeIdAndPriority, rawData)
 	} else if bytes.Equal(pdu[0:2], []byte{0xC0, 0x03}) {
 		err, invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters := decode_GetRequestWithList(pdu)
@@ -70,30 +94,63 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 		}
 		count := len(classIds)
 		var rawData []byte
-		var buf bytes.Buffer
-		err = binary.Write(&buf, binary.BigEndian, uint8(count))
+		datas := make([]*tDlmsData, count)
+		dataAccessResults := make([]tDlmsDataAccessResult, count)
+		for i := 0; i < count; i += 1 {
+			dataAccessResult, data := conn.srv.getData(t, classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
+			dataAccessResults[i] = dataAccessResult
+			datas[i] = data
+		}
+		err, rawData = encode_GetResponseWithList(invokeIdAndPriority, dataAccessResults, datas)
 		if nil != err {
 			t.Fatalf(fmt.Sprintf("%v\n", err))
 			return
 		}
-		for i := 0; i < count; i += 1 {
-			dataAccessResult, data := conn.srv.getData(classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
-			err := binary.Write(&buf, binary.BigEndian, dataAccessResult)
-			if nil != err {
-				t.Fatalf(fmt.Sprintf("%v\n", err))
-				return
-			}
-			err, bdata := data.Encode()
-			if 0 == dataAccessResult {
-				_, err = buf.Write(bdata)
-				if nil != err {
-					t.Fatalf(fmt.Sprintf("%v\n", err))
-					return
-				}
-			}
-		}
-		rawData = buf.Bytes()
 		conn.sendEncodedReply(t, invokeIdAndPriority, rawData)
+	} else if bytes.Equal(pdu[0:2], []byte{0xC0, 0x03}) {
+		err, invokeIdAndPriority, blockNumber := decode_GetRequestForNextDataBlock(pdu)
+		if nil != err {
+			t.Fatalf(fmt.Sprintf("%v\n", err))
+			return
+		}
+		invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
+
+		var dataAccessResult tDlmsDataAccessResult
+		var rawData []byte
+		var lastBlock bool
+
+		blockNumber += 1
+		if nil == conn.blocks[invokeId] {
+			t.Logf("no blocks for invokeId: setting dataAccessResult to 1")
+			dataAccessResult = 1
+			rawData = nil
+		} else if int(blockNumber) >= len(conn.blocks[invokeId]) {
+			t.Logf("no such block for invokeId: setting dataAccessResult to 1")
+			dataAccessResult = 1
+			rawData = nil
+		} else {
+			dataAccessResult = 0
+			rawData = conn.blocks[invokeId][blockNumber]
+		}
+
+		if (len(conn.blocks[invokeId]) - 1) == int(blockNumber) {
+			lastBlock = true
+		} else {
+			lastBlock = false
+		}
+
+		err, reply := encode_GetResponsewithDataBlock(invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData)
+		if nil != err {
+			t.Fatalf(fmt.Sprintf("%v\n", err))
+			return
+		}
+		ch := make(DlmsChannel)
+		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
+		msg := <-ch
+		if nil != msg.err {
+			t.Fatalf(fmt.Sprintf("%v\n", err))
+			return
+		}
 	} else {
 		panic("assertion failed")
 	}
@@ -166,22 +223,25 @@ func (srv *tMockCosemServer) objectKey(instanceId *tDlmsOid) string {
 	return fmt.Sprintf("%d_%d_%d_%d_%d_%d_%d", instanceId[0], instanceId[1], instanceId[2], instanceId[3], instanceId[4], instanceId[5])
 }
 
-func (srv *tMockCosemServer) getData(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
+func (srv *tMockCosemServer) getData(t *testing.T, classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
 	if nil == instanceId {
 		panic("assertion failed")
 	}
 	key := srv.objectKey(instanceId)
 	obj, ok := srv.objects[key]
 	if !ok {
+		t.Logf("no such instance id: setting dataAccessResult to 1")
 		return 1, nil
 	} else {
 		if obj.classId == classId {
 			data, ok = obj.attributes[attributeId]
 			if !ok {
+				t.Logf("no such instance attribute: setting dataAccessResult to 1")
 				return 1, nil
 			}
 			return 0, data
 		} else {
+			t.Logf("instance class mismatch: setting dataAccessResult to 1")
 			return 1, nil
 		}
 	}
