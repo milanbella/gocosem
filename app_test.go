@@ -32,6 +32,7 @@ type tMockCosemServerConnection struct {
 
 func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, invokeIdAndPriority tDlmsInvokeIdAndPriority, reply []byte) {
 	var FNAME string = "tMockCosemServerConnection.sendEncodedReply()"
+	t.Logf("%s: reply: %02X", FNAME, reply) //@@@@@@@@@@@@@
 
 	invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
 	l := 10 // block length
@@ -47,11 +48,12 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, invokeIdA
 			b = b[l:]
 		}
 		blocks[i] = b
+		blocks = blocks[0 : i+1] // truncate sicnce we may have allocated more
 		conn.blocks[invokeId] = blocks
 
 		t.Logf("%s: blocks count: %d", FNAME, len(blocks))
 		for i = 0; i < len(blocks); i += 1 {
-			t.Logf("%s: block[%d]: %02X", FNAME, i, blocks[i])
+			t.Logf("%s: block[%d]: %02X", FNAME, i, blocks[i]) //@@@@@@@@@@@@@@@@
 		}
 
 		err, reply := encode_GetResponsewithDataBlock(invokeIdAndPriority, false, 1, 0, blocks[0])
@@ -157,6 +159,9 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 			conn.blocks[invokeId] = nil
 		}
 
+		if !lastBlock {
+			blockNumber += 1
+		}
 		err, reply := encode_GetResponsewithDataBlock(invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData)
 		if nil != err {
 			t.Fatalf("%v\n", err)
@@ -411,6 +416,59 @@ func TestX_GetRequestNormal(t *testing.T) {
 	val.attributeId = 0x02
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val
+	aconn.getRquest(ch, 10000, true, vals)
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+
+	aconn.Close()
+	srv.Close(t)
+}
+
+func TestX_GetRequestWithList(t *testing.T) {
+
+	srv := startMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
+
+	data := (new(tDlmsData))
+	data.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	srv.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+
+	data = (new(tDlmsData))
+	data.setBytes([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	srv.setAttribute(&tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("application connected")
+	aconn := msg.data.(*AppConn)
+
+	vals := make([]*DlmsValueRequest, 2)
+
+	val := new(DlmsValueRequest)
+	val.classId = 1
+	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.attributeId = 0x02
+	vals[0] = val
+
+	val = new(DlmsValueRequest)
+	val.classId = 1
+	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.attributeId = 0x02
+	vals[1] = val
+
 	aconn.getRquest(ch, 10000, true, vals)
 	msg = <-ch
 	if nil != msg.err {

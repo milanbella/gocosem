@@ -229,7 +229,7 @@ func (aconn *AppConn) processReply(pdu []byte) {
 
 	} else if (0xC4 == pdu[0]) && (0x02 == pdu[1]) {
 		// data blocks response
-		errorLog.Printf("%s: processing ResponsewithDataBlock", FNAME)
+		debugLog.Printf("%s: processing ResponsewithDataBlock", FNAME)
 
 		err, invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData := decode_GetResponsewithDataBlock(pdu)
 		if nil != err {
@@ -254,7 +254,7 @@ func (aconn *AppConn) processReply(pdu []byte) {
 			if (0xC4 == _pdu[0]) && (0x01 == _pdu[1]) {
 				debugLog.Printf("%s: all blocks received, processing ResponseNormal", FNAME)
 				aconn.processGetResponseNormal(rips, _pdu)
-			} else if (0xC4 == _pdu[0]) && (0x02 == _pdu[1]) {
+			} else if (0xC4 == _pdu[0]) && (0x03 == _pdu[1]) {
 				debugLog.Printf("%s: all blocks received, processing ResponseWithList", FNAME)
 				aconn.processGetResponseWithList(rips, _pdu)
 			} else {
@@ -263,7 +263,7 @@ func (aconn *AppConn) processReply(pdu []byte) {
 		} else {
 			// requests next data block
 
-			errorLog.Printf("%s: requesting data block: %d", FNAME, blockNumber)
+			debugLog.Printf("%s: requesting data block: %d", FNAME, blockNumber)
 			err, _pdu := encode_GetRequestForNextDataBlock(invokeIdAndPriority, blockNumber)
 			if nil != err {
 				aconn.killRequest(rips[0].invokeId, err)
