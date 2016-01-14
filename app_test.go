@@ -19,6 +19,7 @@ type tMockCosemServer struct {
 	ln          net.Listener
 	connections *list.List // list of *tMockCosemServerConnection
 	objects     map[string]*tMockCosemObject
+	blockLength int
 }
 
 type tMockCosemServerConnection struct {
@@ -32,10 +33,9 @@ type tMockCosemServerConnection struct {
 
 func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, invokeIdAndPriority tDlmsInvokeIdAndPriority, reply []byte) {
 	var FNAME string = "tMockCosemServerConnection.sendEncodedReply()"
-	t.Logf("%s: reply: %02X", FNAME, reply) //@@@@@@@@@@@@@
 
 	invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
-	l := 10 // block length
+	l := conn.srv.blockLength // block length
 	if len(reply) > l {
 		// use block transfer
 		t.Logf("%s: using block transfer", FNAME)
@@ -336,6 +336,7 @@ func startMockCosemServer(t *testing.T, addr string, port int, aare []byte) (srv
 	srv = new(tMockCosemServer)
 	srv.connections = list.New()
 	srv.objects = make(map[string]*tMockCosemObject)
+	srv.blockLength = 1000
 	go srv.accept(t, tcpAddr, aare)
 	return srv
 }
@@ -346,6 +347,7 @@ const c_TEST_PORT = 4059
 var c_TEST_AARE = []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x18, 0x1F, 0x08, 0x00, 0x00, 0x07}
 
 func TestX__TcpConnect(t *testing.T) {
+	errorLog.Printf("@@@@@@@@@@@@@@@@@@@@@@ TestX__TcpConnect \n")
 
 	srv := startMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
 
@@ -359,9 +361,12 @@ func TestX__TcpConnect(t *testing.T) {
 	dconn := msg.data.(*DlmsConn)
 	dconn.Close()
 	srv.Close(t)
+
+	errorLog.Printf("@@@@@@@@@@@@@@@@@@@@@@ TestX__TcpConnect done\n")
 }
 
 func TestX_AppConnect(t *testing.T) {
+	errorLog.Printf("@@@@@@@@@@@@@@@@@@@@@@ TestX_AppConnect \n")
 
 	srv := startMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
 
@@ -383,9 +388,12 @@ func TestX_AppConnect(t *testing.T) {
 	aconn := msg.data.(*AppConn)
 	aconn.Close()
 	srv.Close(t)
+
+	errorLog.Printf("@@@@@@@@@@@@@@@@@@@@@@ TestX_AppConnect done\n")
 }
 
 func TestX_GetRequestNormal(t *testing.T) {
+	errorLog.Printf("@@@@@@@@@@@@@@@@@@@@@@ TestX_GetRequestNormal \n")
 
 	srv := startMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
 
@@ -421,22 +429,33 @@ func TestX_GetRequestNormal(t *testing.T) {
 	if nil != msg.err {
 		t.Fatalf("%s\n", msg.err)
 	}
+	rep := msg.data.(DlmsResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data.getBytes(), rep.DataAt(0).getBytes()) {
+		t.Fatalf("value differs")
+	}
 
 	aconn.Close()
 	srv.Close(t)
+
+	errorLog.Printf("@@@@@@@@@@@@@@@@@@@@@@ TestX_GetRequestNormal done\n")
 }
 
 func TestX_GetRequestWithList(t *testing.T) {
+	errorLog.Printf("@@@@@@@@@@@@@@@@@@@@@@ TestX_GetRequestWithList \n")
 
 	srv := startMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
 
-	data := (new(tDlmsData))
-	data.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
-	srv.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+	data1 := (new(tDlmsData))
+	data1.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	srv.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
 
-	data = (new(tDlmsData))
-	data.setBytes([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
-	srv.setAttribute(&tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+	data2 := (new(tDlmsData))
+	data2.setBytes([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	srv.setAttribute(&tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
@@ -474,7 +493,23 @@ func TestX_GetRequestWithList(t *testing.T) {
 	if nil != msg.err {
 		t.Fatalf("%s\n", msg.err)
 	}
+	rep := msg.data.(DlmsResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data1.getBytes(), rep.DataAt(0).getBytes()) {
+		t.Fatalf("value differs")
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+	}
+	if !bytes.Equal(data2.getBytes(), rep.DataAt(1).getBytes()) {
+		t.Fatalf("value differs")
+	}
 
 	aconn.Close()
 	srv.Close(t)
+
+	errorLog.Printf("@@@@@@@@@@@@@@@@@@@@@@ TestX_GetRequestWithList done\n")
 }

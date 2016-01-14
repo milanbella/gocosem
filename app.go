@@ -27,6 +27,7 @@ type DlmsValueRequestResponse struct {
 	dead               *string     // If non nil then this request is already dead from whatever reason (e.g. timeot) and MUST NOT be used anymore. String value indicates reason.
 	ch                 DlmsChannel // channel to deliver reply
 	requestSubmittedAt time.Time
+	replyDeliveredAt   time.Time
 	timeoutAt          *time.Time
 	highPriority       bool
 	rawData            []byte
@@ -39,7 +40,25 @@ type AppConn struct {
 	logicalDevice     uint16
 	invokeIdsCh       chan uint8
 	finish            chan string
-	rips              map[uint8][]*DlmsValueRequestResponse // requests in progress
+	rips              map[uint8][]*DlmsValueRequestResponse // Requests in progress. Map key is invokeId. In case of GetRequestNormal value array will comtain just one item. In case of  GetRequestWithList array lengh will be equal to number of values requested.
+}
+
+type DlmsResponse []*DlmsValueRequestResponse
+
+func (rep DlmsResponse) RequestAt(i int) (req *DlmsValueRequest) {
+	return rep[i].req
+}
+
+func (rep DlmsResponse) DataAt(i int) *tDlmsData {
+	return rep[i].rep.data
+}
+
+func (rep DlmsResponse) DataAccessResultAt(i int) tDlmsDataAccessResult {
+	return rep[i].rep.dataAccessResult
+}
+
+func (rep DlmsResponse) DeliveredIn() time.Duration {
+	return rep[0].replyDeliveredAt.Sub(rep[0].requestSubmittedAt)
 }
 
 func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16) (aconn *AppConn) {
@@ -111,7 +130,7 @@ func (aconn *AppConn) killRequest(invokeId uint8, err error) {
 	}
 	for _, rip := range rips {
 		rip.dead = new(string)
-		*rip.dead = err.Error()
+		*rip.dead = fmt.Sprintf("killed, error: %s", err.Error())
 	}
 	serr = fmt.Sprintf("%s: request killed, invokeId: %d, reason: %s", FNAME, invokeId, *rips[0].dead)
 	errorLog.Println(serr)
@@ -135,9 +154,10 @@ func (aconn *AppConn) deliverReply(invokeId uint8) {
 	for _, rip := range rips {
 		rip.dead = new(string)
 		*rip.dead = "reply delivered"
+		rip.replyDeliveredAt = time.Now()
 	}
 	debugLog.Printf("%s: reply delivered, invokeId: %d\n", FNAME, invokeId)
-	rips[0].ch <- &DlmsChannelMessage{nil, rips}
+	rips[0].ch <- &DlmsChannelMessage{nil, DlmsResponse(rips)}
 	aconn.invokeIdsCh <- invokeId
 }
 
