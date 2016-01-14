@@ -1321,7 +1321,7 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 	ret, errno := C.ber_decode((*C.struct_asn_codec_ctx_s)(unsafe.Pointer(nil)), &C.asn_DEF_Data, (*unsafe.Pointer)(unsafe.Pointer(&cdata)), unsafe.Pointer(&cb[0]), C.size_t(len(cb)))
 	C.hlp__gc_free(unsafe.Pointer(&cb[0]))
 	if C.RC_OK != ret.code {
-		serr = fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno)
+		serr = fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: %d, errno %v", ret.code, ret.consumed, errno)
 		errorLog.Println(serr)
 		return errors.New(serr), nil, 0
 	}

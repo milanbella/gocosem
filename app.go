@@ -96,8 +96,12 @@ func (aconn *AppConn) transportSend(invokeId uint8, pdu []byte) {
 
 func (aconn *AppConn) killRequest(invokeId uint8, err error) {
 	var (
-		serr string
+		FNAME string = "AppConn.killRequest()"
+		serr  string
 	)
+	if nil == err {
+		panic("assertion failed")
+	}
 	rips, ok := aconn.rips[invokeId]
 	if !ok {
 		return
@@ -109,7 +113,7 @@ func (aconn *AppConn) killRequest(invokeId uint8, err error) {
 		rip.dead = new(string)
 		*rip.dead = err.Error()
 	}
-	serr = fmt.Sprintf("%s: request killed, invokeId: %d, reason: %s", invokeId, *rips[0].dead)
+	serr = fmt.Sprintf("%s: request killed, invokeId: %d, reason: %s", FNAME, invokeId, *rips[0].dead)
 	errorLog.Println(serr)
 	rips[0].ch <- &DlmsChannelMessage{err, nil}
 	aconn.invokeIdsCh <- invokeId
@@ -132,7 +136,7 @@ func (aconn *AppConn) deliverReply(invokeId uint8) {
 		rip.dead = new(string)
 		*rip.dead = "reply delivered"
 	}
-	debugLog.Printf("%s: reply delivered, invokeId: %d\n", invokeId)
+	debugLog.Printf("%s: reply delivered, invokeId: %d\n", FNAME, invokeId)
 	rips[0].ch <- &DlmsChannelMessage{nil, rips}
 	aconn.invokeIdsCh <- invokeId
 }
@@ -201,10 +205,11 @@ func (aconn *AppConn) processReply(pdu []byte) {
 	)
 
 	invokeId := uint8((pdu[2] & 0xF0) >> 4)
+	debugLog.Printf("%s: invokeId %d\n", FNAME, invokeId)
 
 	rips := aconn.rips[invokeId]
 	if nil == rips {
-		errorLog.Printf("%s: no request in progresss for invokeId %d, pdu is discarded", FNAME, invokeId)
+		errorLog.Printf("%s: no request in progresss for invokeId %d, pdu is discarded\n", FNAME, invokeId)
 		return
 	}
 	if nil != rips[0].dead {
@@ -213,15 +218,18 @@ func (aconn *AppConn) processReply(pdu []byte) {
 	}
 
 	if (0xC4 == pdu[0]) && (0x01 == pdu[1]) {
+		errorLog.Printf("%s: processing ResponseNormal", FNAME)
 
 		aconn.processGetResponseNormal(rips, pdu)
 
 	} else if (0xC4 == pdu[0]) && (0x03 == pdu[1]) {
+		errorLog.Printf("%s: processing ResponseWithList", FNAME)
 
 		aconn.processGetResponseWithList(rips, pdu)
 
 	} else if (0xC4 == pdu[0]) && (0x02 == pdu[1]) {
 		// data blocks response
+		errorLog.Printf("%s: processing ResponsewithDataBlock", FNAME)
 
 		err, invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData := decode_GetResponsewithDataBlock(pdu)
 		if nil != err {
@@ -229,37 +237,33 @@ func (aconn *AppConn) processReply(pdu []byte) {
 			return
 		}
 		if 0 != dataAccessResult {
-			serr = fmt.Sprintf("%s: error occured receiving response block, invokeId: %d, blockNumber: %d, dataAccessResult: %d", invokeId, blockNumber, dataAccessResult)
+			serr = fmt.Sprintf("%s: error occured receiving response block, invokeId: %d, blockNumber: %d, dataAccessResult: %d", FNAME, invokeId, blockNumber, dataAccessResult)
 			errorLog.Println(serr)
-			aconn.killRequest(rips[0].invokeId, err)
+			aconn.killRequest(rips[0].invokeId, errors.New(serr))
 			return
 		}
 
-		if nil != rips[0].rawData {
+		if nil == rips[0].rawData {
 			rips[0].rawData = rawData
 		} else {
 			rips[0].rawData = append(rips[0].rawData, rawData...)
 		}
+		_pdu := rips[0].rawData
 
 		if lastBlock {
-			if 1 == len(rips) {
-				// normal get
-				h := []byte{0xC4, 0x01, byte(invokeIdAndPriority), 0x00}
-				_pdu := make([]byte, 0, len(h)+len(rips[0].rawData))
-				_pdu = append(_pdu, h...)
-				_pdu = append(_pdu, rips[0].rawData...)
+			if (0xC4 == _pdu[0]) && (0x01 == _pdu[1]) {
+				debugLog.Printf("%s: all blocks received, processing ResponseNormal", FNAME)
 				aconn.processGetResponseNormal(rips, _pdu)
-			} else {
-				// get with list
-				h := []byte{0xC4, 0x02, byte(invokeIdAndPriority), 0x00}
-				_pdu := make([]byte, 0, len(h)+len(rips[0].rawData))
-				_pdu = append(_pdu, h...)
-				_pdu = append(_pdu, rips[0].rawData...)
+			} else if (0xC4 == _pdu[0]) && (0x02 == _pdu[1]) {
+				debugLog.Printf("%s: all blocks received, processing ResponseWithList", FNAME)
 				aconn.processGetResponseWithList(rips, _pdu)
+			} else {
+				panic("assertion failed")
 			}
 		} else {
 			// requests next data block
 
+			errorLog.Printf("%s: requesting data block: %d", FNAME, blockNumber)
 			err, _pdu := encode_GetRequestForNextDataBlock(invokeIdAndPriority, blockNumber)
 			if nil != err {
 				aconn.killRequest(rips[0].invokeId, err)

@@ -31,11 +31,13 @@ type tMockCosemServerConnection struct {
 }
 
 func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, invokeIdAndPriority tDlmsInvokeIdAndPriority, reply []byte) {
+	var FNAME string = "tMockCosemServerConnection.sendEncodedReply()"
 
 	invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
 	l := 10 // block length
 	if len(reply) > l {
 		// use block transfer
+		t.Logf("%s: using block transfer", FNAME)
 
 		blocks := make([][]byte, len(reply)/10+1)
 		b := reply[0:]
@@ -47,49 +49,59 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, invokeIdA
 		blocks[i] = b
 		conn.blocks[invokeId] = blocks
 
-		err, reply := encode_GetResponsewithDataBlock(invokeIdAndPriority, false, 0, 1, blocks[0])
+		t.Logf("%s: blocks count: %d", FNAME, len(blocks))
+		for i = 0; i < len(blocks); i += 1 {
+			t.Logf("%s: block[%d]: %02X", FNAME, i, blocks[i])
+		}
+
+		err, reply := encode_GetResponsewithDataBlock(invokeIdAndPriority, false, 1, 0, blocks[0])
 		if nil != err {
-			t.Fatalf(fmt.Sprintf("%v\n", err))
+			t.Fatalf("%v\n", err)
 			return
 		}
 		ch := make(DlmsChannel)
 		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
 		msg := <-ch
 		if nil != msg.err {
-			t.Fatalf(fmt.Sprintf("%v\n", err))
+			t.Fatalf("%v\n", err)
 			return
 		}
 
 	} else {
+		t.Logf("%s: using normal transfer", FNAME)
 		ch := make(DlmsChannel)
 		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
 		msg := <-ch
 		if nil != msg.err {
-			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			t.Fatalf("%v\n", msg.err)
 			return
 		}
 	}
 }
 
 func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte) {
+	var FNAME string = "tMockCosemServerConnection.replyToRequest()"
 
 	if bytes.Equal(pdu[0:2], []byte{0xC0, 0x01}) {
+		t.Logf("%s: GetRequestNormal", FNAME)
 		err, invokeIdAndPriority, classId, instanceId, attributeId, accessSelector, accessParameters := decode_GetRequestNormal(pdu)
 		if nil != err {
-			t.Fatalf(fmt.Sprintf("%v\n", err))
+			t.Fatalf("%v\n", err)
 			return
 		}
 		dataAccessResult, data := conn.srv.getData(t, classId, instanceId, attributeId, accessSelector, accessParameters)
+		t.Logf("%s: dataAccessResult: %d", FNAME, dataAccessResult)
 		err, rawData := encode_GetResponseNormal(invokeIdAndPriority, dataAccessResult, data)
 		if nil != err {
-			t.Fatalf(fmt.Sprintf("%v\n", err))
+			t.Fatalf("%v\n", err)
 			return
 		}
 		conn.sendEncodedReply(t, invokeIdAndPriority, rawData)
 	} else if bytes.Equal(pdu[0:2], []byte{0xC0, 0x03}) {
+		t.Logf("%s: GetRequestWithList", FNAME)
 		err, invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters := decode_GetRequestWithList(pdu)
 		if nil != err {
-			t.Fatalf(fmt.Sprintf("%v\n", err))
+			t.Fatalf("%v\n", err)
 			return
 		}
 		count := len(classIds)
@@ -98,19 +110,21 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 		dataAccessResults := make([]tDlmsDataAccessResult, count)
 		for i := 0; i < count; i += 1 {
 			dataAccessResult, data := conn.srv.getData(t, classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
+			t.Logf("%s: dataAccessResult[%d]: %d", FNAME, i, dataAccessResult)
 			dataAccessResults[i] = dataAccessResult
 			datas[i] = data
 		}
 		err, rawData = encode_GetResponseWithList(invokeIdAndPriority, dataAccessResults, datas)
 		if nil != err {
-			t.Fatalf(fmt.Sprintf("%v\n", err))
+			t.Fatalf("%v\n", err)
 			return
 		}
 		conn.sendEncodedReply(t, invokeIdAndPriority, rawData)
-	} else if bytes.Equal(pdu[0:2], []byte{0xC0, 0x03}) {
+	} else if bytes.Equal(pdu[0:2], []byte{0xC0, 0x02}) {
+		t.Logf("%s: GetRequestForNextDataBlock", FNAME)
 		err, invokeIdAndPriority, blockNumber := decode_GetRequestForNextDataBlock(pdu)
 		if nil != err {
-			t.Fatalf(fmt.Sprintf("%v\n", err))
+			t.Fatalf("%v\n", err)
 			return
 		}
 		invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
@@ -119,7 +133,6 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 		var rawData []byte
 		var lastBlock bool
 
-		blockNumber += 1
 		if nil == conn.blocks[invokeId] {
 			t.Logf("no blocks for invokeId: setting dataAccessResult to 1")
 			dataAccessResult = 1
@@ -132,6 +145,7 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 			dataAccessResult = 0
 			rawData = conn.blocks[invokeId][blockNumber]
 		}
+		t.Logf("%s: dataAccessResult: %d", FNAME, dataAccessResult)
 
 		if (len(conn.blocks[invokeId]) - 1) == int(blockNumber) {
 			lastBlock = true
@@ -139,16 +153,20 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 			lastBlock = false
 		}
 
+		if lastBlock {
+			conn.blocks[invokeId] = nil
+		}
+
 		err, reply := encode_GetResponsewithDataBlock(invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData)
 		if nil != err {
-			t.Fatalf(fmt.Sprintf("%v\n", err))
+			t.Fatalf("%v\n", err)
 			return
 		}
 		ch := make(DlmsChannel)
 		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
 		msg := <-ch
 		if nil != msg.err {
-			t.Fatalf(fmt.Sprintf("%v\n", err))
+			t.Fatalf("%v\n", err)
 			return
 		}
 	} else {
@@ -167,7 +185,7 @@ func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) {
 		ipTransportReceive(ch, conn.rwc, &conn.applicationClient, &conn.logicalDevice)
 		msg := <-ch
 		if nil != msg.err {
-			t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+			t.Fatalf("%v\n", msg.err)
 			return
 		}
 		m := msg.data.(map[string]interface{})
@@ -193,7 +211,7 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	ipTransportReceive(ch, rwc, nil, nil)
 	msg := <-ch
 	if nil != msg.err {
-		t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+		t.Fatalf("%v\n", msg.err)
 		return
 	}
 	m := msg.data.(map[string]interface{})
@@ -205,7 +223,7 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	ipTransportSend(ch, rwc, logicalDevice, applicationClient, aare)
 	msg = <-ch
 	if nil != msg.err {
-		t.Fatalf(fmt.Sprintf("%v\n", msg.err))
+		t.Fatalf("%v\n", msg.err)
 		return
 	}
 
@@ -214,6 +232,7 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	conn.rwc = rwc
 	conn.logicalDevice = logicalDevice
 	conn.applicationClient = applicationClient
+	conn.blocks = make(map[uint8][][]byte)
 	srv.connections.PushBack(conn)
 
 	go conn.receiveAndReply(t)
@@ -270,7 +289,7 @@ func (srv *tMockCosemServer) accept(t *testing.T, tcpAddr string, aare []byte) {
 
 	ln, err := net.Listen("tcp", tcpAddr)
 	if err != nil {
-		t.Fatalf(fmt.Sprintf("net.Listen() failed: %v\n", err))
+		t.Fatalf("net.Listen() failed: %v\n", err)
 		return
 	}
 	srv.ln = ln
@@ -280,12 +299,29 @@ func (srv *tMockCosemServer) accept(t *testing.T, tcpAddr string, aare []byte) {
 	for !srv.closed {
 		conn, err := srv.ln.Accept()
 		if err != nil {
-			t.Fatalf(fmt.Sprintf("net.Accept() failed: %v\n", err))
+			t.Fatalf("net.Accept() failed: %v\n", err)
 			return
 		}
 		go srv.acceptApp(t, conn, aare)
 	}
 
+}
+
+func (srv *tMockCosemServer) setAttribute(instanceId *tDlmsOid, classId tDlmsClassId, attributeId tDlmsAttributeId, data *tDlmsData) {
+
+	key := srv.objectKey(instanceId)
+	obj := srv.objects[key]
+	if nil == obj {
+		obj = new(tMockCosemObject)
+		srv.objects[key] = obj
+	}
+	obj.classId = classId
+	attributes := obj.attributes
+	if nil == attributes {
+		attributes = make(map[tDlmsAttributeId]*tDlmsData)
+		obj.attributes = attributes
+	}
+	attributes[attributeId] = data
 }
 
 func startMockCosemServer(t *testing.T, addr string, port int, aare []byte) (srv *tMockCosemServer) {
@@ -294,6 +330,7 @@ func startMockCosemServer(t *testing.T, addr string, port int, aare []byte) (srv
 
 	srv = new(tMockCosemServer)
 	srv.connections = list.New()
+	srv.objects = make(map[string]*tMockCosemObject)
 	go srv.accept(t, tcpAddr, aare)
 	return srv
 }
@@ -311,7 +348,7 @@ func TestX__TcpConnect(t *testing.T) {
 	TcpConnect(ch, 10000, "localhost", 4059)
 	msg := <-ch
 	if nil != msg.err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+		t.Fatalf("%s\n", msg.err)
 	}
 	t.Logf("transport connected")
 	dconn := msg.data.(*DlmsConn)
@@ -327,7 +364,7 @@ func TestX_AppConnect(t *testing.T) {
 	TcpConnect(ch, 10000, "localhost", 4059)
 	msg := <-ch
 	if nil != msg.err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+		t.Fatalf("%s\n", msg.err)
 	}
 	t.Logf("transport connected")
 	dconn := msg.data.(*DlmsConn)
@@ -335,10 +372,51 @@ func TestX_AppConnect(t *testing.T) {
 	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+		t.Fatalf("%s\n", msg.err)
 	}
 	t.Logf("application connected")
 	aconn := msg.data.(*AppConn)
+	aconn.Close()
+	srv.Close(t)
+}
+
+func TestX_GetRequestNormal(t *testing.T) {
+
+	srv := startMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
+
+	data := (new(tDlmsData))
+	data.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	srv.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("application connected")
+	aconn := msg.data.(*AppConn)
+
+	val := new(DlmsValueRequest)
+	val.classId = 1
+	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.attributeId = 0x02
+	vals := make([]*DlmsValueRequest, 1)
+	vals[0] = val
+	aconn.getRquest(ch, 10000, true, vals)
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+
 	aconn.Close()
 	srv.Close(t)
 }
