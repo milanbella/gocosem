@@ -30,7 +30,7 @@ type DlmsValueRequestResponse struct {
 	ch                 DlmsChannel // channel to deliver reply
 	requestSubmittedAt time.Time
 	replyDeliveredAt   time.Time
-	timeoutAt          *time.Time
+	timeoutAt          time.Time
 	highPriority       bool
 	rawData            []byte
 }
@@ -165,6 +165,7 @@ func (aconn *AppConn) deliverReply(invokeId uint8) {
 }
 
 func (aconn *AppConn) deliverTimeouts() {
+	var FNAME string = "AppConn.deliverTimeouts()"
 
 	var deliver func()
 
@@ -174,9 +175,11 @@ func (aconn *AppConn) deliverTimeouts() {
 		case <-aconn.finish:
 			return
 		case <-time.After(time.Millisecond * 100):
+			currentTime := time.Now()
 			for invokeId, rips := range aconn.rips {
 
-				if (nil != rips[0].timeoutAt) && rips[0].timeoutAt.After(time.Now()) {
+				if currentTime.After(rips[0].timeoutAt) {
+					errorLog.Printf("%s request invokeId %d timed out, killed after %v", FNAME, invokeId, currentTime.Sub(rips[0].requestSubmittedAt))
 					aconn.killRequest(invokeId, ErrorRequestTimeout)
 				}
 			}
@@ -406,7 +409,7 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 
 			rip.invokeId = invokeId
 			rip.requestSubmittedAt = currentTime
-			rip.timeoutAt = &timeoutAt
+			rip.timeoutAt = timeoutAt
 			rip.ch = ch
 			rip.highPriority = highPriority
 			rips[i] = rip

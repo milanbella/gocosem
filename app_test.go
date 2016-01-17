@@ -754,3 +754,70 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 
 	mockCosemServer.Close()
 }
+
+func no_TestX_5000parallelRequests(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+
+	data := (new(tDlmsData))
+	data.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("application connected")
+	aconn := msg.data.(*AppConn)
+
+	val := new(DlmsValueRequest)
+	val.classId = 1
+	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.attributeId = 0x02
+	vals := make([]*DlmsValueRequest, 1)
+	vals[0] = val
+
+	sink := make(DlmsChannel)
+	count := int(1000)
+
+	for i := 0; i < count; i += 1 {
+		go func() {
+			aconn.getRquest(ch, 10000, true, vals)
+			msg = <-ch
+			sink <- msg
+		}()
+	}
+
+sinkLoop:
+	for {
+		msg := <-sink
+		count -= 1
+		if nil != msg.err {
+			t.Fatalf("%s\n", msg.err)
+		}
+		rep := msg.data.(DlmsResponse)
+		t.Logf("response delivered: in %v", rep.DeliveredIn())
+		if 0 != rep.DataAccessResultAt(0) {
+			t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+		}
+		if !bytes.Equal(data.getBytes(), rep.DataAt(0).getBytes()) {
+			t.Fatalf("value differs")
+		}
+		if 0 == count {
+			break sinkLoop
+		}
+	}
+
+	aconn.Close()
+	mockCosemServer.Close()
+}
