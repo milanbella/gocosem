@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"testing"
+	"time"
 )
 
 type tMockCosemObject struct {
@@ -15,11 +16,12 @@ type tMockCosemObject struct {
 }
 
 type tMockCosemServer struct {
-	closed      bool
-	ln          net.Listener
-	connections *list.List // list of *tMockCosemServerConnection
-	objects     map[string]*tMockCosemObject
-	blockLength int
+	closed         bool
+	ln             net.Listener
+	connections    *list.List // list of *tMockCosemServerConnection
+	objects        map[string]*tMockCosemObject
+	blockLength    int
+	replyDelayMsec int
 }
 
 type tMockCosemServerConnection struct {
@@ -205,10 +207,19 @@ func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) (err error
 		}
 
 		go func() {
-			err := conn.replyToRequest(t, m["pdu"].([]byte))
-			if nil != err {
-				errorLog.Printf("%s: %v\n", FNAME, err)
-				conn.rwc.Close()
+			if conn.srv.replyDelayMsec <= 0 {
+				err := conn.replyToRequest(t, m["pdu"].([]byte))
+				if nil != err {
+					errorLog.Printf("%s: %v\n", FNAME, err)
+					conn.rwc.Close()
+				}
+			} else {
+				<-time.After(time.Millisecond * time.Duration(conn.srv.replyDelayMsec))
+				err := conn.replyToRequest(t, m["pdu"].([]byte))
+				if nil != err {
+					errorLog.Printf("%s: %v\n", FNAME, err)
+					conn.rwc.Close()
+				}
 			}
 		}()
 	}
@@ -362,6 +373,7 @@ func (srv *tMockCosemServer) Init() {
 	srv.connections = list.New()
 	srv.objects = make(map[string]*tMockCosemObject)
 	srv.blockLength = 1000
+	srv.replyDelayMsec = 0
 }
 
 const c_TEST_ADDR = "localhost"
@@ -369,18 +381,21 @@ const c_TEST_PORT = 4059
 
 var c_TEST_AARE = []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x18, 0x1F, 0x08, 0x00, 0x00, 0x07}
 
-func TestX__StartMockCosemServer(t *testing.T) {
+func ensureMockCosemServer(t *testing.T) {
 
-	ch := make(DlmsChannel)
-	startMockCosemServer(t, ch, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
-	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
-		mockCosemServer = nil
+	if nil == mockCosemServer {
+		ch := make(DlmsChannel)
+		startMockCosemServer(t, ch, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
+		msg := <-ch
+		if nil != msg.err {
+			t.Fatalf("%s\n", msg.err)
+			mockCosemServer = nil
+		}
 	}
 }
 
 func TestX__TcpConnect(t *testing.T) {
+	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 
 	ch := make(DlmsChannel)
@@ -397,6 +412,7 @@ func TestX__TcpConnect(t *testing.T) {
 }
 
 func TestX_AppConnect(t *testing.T) {
+	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 
 	ch := make(DlmsChannel)
@@ -421,6 +437,7 @@ func TestX_AppConnect(t *testing.T) {
 }
 
 func TestX_GetRequestNormal(t *testing.T) {
+	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 
 	data := (new(tDlmsData))
@@ -469,7 +486,59 @@ func TestX_GetRequestNormal(t *testing.T) {
 	mockCosemServer.Close()
 }
 
+func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+	mockCosemServer.blockLength = 10
+
+	data := (new(tDlmsData))
+	data.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("application connected")
+	aconn := msg.data.(*AppConn)
+
+	val := new(DlmsValueRequest)
+	val.classId = 1
+	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.attributeId = 0x02
+	vals := make([]*DlmsValueRequest, 1)
+	vals[0] = val
+	aconn.getRquest(ch, 10000, true, vals)
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	rep := msg.data.(DlmsResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data.getBytes(), rep.DataAt(0).getBytes()) {
+		t.Fatalf("value differs")
+	}
+
+	aconn.Close()
+
+	mockCosemServer.Close()
+}
+
 func TestX_GetRequestWithList(t *testing.T) {
+	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 
 	data1 := (new(tDlmsData))
@@ -512,6 +581,156 @@ func TestX_GetRequestWithList(t *testing.T) {
 	vals[1] = val
 
 	aconn.getRquest(ch, 10000, true, vals)
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	rep := msg.data.(DlmsResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data1.getBytes(), rep.DataAt(0).getBytes()) {
+		t.Fatalf("value differs")
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+	}
+	if !bytes.Equal(data2.getBytes(), rep.DataAt(1).getBytes()) {
+		t.Fatalf("value differs")
+	}
+
+	aconn.Close()
+
+	mockCosemServer.Close()
+}
+
+func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+	mockCosemServer.blockLength = 10
+
+	data1 := (new(tDlmsData))
+	data1.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
+
+	data2 := (new(tDlmsData))
+	data2.setBytes([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("application connected")
+	aconn := msg.data.(*AppConn)
+
+	vals := make([]*DlmsValueRequest, 2)
+
+	val := new(DlmsValueRequest)
+	val.classId = 1
+	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.attributeId = 0x02
+	vals[0] = val
+
+	val = new(DlmsValueRequest)
+	val.classId = 1
+	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.attributeId = 0x02
+	vals[1] = val
+
+	aconn.getRquest(ch, 10000, true, vals)
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	rep := msg.data.(DlmsResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data1.getBytes(), rep.DataAt(0).getBytes()) {
+		t.Fatalf("value differs")
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+	}
+	if !bytes.Equal(data2.getBytes(), rep.DataAt(1).getBytes()) {
+		t.Fatalf("value differs")
+	}
+
+	aconn.Close()
+
+	mockCosemServer.Close()
+}
+
+func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+	mockCosemServer.blockLength = 10
+	mockCosemServer.replyDelayMsec = 1000
+
+	data1 := (new(tDlmsData))
+	data1.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
+
+	data2 := (new(tDlmsData))
+	data2.setBytes([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+	t.Logf("application connected")
+	aconn := msg.data.(*AppConn)
+
+	vals := make([]*DlmsValueRequest, 2)
+
+	val := new(DlmsValueRequest)
+	val.classId = 1
+	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.attributeId = 0x02
+	vals[0] = val
+
+	val = new(DlmsValueRequest)
+	val.classId = 1
+	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.attributeId = 0x02
+	vals[1] = val
+
+	// expect request timeout
+
+	aconn.getRquest(ch, 500, true, vals)
+	msg = <-ch
+	if ErrorRequestTimeout != msg.err {
+		t.Fatalf("%s\n", msg.err)
+	}
+
+	// timeouted request must not disable following requests
+
+	mockCosemServer.replyDelayMsec = 0
+	aconn.getRquest(ch, 500, true, vals)
 	msg = <-ch
 	if nil != msg.err {
 		t.Fatalf("%s\n", msg.err)

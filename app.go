@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+var ErrorRequestTimeout = errors.New("request timeout")
+
 type DlmsValueRequest struct {
 	classId         tDlmsClassId
 	instanceId      *tDlmsOid
@@ -78,6 +80,7 @@ func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16)
 	aconn.finish = make(chan string)
 
 	aconn.receiveReplies()
+	aconn.deliverTimeouts()
 
 	return aconn
 }
@@ -174,7 +177,7 @@ func (aconn *AppConn) deliverTimeouts() {
 			for invokeId, rips := range aconn.rips {
 
 				if (nil != rips[0].timeoutAt) && rips[0].timeoutAt.After(time.Now()) {
-					aconn.killRequest(invokeId, errors.New("request timeout"))
+					aconn.killRequest(invokeId, ErrorRequestTimeout)
 				}
 			}
 			go deliver()
