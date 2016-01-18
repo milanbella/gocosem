@@ -1,7 +1,7 @@
 package gocosem
 
-// #cgo LDFLAGS: -L${SRCDIR}/c/asn1 -L/usr/local/lib -lCosemPdu -lgc
-// #cgo CPPFLAGS: -I. -I${SRCDIR}/c/asn1 -I${SRCDIR}/c/asn1/go -I/usr/local/include/gc
+// #cgo LDFLAGS: -L${SRCDIR}/c/asn1 -L/usr/local/lib -lCosemPdu
+// #cgo CPPFLAGS: -I. -I${SRCDIR}/c/asn1 -I${SRCDIR}/c/asn1/go
 //
 // #include <stdlib.h>
 // #include <stdio.h>
@@ -261,7 +261,7 @@ func cslicel(length int) []C.uint8_t {
 
 
 	*/
-	cb := (*[1 << 30]C.uint8_t)(unsafe.Pointer(C.hlp__gc_calloc(C.size_t(length), 1)))[:length:length]
+	cb := (*[1 << 30]C.uint8_t)(unsafe.Pointer(C.hlp__calloc(C.size_t(length), 1)))[:length:length]
 	return cb
 }
 
@@ -284,7 +284,7 @@ func cslicep(p uintptr, length uintptr) []C.uint8_t {
 
 	*/
 	b := (*[1 << 30]byte)(unsafe.Pointer(p))[:n:n]
-	cb := (*[1 << 30]C.uint8_t)(unsafe.Pointer(C.hlp__gc_calloc(C.size_t(n), 1)))[:n:n]
+	cb := (*[1 << 30]C.uint8_t)(unsafe.Pointer(C.hlp__calloc(C.size_t(n), 1)))[:n:n]
 
 	for i := 0; i < n; i++ {
 		cb[i] = (C.uint8_t)(b[i])
@@ -310,11 +310,13 @@ func goslice(cb *C.uint8_t, n C.int) []byte {
 	return C.GoBytes(unsafe.Pointer(cb), n)
 }
 
-func cAsn1Integer(i *tAsn1Integer) *C.long {
+func cAsn1Integer(ci *C.long, i *tAsn1Integer) *C.long {
 	if nil == i {
 		return nil
 	}
-	ci := C.hlp__calloc_long(1)
+	if nil == ci {
+		ci = C.hlp__calloc_long(1)
+	}
 	*ci = C.long(*i)
 	return ci
 }
@@ -328,11 +330,13 @@ func goAsn1Integer(ci *C.long) *tAsn1Integer {
 	return i
 }
 
-func cAsn1Integer8(i *tAsn1Integer8) *C.Integer8_t {
+func cAsn1Integer8(ci *C.Integer8_t, i *tAsn1Integer8) *C.Integer8_t {
 	if nil == i {
 		return nil
 	}
-	ci := C.hlp__calloc_Integer8_t(1)
+	if nil == ci {
+		ci = C.hlp__calloc_Integer8_t(1)
+	}
 	*ci = C.Integer8_t(*i)
 	return ci
 }
@@ -346,11 +350,13 @@ func goAsn1Integer8(ci *C.Integer8_t) *tAsn1Integer8 {
 	return i
 }
 
-func cAsn1Integer16(i *tAsn1Integer16) *C.Integer16_t {
+func cAsn1Integer16(ci *C.Integer16_t, i *tAsn1Integer16) *C.Integer16_t {
 	if nil == i {
 		return nil
 	}
-	ci := C.hlp__calloc_Integer16_t(1)
+	if nil == ci {
+		ci = C.hlp__calloc_Integer16_t(1)
+	}
 	*ci = C.Integer16_t(*i)
 	return ci
 }
@@ -364,11 +370,13 @@ func goAsn1Integer16(ci *C.Integer16_t) *tAsn1Integer16 {
 	return i
 }
 
-func cAsn1Integer32(i *tAsn1Integer32) *C.Integer32_t {
+func cAsn1Integer32(ci *C.Integer32_t, i *tAsn1Integer32) *C.Integer32_t {
 	if nil == i {
 		return nil
 	}
-	ci := C.hlp__calloc_Integer32_t(1)
+	if nil == ci {
+		ci = C.hlp__calloc_Integer32_t(1)
+	}
 	*ci = C.Integer32_t(*i)
 	return ci
 }
@@ -382,7 +390,7 @@ func goAsn1Integer32(ci *C.Integer32_t) *tAsn1Integer32 {
 	return i
 }
 
-func cAsn1Long64(i *tAsn1Long64) *C.OCTET_STRING_t {
+func cAsn1Long64(ci *C.OCTET_STRING_t, i *tAsn1Long64) *C.OCTET_STRING_t {
 	if nil == i {
 		return nil
 	}
@@ -395,7 +403,7 @@ func cAsn1Long64(i *tAsn1Long64) *C.OCTET_STRING_t {
 	ib := buf.Bytes()
 
 	cib := cslice(ib)
-	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cib[0]), C.int(len(cib)))
+	return C.hlp__fill_OCTET_STRING_t(ci, (*C.uint8_t)(&cib[0]), C.int(len(cib)))
 }
 
 func goAsn1Long64(ci *C.OCTET_STRING_t) *tAsn1Long64 {
@@ -419,11 +427,13 @@ func goAsn1Long64(ci *C.OCTET_STRING_t) *tAsn1Long64 {
 	return i
 }
 
-func cAsn1Unsigned8(i *tAsn1Unsigned8) *C.Unsigned8_t {
+func cAsn1Unsigned8(ci *C.Unsigned8_t, i *tAsn1Unsigned8) *C.Unsigned8_t {
 	if nil == i {
 		return nil
 	}
-	ci := C.hlp__calloc_Unsigned8_t(1)
+	if nil == ci {
+		ci = C.hlp__calloc_Unsigned8_t(1)
+	}
 	*ci = C.Unsigned8_t(*i)
 	return ci
 }
@@ -437,11 +447,13 @@ func goAsn1Unsigned8(ci *C.Unsigned8_t) *tAsn1Unsigned8 {
 	return i
 }
 
-func cAsn1Unsigned16(i *tAsn1Unsigned16) *C.Unsigned16_t {
+func cAsn1Unsigned16(ci *C.Unsigned16_t, i *tAsn1Unsigned16) *C.Unsigned16_t {
 	if nil == i {
 		return nil
 	}
-	ci := C.hlp__calloc_Unsigned16_t(1)
+	if nil == ci {
+		ci = C.hlp__calloc_Unsigned16_t(1)
+	}
 	*ci = C.Unsigned16_t(*i)
 	return ci
 }
@@ -455,11 +467,13 @@ func goAsn1Unsigned16(ci *C.Unsigned16_t) *tAsn1Unsigned16 {
 	return i
 }
 
-func cAsn1Unsigned32(i *tAsn1Unsigned32) *C.Unsigned32_t {
+func cAsn1Unsigned32(ci *C.Unsigned32_t, i *tAsn1Unsigned32) *C.Unsigned32_t {
 	if nil == i {
 		return nil
 	}
-	ci := C.hlp__calloc_Unsigned32_t(1)
+	if nil == ci {
+		ci = C.hlp__calloc_Unsigned32_t(1)
+	}
 	*ci = C.Unsigned32_t(*i)
 	return ci
 }
@@ -473,7 +487,7 @@ func goAsn1Unsigned32(ci *C.Unsigned32_t) *tAsn1Unsigned32 {
 	return i
 }
 
-func cAsn1UnsignedLong64(i *tAsn1UnsignedLong64) *C.OCTET_STRING_t {
+func cAsn1UnsignedLong64(ci *C.OCTET_STRING_t, i *tAsn1UnsignedLong64) *C.OCTET_STRING_t {
 	if nil == i {
 		return nil
 	}
@@ -486,7 +500,7 @@ func cAsn1UnsignedLong64(i *tAsn1UnsignedLong64) *C.OCTET_STRING_t {
 	ib := buf.Bytes()
 
 	cib := cslice(ib)
-	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cib[0]), C.int(len(cib)))
+	return C.hlp__fill_OCTET_STRING_t(ci, (*C.uint8_t)(&cib[0]), C.int(len(cib)))
 }
 
 func goAsn1UnsignedLong64(ci *C.OCTET_STRING_t) *tAsn1UnsignedLong64 {
@@ -510,7 +524,7 @@ func goAsn1UnsignedLong64(ci *C.OCTET_STRING_t) *tAsn1UnsignedLong64 {
 	return i
 }
 
-func cAsn1Float(f *tAsn1Float) *C.OCTET_STRING_t {
+func cAsn1Float(cf *C.OCTET_STRING_t, f *tAsn1Float) *C.OCTET_STRING_t {
 	if nil == f {
 		return nil
 	}
@@ -523,7 +537,7 @@ func cAsn1Float(f *tAsn1Float) *C.OCTET_STRING_t {
 	fb := buf.Bytes()
 
 	cfb := cslice(fb)
-	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
+	return C.hlp__fill_OCTET_STRING_t(cf, (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
 }
 
 func goAsn1Float(cf *C.OCTET_STRING_t) *tAsn1Float {
@@ -542,7 +556,7 @@ func goAsn1Float(cf *C.OCTET_STRING_t) *tAsn1Float {
 	return f
 }
 
-func cAsn1Float32(f *tAsn1Float32) *C.OCTET_STRING_t {
+func cAsn1Float32(cf *C.OCTET_STRING_t, f *tAsn1Float32) *C.OCTET_STRING_t {
 	if nil == f {
 		return nil
 	}
@@ -555,7 +569,7 @@ func cAsn1Float32(f *tAsn1Float32) *C.OCTET_STRING_t {
 	fb := buf.Bytes()
 
 	cfb := cslice(fb)
-	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
+	return C.hlp__fill_OCTET_STRING_t(cf, (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
 }
 
 func goAsn1Float32(cf *C.OCTET_STRING_t) *tAsn1Float32 {
@@ -578,7 +592,7 @@ func goAsn1Float32(cf *C.OCTET_STRING_t) *tAsn1Float32 {
 	return f
 }
 
-func cAsn1Float64(f *tAsn1Float64) *C.OCTET_STRING_t {
+func cAsn1Float64(cf *C.OCTET_STRING_t, f *tAsn1Float64) *C.OCTET_STRING_t {
 	if nil == f {
 		return nil
 	}
@@ -591,7 +605,7 @@ func cAsn1Float64(f *tAsn1Float64) *C.OCTET_STRING_t {
 	fb := buf.Bytes()
 
 	cfb := cslice(fb)
-	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
+	return C.hlp__fill_OCTET_STRING_t(cf, (*C.uint8_t)(&cfb[0]), C.int(len(cfb)))
 }
 
 func goAsn1Float64(cf *C.OCTET_STRING_t) *tAsn1Float64 {
@@ -613,7 +627,7 @@ func goAsn1Float64(cf *C.OCTET_STRING_t) *tAsn1Float64 {
 	return f
 }
 
-func cAsn1BitString(bitString *tAsn1BitString) *C.BIT_STRING_t {
+func cAsn1BitString(cbitString *C.BIT_STRING_t, bitString *tAsn1BitString) *C.BIT_STRING_t {
 
 	if nil == bitString {
 		return (*C.BIT_STRING_t)(unsafe.Pointer(nil))
@@ -621,7 +635,7 @@ func cAsn1BitString(bitString *tAsn1BitString) *C.BIT_STRING_t {
 
 	cb := cslice(bitString.buf)
 	bitsUnused := bitString.bitsUnused
-	return (*C.T_protocol_version_t)(C.hlp__fill_BIT_STRING_t((*C.BIT_STRING_t)(unsafe.Pointer(nil)), &cb[0], C.int(len(cb)), C.int(bitsUnused)))
+	return C.hlp__fill_BIT_STRING_t(cbitString, &cb[0], C.int(len(cb)), C.int(bitsUnused))
 }
 
 func goAsn1BitString(cBitString *C.BIT_STRING_t) *tAsn1BitString {
@@ -636,12 +650,12 @@ func goAsn1BitString(cBitString *C.BIT_STRING_t) *tAsn1BitString {
 	return bitString
 }
 
-func cAsn1OctetString(octetString *tAsn1OctetString) *C.OCTET_STRING_t {
+func cAsn1OctetString(coctetString *C.OCTET_STRING_t, octetString *tAsn1OctetString) *C.OCTET_STRING_t {
 	if nil == octetString {
 		return (*C.OCTET_STRING_t)(unsafe.Pointer(nil))
 	}
 	cb := cslice(*octetString)
-	return C.hlp__fill_OCTET_STRING_t((*C.OCTET_STRING_t)(unsafe.Pointer(nil)), &cb[0], C.int(len(cb)))
+	return C.hlp__fill_OCTET_STRING_t(coctetString, &cb[0], C.int(len(cb)))
 }
 
 func goAsn1OctetString(cOctetString *C.OCTET_STRING_t) *tAsn1OctetString {
@@ -654,12 +668,12 @@ func goAsn1OctetString(cOctetString *C.OCTET_STRING_t) *tAsn1OctetString {
 	return octetString
 }
 
-func cAsn1GraphicString(gs *tAsn1GraphicString) *C.GraphicString_t {
+func cAsn1GraphicString(cgs *C.GraphicString_t, gs *tAsn1GraphicString) *C.GraphicString_t {
 	if nil == gs {
 		return (*C.GraphicString_t)(unsafe.Pointer(nil))
 	}
 	cb := cslice(*gs)
-	return C.hlp__fill_OCTET_STRING_t((*C.GraphicString_t)(unsafe.Pointer(nil)), &cb[0], C.int(len(cb)))
+	return C.hlp__fill_OCTET_STRING_t(cgs, &cb[0], C.int(len(cb)))
 }
 
 func goAsn1GraphicString(cGraphicString *C.GraphicString_t) *tAsn1GraphicString {
@@ -671,12 +685,12 @@ func goAsn1GraphicString(cGraphicString *C.GraphicString_t) *tAsn1GraphicString 
 	return graphicString
 }
 
-func cAsn1VisibleString(vs *tAsn1VisibleString) *C.VisibleString_t {
+func cAsn1VisibleString(cvs *C.VisibleString_t, vs *tAsn1VisibleString) *C.VisibleString_t {
 	if nil == vs {
 		return (*C.VisibleString_t)(unsafe.Pointer(nil))
 	}
 	cb := cslice(*vs)
-	return C.hlp__fill_OCTET_STRING_t((*C.VisibleString_t)(unsafe.Pointer(nil)), &cb[0], C.int(len(cb)))
+	return C.hlp__fill_OCTET_STRING_t(cvs, &cb[0], C.int(len(cb)))
 }
 
 func goAsn1VisibleString(cvs *C.VisibleString_t) *tAsn1VisibleString {
@@ -688,23 +702,25 @@ func goAsn1VisibleString(cvs *C.VisibleString_t) *tAsn1VisibleString {
 	return vs
 }
 
-func cAsn1ObjectIdentifier(oid *tAsn1ObjectIdentifier) *C.OBJECT_IDENTIFIER_t {
+func cAsn1ObjectIdentifier(coid *C.OBJECT_IDENTIFIER_t, oid *tAsn1ObjectIdentifier) *C.OBJECT_IDENTIFIER_t {
 	if nil == oid {
 		return (*C.OBJECT_IDENTIFIER_t)(unsafe.Pointer(nil))
 	}
-	cOid := C.hlp__calloc_OBJECT_IDENTIFIER_t()
+	if nil == coid {
+		coid = C.hlp__calloc_OBJECT_IDENTIFIER_t()
+	}
 
 	length := len(*oid)
-	cb := (*[1 << 26]C.uint32_t)(unsafe.Pointer(C.hlp__gc_calloc(C.size_t(length), 4)))[:length:length]
+	cb := (*[1 << 26]C.uint32_t)(unsafe.Pointer(C.hlp__calloc(C.size_t(length), 4)))[:length:length]
 	for i := 0; i < length; i++ {
 		cb[i] = C.uint32_t((*oid)[i])
 	}
-	ret := C.OBJECT_IDENTIFIER_set_arcs(cOid, unsafe.Pointer(&cb[0]), 4, C.uint(length))
+	ret := C.OBJECT_IDENTIFIER_set_arcs(coid, unsafe.Pointer(&cb[0]), 4, C.uint(length))
 	if -1 == ret {
 		panic("cAsn1ObjectIdentifier(): cannot encode oid")
 	}
-	C.hlp__gc_free(unsafe.Pointer(&cb[0]))
-	return cOid
+	C.hlp__free(unsafe.Pointer(&cb[0]))
+	return coid
 }
 
 func goAsn1ObjectIdentifier(cOid *C.OBJECT_IDENTIFIER_t) *tAsn1ObjectIdentifier {
@@ -713,7 +729,7 @@ func goAsn1ObjectIdentifier(cOid *C.OBJECT_IDENTIFIER_t) *tAsn1ObjectIdentifier 
 	}
 
 	length := C.int(20)
-	cb := (*[1 << 26]C.uint32_t)(unsafe.Pointer(C.hlp__gc_calloc(C.size_t(length), 4)))[:length:length]
+	cb := (*[1 << 26]C.uint32_t)(unsafe.Pointer(C.hlp__calloc(C.size_t(length), 4)))[:length:length]
 	ret := C.OBJECT_IDENTIFIER_get_arcs(cOid, unsafe.Pointer(&cb[0]), 4, C.uint(length))
 	if -1 == ret {
 		panic("goAsn1ObjectIdentifier(): cannot decode oid")
@@ -723,17 +739,17 @@ func goAsn1ObjectIdentifier(cOid *C.OBJECT_IDENTIFIER_t) *tAsn1ObjectIdentifier 
 	for i := 0; i < n; i++ {
 		b[i] = uint(cb[i])
 	}
-	C.hlp__gc_free(unsafe.Pointer(&cb[0]))
+	C.hlp__free(unsafe.Pointer(&cb[0]))
 	return (*tAsn1ObjectIdentifier)(&b)
 
 }
 
-func cAsn1Any(any *tAsn1Any) *C.ANY_t {
+func cAsn1Any(cany *C.ANY_t, any *tAsn1Any) *C.ANY_t {
 	if nil == any {
 		return (*C.ANY_t)(unsafe.Pointer(nil))
 	}
 	cb := cslice(*any)
-	return C.hlp__fill_ANY_t((*C.ANY_t)(unsafe.Pointer(nil)), &cb[0], C.int(len(cb)))
+	return C.hlp__fill_ANY_t(cany, &cb[0], C.int(len(cb)))
 }
 
 func goAsn1Any(cAny *C.ANY_t) *tAsn1Any {
@@ -746,10 +762,12 @@ func goAsn1Any(cAny *C.ANY_t) *tAsn1Any {
 	return any
 }
 
-func cAsn1Null() *C.NULL_t {
-	cNull := C.hlp__calloc_NULL_t()
-	*cNull = C.NULL_t(0)
-	return cNull
+func cAsn1Null(cnull *C.NULL_t) *C.NULL_t {
+	if nil == cnull {
+		cnull = C.hlp__calloc_NULL_t()
+	}
+	*cnull = C.NULL_t(0)
+	return cnull
 }
 
 func goAsn1Null() *tAsn1Null {
@@ -758,11 +776,13 @@ func goAsn1Null() *tAsn1Null {
 	return null
 }
 
-func cAsn1Boolean(b *tAsn1Boolean) *C.BOOLEAN_t {
+func cAsn1Boolean(cb *C.BOOLEAN_t, b *tAsn1Boolean) *C.BOOLEAN_t {
 	if nil == b {
 		return (*C.BOOLEAN_t)(unsafe.Pointer(nil))
 	}
-	cb := C.hlp__calloc_BOOLEAN_t()
+	if nil == cb {
+		cb = C.hlp__calloc_BOOLEAN_t()
+	}
 	if *b {
 		*cb = C.BOOLEAN_t(1)
 	} else {
@@ -784,12 +804,12 @@ func goAsn1Boolean(cb *C.BOOLEAN_t) *tAsn1Boolean {
 	return b
 }
 
-func cAsn1DateTime(d *tAsn1DateTime) *C.OCTET_STRING_t {
+func cAsn1DateTime(cd *C.OCTET_STRING_t, d *tAsn1DateTime) *C.OCTET_STRING_t {
 	if nil == d {
 		return nil
 	}
 	cb := cslice(*d)
-	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cb[0]), C.int(len(cb)))
+	return C.hlp__fill_OCTET_STRING_t(cd, (*C.uint8_t)(&cb[0]), C.int(len(cb)))
 }
 
 func goAsn1DateTime(d *C.OCTET_STRING_t) *tAsn1DateTime {
@@ -802,12 +822,12 @@ func goAsn1DateTime(d *C.OCTET_STRING_t) *tAsn1DateTime {
 	return (*tAsn1DateTime)(&ad)
 }
 
-func cAsn1Date(d *tAsn1Date) *C.OCTET_STRING_t {
+func cAsn1Date(cd *C.OCTET_STRING_t, d *tAsn1Date) *C.OCTET_STRING_t {
 	if nil == d {
 		return nil
 	}
 	cb := cslice(*d)
-	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cb[0]), C.int(len(cb)))
+	return C.hlp__fill_OCTET_STRING_t(cd, (*C.uint8_t)(&cb[0]), C.int(len(cb)))
 }
 
 func goAsn1Date(d *C.OCTET_STRING_t) *tAsn1Date {
@@ -820,12 +840,12 @@ func goAsn1Date(d *C.OCTET_STRING_t) *tAsn1Date {
 	return (*tAsn1Date)(&ad)
 }
 
-func cAsn1Time(d *tAsn1Time) *C.OCTET_STRING_t {
+func cAsn1Time(cd *C.OCTET_STRING_t, d *tAsn1Time) *C.OCTET_STRING_t {
 	if nil == d {
 		return nil
 	}
 	cb := cslice(*d)
-	return C.hlp__fill_OCTET_STRING_t((*C.struct_OCTET_STRING)(unsafe.Pointer(nil)), (*C.uint8_t)(&cb[0]), C.int(len(cb)))
+	return C.hlp__fill_OCTET_STRING_t(cd, (*C.uint8_t)(&cb[0]), C.int(len(cb)))
 }
 
 func goAsn1Time(d *C.OCTET_STRING_t) *tAsn1Time {
@@ -848,60 +868,60 @@ func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 	pdu = C.hlp__calloc_AARQ_apdu_t()
 
 	// protocol_version
-	pdu.protocol_version = cAsn1BitString(_pdu.protocolVersion)
+	pdu.protocol_version = cAsn1BitString(pdu.protocol_version, _pdu.protocolVersion)
 
 	// application_context_name
-	pdu.application_context_name = *cAsn1ObjectIdentifier(&_pdu.applicationContextName)
+	cAsn1ObjectIdentifier(&pdu.application_context_name, &_pdu.applicationContextName)
 
 	// called_AP_title
 	if nil != _pdu.calledAPtitle {
-		pdu.called_AP_title = cAsn1OctetString(_pdu.calledAPtitle)
+		pdu.called_AP_title = cAsn1OctetString(pdu.called_AP_title, _pdu.calledAPtitle)
 	}
 
 	// called_AE_qualifier
 	if nil != _pdu.calledAEqualifier {
-		pdu.called_AE_qualifier = cAsn1OctetString(_pdu.calledAEqualifier)
+		pdu.called_AE_qualifier = cAsn1OctetString(pdu.called_AE_qualifier, _pdu.calledAEqualifier)
 	}
 
 	// called_AP_invocation_id
 	if nil != _pdu.calledAPinvocationId {
-		pdu.called_AP_invocation_id = (*C.AP_invocation_identifier_t)(cAsn1Integer(_pdu.calledAPinvocationId))
+		pdu.called_AP_invocation_id = (*C.AP_invocation_identifier_t)(cAsn1Integer((*C.long)(pdu.called_AP_invocation_id), _pdu.calledAPinvocationId))
 	}
 
 	// called_AE_invocation_id
 	if nil != _pdu.calledAEinvocationId {
-		pdu.called_AE_invocation_id = (*C.AE_invocation_identifier_t)(cAsn1Integer(_pdu.calledAEinvocationId))
+		pdu.called_AE_invocation_id = (*C.AE_invocation_identifier_t)(cAsn1Integer((*C.long)(pdu.called_AE_invocation_id), _pdu.calledAEinvocationId))
 	}
 
 	// calling_AP_title
 	if nil != _pdu.callingAPtitle {
-		pdu.calling_AP_title = cAsn1OctetString(_pdu.callingAPtitle)
+		pdu.calling_AP_title = cAsn1OctetString(pdu.calling_AP_title, _pdu.callingAPtitle)
 	}
 
 	// calling_AE_qualifier
 	if nil != _pdu.callingAEqualifier {
-		pdu.calling_AE_qualifier = cAsn1OctetString(_pdu.callingAEqualifier)
+		pdu.calling_AE_qualifier = cAsn1OctetString(pdu.calling_AE_qualifier, _pdu.callingAEqualifier)
 	}
 
 	// calling_AP_invocation_id
 	if nil != _pdu.callingAPinvocationId {
-		pdu.calling_AP_invocation_id = (*C.AP_invocation_identifier_t)(cAsn1Integer(_pdu.callingAPinvocationId))
+		pdu.calling_AP_invocation_id = (*C.AP_invocation_identifier_t)(cAsn1Integer((*C.long)(pdu.calling_AP_invocation_id), _pdu.callingAPinvocationId))
 	}
 
 	// calling_AE_invocation_id
 	if nil != _pdu.callingAEinvocationId {
-		pdu.calling_AE_invocation_id = (*C.AE_invocation_identifier_t)(cAsn1Integer(_pdu.callingAEinvocationId))
+		pdu.calling_AE_invocation_id = (*C.AE_invocation_identifier_t)(cAsn1Integer((*C.long)(pdu.calling_AE_invocation_id), _pdu.callingAEinvocationId))
 	}
 
 	// sender_acse_requirements
 	if nil != _pdu.senderAcseRequirements {
-		pdu.sender_acse_requirements = cAsn1BitString(_pdu.senderAcseRequirements)
+		pdu.sender_acse_requirements = cAsn1BitString(pdu.sender_acse_requirements, _pdu.senderAcseRequirements)
 
 	}
 
 	// mechanism_name
 	if nil != _pdu.mechanismName {
-		pdu.mechanism_name = cAsn1ObjectIdentifier(_pdu.mechanismName)
+		pdu.mechanism_name = cAsn1ObjectIdentifier(pdu.mechanism_name, _pdu.mechanismName)
 	}
 
 	//struct Authentication_value	*calling_authentication_value	/* OPTIONAL */;
@@ -921,35 +941,48 @@ func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 		switch C.enum_Authentication_value_PR((*_av).getTag()) {
 
 		case C.Authentication_value_PR_NOTHING:
+
 			(*av).present = C.Authentication_value_PR_NOTHING
 
 		case C.Authentication_value_PR_charstring:
+
 			charstring := ((*_av).getVal()).(*tAsn1GraphicString)
 			(*av).present = C.Authentication_value_PR_charstring
-			cCharstring := cAsn1GraphicString(charstring)
+
+			cCharstring := cAsn1GraphicString(nil, charstring)
 			*(*C.GraphicString_t)(unsafe.Pointer(&(*av).choice[0])) = *cCharstring
+			C.hlp__free(unsafe.Pointer(cCharstring))
 
 		case C.Authentication_value_PR_bitstring:
+
 			bistring := ((*_av).getVal()).(*tAsn1BitString)
 			(*av).present = C.Authentication_value_PR_bitstring
-			cBistring := cAsn1BitString(bistring)
+
+			cBistring := cAsn1BitString(nil, bistring)
 			*(*C.BIT_STRING_t)(unsafe.Pointer(&(*av).choice[0])) = *cBistring
+			C.hlp__free(unsafe.Pointer(cBistring))
 
 		case C.Authentication_value_PR_external:
+
 			external := ((*_av).getVal()).(*tAsn1OctetString)
 			(*av).present = C.Authentication_value_PR_external
-			cExternal := cAsn1OctetString(external)
+
+			cExternal := cAsn1OctetString(nil, external)
 			*(*C.OCTET_STRING_t)(unsafe.Pointer(&(*av).choice[0])) = *cExternal
+			C.hlp__free(unsafe.Pointer(cExternal))
+
 		case C.Authentication_value_PR_other:
+
 			var avo C.struct_Authentication_value_other
 			other := ((*_av).getVal()).(*tAuthenticationValueOther)
 
-			avo.other_mechanism_name = *cAsn1ObjectIdentifier(&other.otherMechanismName)
-			avo.other_mechanism_value = *cAsn1Any(&other.otherMechanismValue)
+			cAsn1ObjectIdentifier(&avo.other_mechanism_name, &other.otherMechanismName)
+			cAsn1Any(&avo.other_mechanism_value, &other.otherMechanismValue)
 
 			(*av).present = C.Authentication_value_PR_other
 			cb = cslicep((uintptr)(unsafe.Pointer(&avo)), unsafe.Sizeof(avo))
 			C.hlp__fill_OCTET_STRING_t((*C.OCTET_STRING_t)(unsafe.Pointer(&(*av).choice[0])), &cb[0], C.int(len(cb)))
+
 		default:
 			serr = fmt.Sprintf("encode_AARQapdu() failed, unknown callingAuthenticationValue tag %v", _pdu.callingAuthenticationValue.getTag())
 			errorLog.Println(serr)
@@ -959,16 +992,17 @@ func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 
 	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
 	if nil != _pdu.implementationInformation {
-		pdu.implementation_information = cAsn1GraphicString(_pdu.implementationInformation)
+		pdu.implementation_information = cAsn1GraphicString(pdu.implementation_information, _pdu.implementationInformation)
 	}
 
 	//user-information [30] EXPLICIT Association-information OPTIONAL
 	if nil != _pdu.userInformation {
-		pdu.user_information = cAsn1OctetString(_pdu.userInformation)
+		pdu.user_information = cAsn1OctetString(pdu.user_information, _pdu.userInformation)
 	}
 
 	ret, errno := C.der_encode(&C.asn_DEF_AARQ_apdu, unsafe.Pointer(pdu), (*C.asn_app_consume_bytes_f)(C.consumeBytesWrap), unsafe.Pointer(&buf))
 	if -1 == ret.encoded {
+		C.hlp__free_AARQ_apdu_t(pdu)
 		s := C.GoString(ret.failed_type.name)
 		serr = fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno)
 		errorLog.Println(serr)
@@ -987,7 +1021,7 @@ func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 
 	cb := cslice(inb)
 	ret, errno := C.ber_decode((*C.struct_asn_codec_ctx_s)(unsafe.Pointer(nil)), &C.asn_DEF_AARE_apdu, (*unsafe.Pointer)(unsafe.Pointer(&cpdu)), unsafe.Pointer(&cb[0]), C.size_t(len(cb)))
-	C.hlp__gc_free(unsafe.Pointer(&cb[0]))
+	C.hlp__free(unsafe.Pointer(&cb[0]))
 	if C.RC_OK != ret.code {
 		serr = fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno)
 		errorLog.Println(serr)
@@ -1126,7 +1160,10 @@ func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
 
 	case C.Data_PR_null_data:
 		data.present = C.Data_PR_null_data
-		*(*C.NULL_t)(choice) = *cAsn1Null()
+
+		cnull := cAsn1Null(nil)
+		*(*C.NULL_t)(choice) = *cnull
+		C.hlp__free(unsafe.Pointer(cnull))
 
 	case C.Data_PR_array:
 		serr = fmt.Sprintf("encode_Data(): array not implemnted")
@@ -1140,63 +1177,86 @@ func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
 
 	case C.Data_PR_boolean:
 		data.present = C.Data_PR_boolean
-		v := cAsn1Boolean((_data.getVal()).(*tAsn1Boolean))
+
+		v := cAsn1Boolean(nil, (_data.getVal()).(*tAsn1Boolean))
 		*(*C.BOOLEAN_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_bit_string:
 		data.present = C.Data_PR_bit_string
-		v := cAsn1BitString((_data.getVal()).(*tAsn1BitString))
+		v := cAsn1BitString(nil, (_data.getVal()).(*tAsn1BitString))
 		*(*C.BIT_STRING_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_double_long:
 		data.present = C.Data_PR_double_long
-		v := cAsn1Integer32((_data.getVal()).(*tAsn1Integer32))
+
+		v := cAsn1Integer32(nil, (_data.getVal()).(*tAsn1Integer32))
 		*(*C.Integer32_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_double_long_unsigned:
 		data.present = C.Data_PR_double_long_unsigned
-		v := cAsn1Unsigned32((_data.getVal()).(*tAsn1Unsigned32))
+
+		v := cAsn1Unsigned32(nil, (_data.getVal()).(*tAsn1Unsigned32))
 		*(*C.Unsigned32_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_floating_point:
 		data.present = C.Data_PR_floating_point
-		v := cAsn1Float((_data.getVal()).(*tAsn1Float))
+
+		v := cAsn1Float(nil, (_data.getVal()).(*tAsn1Float))
 		*(*C.OCTET_STRING_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_octet_string:
 		data.present = C.Data_PR_octet_string
-		v := cAsn1OctetString((_data.getVal()).(*tAsn1OctetString))
+
+		v := cAsn1OctetString(nil, (_data.getVal()).(*tAsn1OctetString))
 		*(*C.OCTET_STRING_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_visible_string:
 		data.present = C.Data_PR_visible_string
-		v := cAsn1VisibleString((_data.getVal()).(*tAsn1VisibleString))
+
+		v := cAsn1VisibleString(nil, (_data.getVal()).(*tAsn1VisibleString))
 		*(*C.VisibleString_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_bcd:
 		data.present = C.Data_PR_bcd
-		v := cAsn1Integer8((_data.getVal()).(*tAsn1Integer8))
+
+		v := cAsn1Integer8(nil, (_data.getVal()).(*tAsn1Integer8))
 		*(*C.Integer8_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_integer:
 		data.present = C.Data_PR_integer
-		v := cAsn1Integer8((_data.getVal()).(*tAsn1Integer8))
+
+		v := cAsn1Integer8(nil, (_data.getVal()).(*tAsn1Integer8))
 		*(*C.Integer8_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_long:
 		data.present = C.Data_PR_long
-		v := cAsn1Integer16((_data.getVal()).(*tAsn1Integer16))
+
+		v := cAsn1Integer16(nil, (_data.getVal()).(*tAsn1Integer16))
 		*(*C.Integer16_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_unsigned:
 		data.present = C.Data_PR_unsigned
-		v := cAsn1Unsigned8((_data.getVal()).(*tAsn1Unsigned8))
+
+		v := cAsn1Unsigned8(nil, (_data.getVal()).(*tAsn1Unsigned8))
 		*(*C.Unsigned8_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_long_unsigned:
 		data.present = C.Data_PR_long_unsigned
-		v := cAsn1Unsigned16((_data.getVal()).(*tAsn1Unsigned16))
+
+		v := cAsn1Unsigned16(nil, (_data.getVal()).(*tAsn1Unsigned16))
 		*(*C.Unsigned16_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_compact_array:
 		serr = fmt.Sprintf("encode_Data(): compact_array not implemnted")
@@ -1205,13 +1265,17 @@ func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
 
 	case C.Data_PR_long64:
 		data.present = C.Data_PR_long64
-		v := cAsn1Long64((_data.getVal()).(*tAsn1Long64))
+
+		v := cAsn1Long64(nil, (_data.getVal()).(*tAsn1Long64))
 		*(*C.OCTET_STRING_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_long64_unsigned:
 		data.present = C.Data_PR_long64_unsigned
-		v := cAsn1UnsignedLong64((_data.getVal()).(*tAsn1UnsignedLong64))
+
+		v := cAsn1UnsignedLong64(nil, (_data.getVal()).(*tAsn1UnsignedLong64))
 		*(*C.OCTET_STRING_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_enum:
 		serr = fmt.Sprintf("encode_Data(): enum not implemnted")
@@ -1220,32 +1284,45 @@ func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
 
 	case C.Data_PR_float32:
 		data.present = C.Data_PR_float32
-		v := cAsn1Float32((_data.getVal()).(*tAsn1Float32))
+
+		v := cAsn1Float32(nil, (_data.getVal()).(*tAsn1Float32))
 		*(*C.OCTET_STRING_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_float64:
 		data.present = C.Data_PR_float64
-		v := cAsn1Float64((_data.getVal()).(*tAsn1Float64))
+
+		v := cAsn1Float64(nil, (_data.getVal()).(*tAsn1Float64))
 		*(*C.OCTET_STRING_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_date_time:
 		data.present = C.Data_PR_date_time
-		v := cAsn1DateTime((_data.getVal()).(*tAsn1DateTime))
+
+		v := cAsn1DateTime(nil, (_data.getVal()).(*tAsn1DateTime))
 		*(*C.OCTET_STRING_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_date:
 		data.present = C.Data_PR_date
-		v := cAsn1Date((_data.getVal()).(*tAsn1Date))
+
+		v := cAsn1Date(nil, (_data.getVal()).(*tAsn1Date))
 		*(*C.OCTET_STRING_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_time:
 		data.present = C.Data_PR_time
-		v := cAsn1Time((_data.getVal()).(*tAsn1Time))
+
+		v := cAsn1Time(nil, (_data.getVal()).(*tAsn1Time))
 		*(*C.OCTET_STRING_t)(choice) = *v
+		C.hlp__free(unsafe.Pointer(v))
 
 	case C.Data_PR_dont_care:
 		data.present = C.Data_PR_dont_care
-		*(*C.NULL_t)(choice) = *cAsn1Null()
+
+		cnull := cAsn1Null(nil)
+		*(*C.NULL_t)(choice) = *cnull
+		C.hlp__free(unsafe.Pointer(cnull))
 
 	default:
 		serr = fmt.Sprintf("encode_Data(): unknown choice tag: %v", int((*_data).getTag()))
@@ -1256,6 +1333,7 @@ func encode_Data(_data *tAsn1Choice) (err error, result []byte) {
 	var buf bytes.Buffer
 	ret, errno := C.der_encode(&C.asn_DEF_Data, unsafe.Pointer(data), (*C.asn_app_consume_bytes_f)(C.consumeBytesWrap), unsafe.Pointer(&buf))
 	if -1 == ret.encoded {
+		C.hlp__free_Data_t(data)
 		s := C.GoString(ret.failed_type.name)
 		serr = fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno)
 		errorLog.Println(serr)
@@ -1291,7 +1369,6 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 	var nn int
 
 	// Cosem - Dlms incompatibilities
-	//TODO: remove asn1c calls (encoding is very simple, can do it preheps directly in go)
 
 	inb[0] |= 0x80 // set bit 8 (asn1 class context-specific)
 
@@ -1319,7 +1396,7 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 
 	cb := cslice(inb)
 	ret, errno := C.ber_decode((*C.struct_asn_codec_ctx_s)(unsafe.Pointer(nil)), &C.asn_DEF_Data, (*unsafe.Pointer)(unsafe.Pointer(&cdata)), unsafe.Pointer(&cb[0]), C.size_t(len(cb)))
-	C.hlp__gc_free(unsafe.Pointer(&cb[0]))
+	C.hlp__free(unsafe.Pointer(&cb[0]))
 	if C.RC_OK != ret.code {
 		serr = fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: %d, errno %v", ret.code, ret.consumed, errno)
 		errorLog.Println(serr)
@@ -1422,5 +1499,6 @@ func decode_Data(inb []byte) (err error, data *tAsn1Choice, n int) {
 		return errors.New(serr), nil, 0
 	}
 
+	C.hlp__free_Data_t(cdata)
 	return nil, data, n
 }

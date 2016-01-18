@@ -14,7 +14,7 @@ int consumeBytesWrap (void *_buf, int _bufLen, void *ctx) {
 
 // calloc helpers
 
-void *hlp__gc_calloc(size_t nmemb, size_t size) {
+void *hlp__calloc(size_t nmemb, size_t size) {
 	return CALLOC(nmemb, size);
 }
 
@@ -94,7 +94,7 @@ AARQ_apdu_t *hlp__calloc_AARQ_apdu_t() {
 
 // memory free helpers
 
-void hlp__gc_free(void *ptr) {
+void hlp__free(void *ptr) {
 	FREEMEM(ptr);
 }
 

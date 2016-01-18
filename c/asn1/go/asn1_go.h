@@ -16,7 +16,7 @@ typedef struct Authentication_value_other {
 int consumeBytes (void *_buf, int _bufLen, void *ctx);
 int consumeBytesWrap (void *_buf, int _bufLen, void *ctx);
 
-void *hlp__gc_calloc(size_t nmemb, size_t size);
+void *hlp__calloc(size_t nmemb, size_t size);
 long *hlp__calloc_long(int n);
 Integer8_t *hlp__calloc_Integer8_t(int n);
 Integer16_t *hlp__calloc_Integer16_t(int n);
@@ -35,7 +35,7 @@ struct Authentication_value *hlp__calloc_struct_Authentication_value();
 Data_t *hlp__calloc_Data_t();
 AARQ_apdu_t *hlp__calloc_AARQ_apdu_t();
 
-void hlp__gc_free(void *ptr);
+void hlp__free(void *ptr);
 void hlp__free_AARQ_apdu_t(AARQ_apdu_t *aarq);
 void hlp__free_AARE_apdu_t(AARE_apdu_t *aare);
 void hlp__free_Data_t(Data_t *data);
