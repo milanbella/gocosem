@@ -7,7 +7,6 @@ package gocosem
 // #include <stdio.h>
 // #include <errno.h>
 //
-// #include "gc.h"
 // #include "asn1_go.h"
 // #include "AARQ-apdu.h"
 // #include "AARE-apdu.h"

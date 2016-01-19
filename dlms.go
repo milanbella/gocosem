@@ -13,27 +13,27 @@ import (
 )
 
 const (
-	C_Dlms_Data_Nothing       = iota
-	C_Dlms_Data_Nil           = iota
-	C_Dlms_Data_Bool          = iota
-	C_Dlms_Data_BitString     = iota
-	C_Dlms_Data_Int32         = iota
-	C_Dlms_Data_Uint32        = iota
-	C_Dlms_Data_Bytes         = iota
-	C_Dlms_Data_VisibleString = iota
-	C_Dlms_Data_Bcd           = iota
-	C_Dlms_Data_Int8          = iota
-	C_Dlms_Data_Int16         = iota
-	C_Dlms_Data_Uint8         = iota
-	C_Dlms_Data_Uint16        = iota
-	C_Dlms_Data_Int64         = iota
-	C_Dlms_Data_Uint64        = iota
-	C_Dlms_Data_Float32       = iota
-	C_Dlms_Data_Float64       = iota
-	C_Dlms_Data_DateTime      = iota
-	C_Dlms_Data_Date          = iota
-	C_Dlms_Data_Time          = iota
-	C_Dlms_Data_DontCare      = iota
+	C_Dlms_Data_Nothing = iota
+	C_Dlms_Data_Nil
+	C_Dlms_Data_Bool
+	C_Dlms_Data_BitString
+	C_Dlms_Data_Int32
+	C_Dlms_Data_Uint32
+	C_Dlms_Data_Bytes
+	C_Dlms_Data_VisibleString
+	C_Dlms_Data_Bcd
+	C_Dlms_Data_Int8
+	C_Dlms_Data_Int16
+	C_Dlms_Data_Uint8
+	C_Dlms_Data_Uint16
+	C_Dlms_Data_Int64
+	C_Dlms_Data_Uint64
+	C_Dlms_Data_Float32
+	C_Dlms_Data_Float64
+	C_Dlms_Data_DateTime
+	C_Dlms_Data_Date
+	C_Dlms_Data_Time
+	C_Dlms_Data_DontCare
 )
 
 const (

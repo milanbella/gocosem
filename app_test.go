@@ -755,7 +755,7 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	mockCosemServer.Close()
 }
 
-func TestX_5000parallelRequests(t *testing.T) {
+func TestX_1000parallelRequests(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 
@@ -788,7 +788,7 @@ func TestX_5000parallelRequests(t *testing.T) {
 	vals[0] = val
 
 	sink := make(DlmsChannel)
-	count := int(5000)
+	count := int(1000)
 
 	for i := 0; i < count; i += 1 {
 		go func() {
