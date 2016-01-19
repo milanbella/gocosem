@@ -66,8 +66,8 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, invokeIdA
 		ch := make(DlmsChannel)
 		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
 		msg := <-ch
-		if nil != msg.err {
-			errorLog.Printf("%s: %v\n", FNAME, msg.err)
+		if nil != msg.Err {
+			errorLog.Printf("%s: %v\n", FNAME, msg.Err)
 			return err
 		}
 
@@ -76,8 +76,8 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, invokeIdA
 		ch := make(DlmsChannel)
 		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
 		msg := <-ch
-		if nil != msg.err {
-			errorLog.Printf("%s: %v\n", FNAME, msg.err)
+		if nil != msg.Err {
+			errorLog.Printf("%s: %v\n", FNAME, msg.Err)
 			return err
 		}
 	}
@@ -176,8 +176,8 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 		ch := make(DlmsChannel)
 		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
 		msg := <-ch
-		if nil != msg.err {
-			errorLog.Printf("%s: %v\n", FNAME, msg.err)
+		if nil != msg.Err {
+			errorLog.Printf("%s: %v\n", FNAME, msg.Err)
 			return err
 		}
 	} else {
@@ -196,12 +196,12 @@ func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) (err error
 		ch := make(DlmsChannel)
 		ipTransportReceive(ch, conn.rwc, &conn.applicationClient, &conn.logicalDevice)
 		msg := <-ch
-		if nil != msg.err {
-			errorLog.Printf("%s: %v\n", FNAME, msg.err)
+		if nil != msg.Err {
+			errorLog.Printf("%s: %v\n", FNAME, msg.Err)
 			conn.rwc.Close()
 			break
 		}
-		m := msg.data.(map[string]interface{})
+		m := msg.Data.(map[string]interface{})
 		if nil == m["pdu"] {
 			panic("assertion failed")
 		}
@@ -284,12 +284,12 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	ch := make(DlmsChannel)
 	ipTransportReceive(ch, rwc, nil, nil)
 	msg := <-ch
-	if nil != msg.err {
-		errorLog.Printf("%s: %v\n", FNAME, msg.err)
+	if nil != msg.Err {
+		errorLog.Printf("%s: %v\n", FNAME, msg.Err)
 		rwc.Close()
 		return err
 	}
-	m := msg.data.(map[string]interface{})
+	m := msg.Data.(map[string]interface{})
 
 	logicalDevice := m["dstWport"].(uint16)
 	applicationClient := m["srcWport"].(uint16)
@@ -297,8 +297,8 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	// reply with aare
 	ipTransportSend(ch, rwc, logicalDevice, applicationClient, aare)
 	msg = <-ch
-	if nil != msg.err {
-		errorLog.Printf("%s: %v\n", FNAME, msg.err)
+	if nil != msg.Err {
+		errorLog.Printf("%s: %v\n", FNAME, msg.Err)
 		rwc.Close()
 		return err
 	}
@@ -324,7 +324,7 @@ func (srv *tMockCosemServer) accept(t *testing.T, ch DlmsChannel, tcpAddr string
 	if err != nil {
 		errorLog.Printf("%s: %v\n", FNAME, err)
 		msg := new(DlmsChannelMessage)
-		msg.err = err
+		msg.Err = err
 		ch <- msg
 		return
 	}
@@ -332,7 +332,7 @@ func (srv *tMockCosemServer) accept(t *testing.T, ch DlmsChannel, tcpAddr string
 
 	t.Logf("%s: mock server bound to %s", FNAME, tcpAddr)
 	msg := new(DlmsChannelMessage)
-	msg.err = nil
+	msg.Err = nil
 	ch <- msg
 
 	for {
@@ -387,8 +387,8 @@ func ensureMockCosemServer(t *testing.T) {
 		ch := make(DlmsChannel)
 		startMockCosemServer(t, ch, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
 		msg := <-ch
-		if nil != msg.err {
-			t.Fatalf("%s\n", msg.err)
+		if nil != msg.Err {
+			t.Fatalf("%s\n", msg.Err)
 			mockCosemServer = nil
 		}
 	}
@@ -401,11 +401,11 @@ func TestX__TcpConnect(t *testing.T) {
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
 	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.data.(*DlmsConn)
+	dconn := msg.Data.(*DlmsConn)
 	dconn.Close()
 
 	mockCosemServer.Close()
@@ -418,19 +418,19 @@ func TestX_AppConnect(t *testing.T) {
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
 	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.data.(*DlmsConn)
+	dconn := msg.Data.(*DlmsConn)
 
 	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("application connected")
-	aconn := msg.data.(*AppConn)
+	aconn := msg.Data.(*AppConn)
 	aconn.Close()
 
 	mockCosemServer.Close()
@@ -447,19 +447,19 @@ func TestX_GetRequestNormal(t *testing.T) {
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
 	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.data.(*DlmsConn)
+	dconn := msg.Data.(*DlmsConn)
 
 	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("application connected")
-	aconn := msg.data.(*AppConn)
+	aconn := msg.Data.(*AppConn)
 
 	val := new(DlmsValueRequest)
 	val.classId = 1
@@ -469,10 +469,10 @@ func TestX_GetRequestNormal(t *testing.T) {
 	vals[0] = val
 	aconn.getRquest(ch, 10000, true, vals)
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.data.(DlmsResponse)
+	rep := msg.Data.(DlmsResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -498,19 +498,19 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
 	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.data.(*DlmsConn)
+	dconn := msg.Data.(*DlmsConn)
 
 	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("application connected")
-	aconn := msg.data.(*AppConn)
+	aconn := msg.Data.(*AppConn)
 
 	val := new(DlmsValueRequest)
 	val.classId = 1
@@ -520,10 +520,10 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	vals[0] = val
 	aconn.getRquest(ch, 10000, true, vals)
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.data.(DlmsResponse)
+	rep := msg.Data.(DlmsResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -552,19 +552,19 @@ func TestX_GetRequestWithList(t *testing.T) {
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
 	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.data.(*DlmsConn)
+	dconn := msg.Data.(*DlmsConn)
 
 	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("application connected")
-	aconn := msg.data.(*AppConn)
+	aconn := msg.Data.(*AppConn)
 
 	vals := make([]*DlmsValueRequest, 2)
 
@@ -582,10 +582,10 @@ func TestX_GetRequestWithList(t *testing.T) {
 
 	aconn.getRquest(ch, 10000, true, vals)
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.data.(DlmsResponse)
+	rep := msg.Data.(DlmsResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -621,19 +621,19 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
 	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.data.(*DlmsConn)
+	dconn := msg.Data.(*DlmsConn)
 
 	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("application connected")
-	aconn := msg.data.(*AppConn)
+	aconn := msg.Data.(*AppConn)
 
 	vals := make([]*DlmsValueRequest, 2)
 
@@ -651,10 +651,10 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 
 	aconn.getRquest(ch, 10000, true, vals)
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.data.(DlmsResponse)
+	rep := msg.Data.(DlmsResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -691,19 +691,19 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
 	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.data.(*DlmsConn)
+	dconn := msg.Data.(*DlmsConn)
 
 	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("application connected")
-	aconn := msg.data.(*AppConn)
+	aconn := msg.Data.(*AppConn)
 
 	vals := make([]*DlmsValueRequest, 2)
 
@@ -723,8 +723,8 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 
 	aconn.getRquest(ch, 500, true, vals)
 	msg = <-ch
-	if ErrorRequestTimeout != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if ErrorRequestTimeout != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 
 	// timeouted request must not disable following requests
@@ -732,10 +732,10 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	mockCosemServer.replyDelayMsec = 0
 	aconn.getRquest(ch, 500, true, vals)
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.data.(DlmsResponse)
+	rep := msg.Data.(DlmsResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -766,19 +766,19 @@ func TestX_1000parallelRequests(t *testing.T) {
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
 	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.data.(*DlmsConn)
+	dconn := msg.Data.(*DlmsConn)
 
 	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf("%s\n", msg.err)
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("application connected")
-	aconn := msg.data.(*AppConn)
+	aconn := msg.Data.(*AppConn)
 
 	val := new(DlmsValueRequest)
 	val.classId = 1
@@ -802,10 +802,10 @@ sinkLoop:
 	for {
 		msg := <-sink
 		count -= 1
-		if nil != msg.err {
-			t.Fatalf("%s\n", msg.err)
+		if nil != msg.Err {
+			t.Fatalf("%s\n", msg.Err)
 		}
-		rep := msg.data.(DlmsResponse)
+		rep := msg.Data.(DlmsResponse)
 		t.Logf("response delivered: in %v", rep.DeliveredIn())
 		if 0 != rep.DataAccessResultAt(0) {
 			t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))

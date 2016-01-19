@@ -106,9 +106,9 @@ func (aconn *AppConn) transportSend(invokeId uint8, pdu []byte) {
 		aconn.dconn.transportSend(ch, aconn.applicationClient, aconn.logicalDevice, pdu)
 		select {
 		case msg := <-ch:
-			if nil != msg.err {
-				aconn.killRequest(invokeId, msg.err)
-				errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, msg.err)
+			if nil != msg.Err {
+				aconn.killRequest(invokeId, msg.Err)
+				errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, msg.Err)
 				aconn.Close()
 				return
 			}
@@ -319,12 +319,12 @@ func (aconn *AppConn) receiveReplies() {
 			ch := make(DlmsChannel)
 			aconn.dconn.transportReceive(ch, aconn.logicalDevice, aconn.applicationClient)
 			msg := <-ch
-			if nil != msg.err {
-				errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, msg.err)
+			if nil != msg.Err {
+				errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, msg.Err)
 				aconn.Close()
 				return
 			}
-			m := msg.data.(map[string]interface{})
+			m := msg.Data.(map[string]interface{})
 			if m["srcWport"] != aconn.logicalDevice {
 				serr = fmt.Sprintf("%s: incorret srcWport in received pdu: ", FNAME, m["srcWport"])
 				errorLog.Println(serr)
@@ -394,11 +394,11 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 		aconn.getInvokeId(_ch, msecTimeout)
 		select {
 		case msg := <-_ch:
-			if nil != msg.err {
-				ch <- &DlmsChannelMessage{msg.err, nil}
+			if nil != msg.Err {
+				ch <- &DlmsChannelMessage{msg.Err, nil}
 				return
 			}
-			invokeId = msg.data.(uint8)
+			invokeId = msg.Data.(uint8)
 		}
 		debugLog.Printf("%s: invokeId %d\n", FNAME, invokeId)
 

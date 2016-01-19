@@ -13,11 +13,11 @@ func TestX_meter182_TcpConnect(t *testing.T) {
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, ipAddr, 4059)
 	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+	if nil != msg.Err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
 	}
 	t.Logf("transport connected")
-	dconn := msg.data.(*DlmsConn)
+	dconn := msg.Data.(*DlmsConn)
 	dconn.Close()
 }
 
@@ -26,19 +26,19 @@ func TestX_meter182_AppConnect(t *testing.T) {
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, ipAddr, 4059)
 	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+	if nil != msg.Err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
 	}
 	t.Logf("transport connected")
-	dconn := msg.data.(*DlmsConn)
+	dconn := msg.Data.(*DlmsConn)
 
 	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+	if nil != msg.Err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
 	}
 	t.Logf("application connected")
-	aconn := msg.data.(*AppConn)
+	aconn := msg.Data.(*AppConn)
 	aconn.Close()
 }
 
@@ -47,19 +47,19 @@ func TestX_meter182_get_time(t *testing.T) {
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, ipAddr, 4059)
 	msg := <-ch
-	if nil != msg.err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+	if nil != msg.Err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
 	}
 	t.Logf("transport connected")
-	dconn := msg.data.(*DlmsConn)
+	dconn := msg.Data.(*DlmsConn)
 
 	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+	if nil != msg.Err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
 	}
 	t.Logf("application connected")
-	aconn := msg.data.(*AppConn)
+	aconn := msg.Data.(*AppConn)
 
 	//func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
 	val := new(DlmsValueRequest)
@@ -70,8 +70,8 @@ func TestX_meter182_get_time(t *testing.T) {
 	vals[0] = val
 	aconn.getRquest(ch, 10000, true, vals)
 	msg = <-ch
-	if nil != msg.err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.err))
+	if nil != msg.Err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
 	}
 	t.Logf("value read")
 	aconn.Close()

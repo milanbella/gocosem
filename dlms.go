@@ -1361,8 +1361,8 @@ const (
 )
 
 type DlmsChannelMessage struct {
-	err  error
-	data interface{}
+	Err  error
+	Data interface{}
 }
 
 type DlmsChannel chan *DlmsChannelMessage
@@ -1478,7 +1478,7 @@ func (dconn *DlmsConn) transportSend(ch DlmsChannel, srcWport uint16, dstWport u
 		data.dstWport = dstWport
 		data.pdu = pdu
 
-		msg.data = data
+		msg.Data = data
 
 		dconn.ch <- msg
 
@@ -1618,7 +1618,7 @@ func (dconn *DlmsConn) transportReceive(ch DlmsChannel, srcWport uint16, dstWpor
 		data.srcWport = srcWport
 		data.dstWport = dstWport
 		msg := new(DlmsChannelMessage)
-		msg.data = data
+		msg.Data = data
 		dconn.ch <- msg
 	}()
 }
@@ -1633,7 +1633,7 @@ func (dconn *DlmsConn) handleTransportRequests() {
 		debugLog.Printf("%s: start\n", FNAME)
 		for msg := range dconn.ch {
 			debugLog.Printf("%s: message\n", FNAME)
-			switch v := msg.data.(type) {
+			switch v := msg.Data.(type) {
 			case *DlmsTransportSendRequest:
 				debugLog.Printf("%s: send request\n", FNAME)
 				if dconn.closed {
@@ -1698,17 +1698,17 @@ func (dconn *DlmsConn) AppConnectWithPassword(ch DlmsChannel, msecTimeout int64,
 
 			dconn.transportSend(__ch, applicationClient, logicalDevice, pdu)
 			msg := <-__ch
-			if nil != msg.err {
-				_ch <- &DlmsChannelMessage{msg.err, nil}
+			if nil != msg.Err {
+				_ch <- &DlmsChannelMessage{msg.Err, nil}
 				return
 			}
 			dconn.transportReceive(__ch, logicalDevice, applicationClient)
 			msg = <-__ch
-			if nil != msg.err {
-				_ch <- &DlmsChannelMessage{msg.err, nil}
+			if nil != msg.Err {
+				_ch <- &DlmsChannelMessage{msg.Err, nil}
 				return
 			}
-			m := msg.data.(map[string]interface{})
+			m := msg.Data.(map[string]interface{})
 			if m["srcWport"] != logicalDevice {
 				serr = fmt.Sprintf("%s: incorret srcWport in received pdu: ", FNAME, m["srcWport"])
 				errorLog.Println(serr)
@@ -1739,11 +1739,11 @@ func (dconn *DlmsConn) AppConnectWithPassword(ch DlmsChannel, msecTimeout int64,
 
 		select {
 		case msg := <-_ch:
-			if nil == msg.err {
+			if nil == msg.Err {
 				aconn := NewAppConn(dconn, applicationClient, logicalDevice)
-				ch <- &DlmsChannelMessage{msg.err, aconn}
+				ch <- &DlmsChannelMessage{msg.Err, aconn}
 			} else {
-				ch <- &DlmsChannelMessage{msg.err, nil}
+				ch <- &DlmsChannelMessage{msg.Err, nil}
 			}
 		case <-time.After(time.Millisecond * time.Duration(msecTimeout)):
 			ch <- &DlmsChannelMessage{ErrorDlmsTimeout, nil}
@@ -1781,13 +1781,13 @@ func TcpConnect(ch DlmsChannel, msecTimeout int64, ipAddr string, port int) {
 
 		select {
 		case msg := <-_ch:
-			if nil == msg.err {
+			if nil == msg.Err {
 				debugLog.Printf("%s: tcp transport connected: %s:%d\n", FNAME, ipAddr, port)
 				dconn.handleTransportRequests()
 				ch <- &DlmsChannelMessage{nil, dconn}
 			} else {
-				debugLog.Printf("%s: tcp transport connection failed: %s:%d, err: %v\n", FNAME, ipAddr, port, msg.err)
-				ch <- &DlmsChannelMessage{msg.err, msg.data}
+				debugLog.Printf("%s: tcp transport connection failed: %s:%d, err: %v\n", FNAME, ipAddr, port, msg.Err)
+				ch <- &DlmsChannelMessage{msg.Err, msg.Data}
 			}
 		case <-time.After(time.Millisecond * time.Duration(msecTimeout)):
 			errorLog.Printf("%s: tcp transport connection time out: %s:%d\n", FNAME, ipAddr, port)
