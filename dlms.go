@@ -1251,7 +1251,7 @@ func decode_GetResponsewithDataBlock(pdu []byte) (err error, invokeIdAndPriority
 	b = b[1:]
 
 	if 0x1E != tag {
-		serr = fmt.Sprintf("%s: wrong raw data tag: 0X%02X", FNAME)
+		serr = fmt.Sprintf("%s: wrong raw data tag: 0X%02X", FNAME, tag)
 		errorLog.Println(serr)
 		return errors.New(serr), 0, false, 0, 0, nil
 	}

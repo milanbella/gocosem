@@ -5,13 +5,10 @@ import (
 	"testing"
 )
 
-const ipAddr = "172.16.123.182"
-const port = 4059
-
 func TestX_meter182_TcpConnect(t *testing.T) {
 
 	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, ipAddr, 4059)
+	TcpConnect(ch, 10000, "172.16.123.182", 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
@@ -24,7 +21,7 @@ func TestX_meter182_TcpConnect(t *testing.T) {
 func TestX_meter182_AppConnect(t *testing.T) {
 
 	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, ipAddr, 4059)
+	TcpConnect(ch, 10000, "172.16.123.182", 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
@@ -45,7 +42,7 @@ func TestX_meter182_AppConnect(t *testing.T) {
 func TestX_meter182_get_time(t *testing.T) {
 
 	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, ipAddr, 4059)
+	TcpConnect(ch, 10000, "172.16.123.182", 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
