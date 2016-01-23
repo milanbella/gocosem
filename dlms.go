@@ -13,27 +13,31 @@ import (
 )
 
 const (
-	C_Dlms_Data_Nothing = iota
-	C_Dlms_Data_Nil
-	C_Dlms_Data_Bool
-	C_Dlms_Data_BitString
-	C_Dlms_Data_Int32
-	C_Dlms_Data_Uint32
-	C_Dlms_Data_Bytes
-	C_Dlms_Data_VisibleString
-	C_Dlms_Data_Bcd
-	C_Dlms_Data_Int8
-	C_Dlms_Data_Int16
-	C_Dlms_Data_Uint8
-	C_Dlms_Data_Uint16
-	C_Dlms_Data_Int64
-	C_Dlms_Data_Uint64
-	C_Dlms_Data_Float32
-	C_Dlms_Data_Float64
-	C_Dlms_Data_DateTime
-	C_Dlms_Data_Date
-	C_Dlms_Data_Time
-	C_Dlms_Data_DontCare
+	DATA_TYPE_NULL_DATA            = 0
+	DATA_TYPE_ARRAY                = 1
+	DATA_TYPE_STRUCTURE            = 2
+	DATA_TYPE_BOOLEAN              = 3
+	DATA_TYPE_BIT_STRING           = 4
+	DATA_TYPE_DOUBLE_LONG          = 5
+	DATA_TYPE_DOUBLE_LONG_UNSIGNED = 6
+	DATA_TYPE_FLOATING_POINT       = 7
+	DATA_TYPE_OCTET_STRING         = 9
+	DATA_TYPE_VISIBLE_STRING       = 10
+	DATA_TYPE_TIME                 = 11
+	DATA_TYPE_BCD                  = 13
+	DATA_TYPE_INTEGER              = 15
+	DATA_TYPE_LONG                 = 16
+	DATA_TYPE_UNSIGNED             = 17
+	DATA_TYPE_LONG_UNSIGNED        = 18
+	DATA_TYPE_LONG64               = 20
+	DATA_TYPE_UNSIGNED_LONG64      = 21
+	DATA_TYPE_ENUM                 = 22
+	DATA_TYPE_REAL32               = 23
+	DATA_TYPE_REAL64               = 24
+	DATA_TYPE_DATETIME             = 25
+	DATA_TYPE_DATE                 = 26
+	DATA_TYPE_TIME1                = 27
+	DATA_TYPE_OBJECT_IDENTIFIER    = 6
 )
 
 const (
@@ -61,7 +65,12 @@ type tDlmsOid [6]uint8
 type tDlmsAttributeId uint8
 type tDlmsAccessSelector uint8
 
-type tDlmsData tAsn1Choice
+type tDlmsData struct {
+	typ int
+	val interface{}
+	len int
+}
+
 type tDlmsDataAccessResult uint8
 
 type tDlmsDate struct {
@@ -308,303 +317,220 @@ func (data *tDlmsData) Encode() (err error, b []byte) {
 	return nil, b
 }
 
-func (data *tDlmsData) setNothing() {
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_NOTHING, nil)
+func (data *tDlmsData) GetType() {
+	return data.typ
 }
 
-func (data *tDlmsData) setNil() {
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_null_data, nil)
+func (data *tDlmsData) SetNULL() {
+	data.typ = DATA_TYPE_NULL
 }
 
-func (data *tDlmsData) setBool(b bool) {
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_boolean, (*tAsn1Boolean)(&b))
+func (data *tDlmsData) encodeNULL() []byte {
+	return &[]byte{DATA_TYPE_NULL}
 }
 
-func (data *tDlmsData) getBool() bool {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Boolean)
-	return bool(*v)
+func (data *tDlmsData) decodeNULL(b []byte) (b *byte, len int) {
+	return nil, 0
 }
 
-// 'unusedBits' is number of unused bits in last octet of 'b'
-func (data *tDlmsData) setBitString(b []byte, unusedBits int) {
+func (data *tDlmsData) SetBoolean(b bool) {
+	data.typ = DATA_TYPE_BOOLEAN
+	data.val = b
+}
 
-	if !((unusedBits >= 0) && (unusedBits <= 7)) {
-		panic("assertion failed")
+func (data *tDlmsData) GetBool() bool {
+	return data.val.(bool)
+}
+
+func (data *tDlmsData) encodeBoolean() []byte {
+	return &[]byte{DATA_TYPE_BOOLEAN, byte(data.val.(bool))}
+}
+
+func (data *tDlmsData) deccodeBoolean(b []byte) (b bool, len int) {
+	b = bool(b[0])
+	return b, 1
+}
+
+func (data *tDlmsData) SetBitString(b []byte, length uint8) {
+	data.typ = DATA_TYPE_BIT_STRING
+	data.val = b
+	data.len = length
+}
+
+func (data *tDlmsData) GetBitString() (b []byte, length uint8) {
+	return data.val.([]byte), uint8(data.len)
+}
+
+func (data *tDlmsData) encodeBitString(b []byte, length uint8) []byte {
+	n := length / 8
+	if length%8 > 0 {
+		n += 1
 	}
-
-	adata := (*tAsn1Choice)(data)
-
-	abitString := new(tAsn1BitString)
-	abitString.buf = b
-	abitString.bitsUnused = unusedBits
-
-	adata.setVal(C_Data_PR_bit_string, abitString)
+	eb := make([]byte, n+2)
+	eb[0] = DATA_TYPE_BIT_STRING
+	eb[1] = length
+	copy(eb[2:], b)
+	return eb
 }
 
-func (data *tDlmsData) getBitString() (b []byte, unusedBits int) {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1BitString)
-	b = v.buf
-	unusedBits = v.bitsUnused
-	return b, unusedBits
+func (data *tDlmsData) decodeBitString(b []byte) (db []byte, length uint8, len int) {
+	length = b[0]
+	b = b[0:]
+	len = 1
+	db := make([]byte, length)
+	copy(db, b[0:length])
+	len += length
+	return db, length, len
 }
 
-func (data *tDlmsData) setInt32(i int32) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_double_long, (*tAsn1Integer32)(&i))
+func (data *tDlmsData) SetDoubleLong(i int32) {
+	data.typ = DATA_TYPE_DOUBLE_LONG
+	data.val = i
 }
 
-func (data *tDlmsData) getInt32() int32 {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Integer32)
-	return int32(*v)
+func (data *tDlmsData) GetDoubleLong() int32 {
+	return data.val.(int32)
 }
 
-func (data *tDlmsData) setUint32(i uint32) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_double_long_unsigned, (*tAsn1Unsigned32)(&i))
-}
-
-func (data *tDlmsData) getUint32() uint32 {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Unsigned32)
-	return uint32(*v)
-}
-
-func (data *tDlmsData) setBytes(b []byte) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_octet_string, (*tAsn1OctetString)(&b))
-}
-
-func (data *tDlmsData) getBytes() []byte {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1OctetString)
-	return ([]byte)(*v)
-}
-
-func (data *tDlmsData) setVisibleString(s string) {
-
-	adata := (*tAsn1Choice)(data)
-	b := ([]byte)(s)
-	adata.setVal(C_Data_PR_visible_string, (*tAsn1VisibleString)(&b))
-}
-
-func (data *tDlmsData) getVisibleString() string {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1VisibleString)
-	return string(*v)
-}
-
-func (data *tDlmsData) setBcd(bcd int8) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_bcd, (*tAsn1Integer8)(&bcd))
-}
-
-func (data *tDlmsData) getBcd() int8 {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Integer8)
-	return int8(*v)
-}
-
-func (data *tDlmsData) setInt8(i int8) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_integer, (*tAsn1Integer8)(&i))
-}
-
-func (data *tDlmsData) getInt8() int8 {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Integer8)
-	return int8(*v)
-}
-
-func (data *tDlmsData) setIn16(i int16) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_long, (*tAsn1Integer16)(&i))
-}
-
-func (data *tDlmsData) getInt16() int16 {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Integer16)
-	return int16(*v)
-}
-
-func (data *tDlmsData) setUint8(i uint8) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_unsigned, (*tAsn1Unsigned8)(&i))
-}
-
-func (data *tDlmsData) getUint8() uint8 {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Unsigned8)
-	return uint8(*v)
-}
-
-func (data *tDlmsData) setUint16(i uint16) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_long_unsigned, (*tAsn1Unsigned16)(&i))
-}
-
-func (data *tDlmsData) getUint16() uint16 {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Unsigned16)
-	return uint16(*v)
-}
-
-func (data *tDlmsData) setInt64(i int64) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_long64, (*tAsn1Long64)(&i))
-}
-
-func (data *tDlmsData) getInt64() int64 {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Long64)
-	return int64(*v)
-}
-
-func (data *tDlmsData) setUint64(i uint64) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_long64_unsigned, (*tAsn1UnsignedLong64)(&i))
-}
-
-func (data *tDlmsData) getUint64() uint64 {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1UnsignedLong64)
-	return uint64(*v)
-}
-
-func (data *tDlmsData) setFloat32(f float32) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_float32, (*tAsn1Float32)(&f))
-}
-
-func (data *tDlmsData) getFloat32() (f float32) {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Float32)
-	return float32(*v)
-}
-
-func (data *tDlmsData) setFloat64(f float64) {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_float64, (*tAsn1Float64)(&f))
-}
-
-func (data *tDlmsData) getFloat64() float64 {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Float64)
-	return float64(*v)
-}
-
-func (data *tDlmsData) setDateTime(dateTime *tDlmsDateTime) {
-
-	adata := (*tAsn1Choice)(data)
-	b := dateTime.toBytes()
-	adata.setVal(C_Data_PR_date_time, (*tAsn1DateTime)(&b))
-}
-
-func (data *tDlmsData) getDateTime() *tDlmsDateTime {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1DateTime)
-	return DlmsDateTimeFromBytes(([]byte)(*v))
-}
-
-func (data *tDlmsData) setDate(date *tDlmsDate) {
-
-	adata := (*tAsn1Choice)(data)
-	b := date.toBytes()
-	adata.setVal(C_Data_PR_date, (*tAsn1Date)(&b))
-}
-
-func (data *tDlmsData) getDate() *tDlmsDate {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Date)
-	return DlmsDateFromBytes(([]byte)(*v))
-}
-
-func (data *tDlmsData) setTime(tim *tDlmsTime) {
-
-	adata := (*tAsn1Choice)(data)
-	b := tim.toBytes()
-	adata.setVal(C_Data_PR_time, (*tAsn1Time)(&b))
-}
-
-func (data *tDlmsData) getTime() *tDlmsTime {
-	adata := (*tAsn1Choice)(data)
-	v := adata.getVal().(*tAsn1Time)
-	return DlmsTimeFromBytes(([]byte)(*v))
-}
-
-func (data *tDlmsData) setDontCare() {
-
-	adata := (*tAsn1Choice)(data)
-	adata.setVal(C_Data_PR_dont_care, nil)
-}
-
-func (data *tDlmsData) getTag() int {
-
-	adata := (*tAsn1Choice)(data)
-
-	switch adata.getTag() {
-	case C_Data_PR_NOTHING:
-		return C_Dlms_Data_Nothing
-	case C_Data_PR_null_data:
-		return C_Dlms_Data_Nil
-	case C_Data_PR_boolean:
-		return C_Dlms_Data_Bool
-	case C_Data_PR_bit_string:
-		return C_Dlms_Data_BitString
-	case C_Data_PR_double_long:
-		return C_Dlms_Data_Int32
-	case C_Data_PR_double_long_unsigned:
-		return C_Dlms_Data_Uint32
-	case C_Data_PR_octet_string:
-		return C_Dlms_Data_Bytes
-	case C_Data_PR_visible_string:
-		return C_Dlms_Data_VisibleString
-	case C_Data_PR_bcd:
-		return C_Dlms_Data_Bcd
-	case C_Data_PR_integer:
-		return C_Dlms_Data_Int8
-	case C_Data_PR_long:
-		return C_Dlms_Data_Int16
-	case C_Data_PR_unsigned:
-		return C_Dlms_Data_Uint8
-	case C_Data_PR_long_unsigned:
-		return C_Dlms_Data_Uint16
-	case C_Data_PR_long64:
-		return C_Dlms_Data_Int64
-	case C_Data_PR_long64_unsigned:
-		return C_Dlms_Data_Uint64
-	case C_Data_PR_float32:
-		return C_Dlms_Data_Float32
-	case C_Data_PR_float64:
-		return C_Dlms_Data_Float64
-	case C_Data_PR_date_time:
-		return C_Dlms_Data_DateTime
-	case C_Data_PR_date:
-		return C_Dlms_Data_Date
-	case C_Data_PR_time:
-		return C_Dlms_Data_Time
-	case C_Data_PR_dont_care:
-		return C_Dlms_Data_DontCare
-	default:
-		panic("assertion failed")
+func (data *tDlmsData) encodeDoubleLong(i int32) []byte {
+	var buf bytes.Buffer
+	err := binary.Write([]byte{DATA_TYPE_DOUBLE_LONG}, binary.BigEndian, i)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
 	}
+	err = binary.Write(buf, binary.BigEndian, i)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	return buf.Bytes()
+}
+
+func (data *tDlmsData) decodeDoubleLong(b []byte) (i int32, len int) {
+	buf := bytes.NewBuffer(b)
+	var di int32
+	err := binary.Read(buf, binary.BigEndian, &di)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Read() failed: %v", err))
+	}
+	return di, 4
+}
+
+func (data *tDlmsData) SetDoubleLongUnsigned(i uint32) {
+	data.typ = DATA_TYPE_DOUBLE_LONG_UNSIGNED
+	data.val = i
+}
+
+func (data *tDlmsData) GetDoubleLongUnsigned() uint32 {
+	return data.val.(uint32)
+}
+
+func (data *tDlmsData) encodeDoubleLongUnsigned(i uint32) []byte {
+	var buf bytes.Buffer
+	err := binary.Write([]byte{DATA_TYPE_DOUBLE_LONG_UNSIGNED}, binary.BigEndian, i)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	err := binary.Write(buf, binary.BigEndian, i)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	return buf.Bytes()
+}
+
+func (data *tDlmsData) decodeDoubleLongUnsigned(b []byte) (i uint32, len int) {
+	buf := bytes.NewBuffer(b)
+	var di uint32
+	err := binary.Read(buf, binary.BigEndian, &di)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Read() failed: %v", err))
+	}
+	return di, 4
+}
+
+func (data *tDlmsData) SetFloatingPoint(f float32) {
+	data.typ = DATA_TYPE_FLOATING_POINT
+	data.val = f
+}
+
+func (data *tDlmsData) GetFloatingPoint() float32 {
+	return data.val.(float32)
+}
+
+func (data *tDlmsData) encodeFloatingPoint(f float32) []byte {
+	var buf bytes.Buffer
+	err := binary.Write([]byte{DATA_TYPE_FLOATING_POINT}, binary.BigEndian, f)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	err := binary.Write(buf, binary.BigEndian, f)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	return buf.Bytes()
+}
+
+func (data *tDlmsData) decodeFloatingPoint(b []byte) (f float32, len int) {
+	buf := bytes.NewBuffer(b)
+	var df float32
+	err := binary.Read(buf, binary.BigEndian, &df)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Read() failed: %v", err))
+	}
+	return df, 4
+}
+
+func (data *tDlmsData) SetOctetString(b []byte) {
+	data.typ = DATA_TYPE_OCTET_STRING
+	if len(b) > 0xFF {
+		panic("octet string length exceeds 255 bytes")
+	}
+	data.val = b
+}
+
+func (data *tDlmsData) GetOctetString() []byte {
+	return data.val.([]byte)
+}
+
+func (data *tDlmsData) encodeOctetString(b []byte) (eb []byte) {
+	eb := make([]byte, len(b)+2)
+	eb[0] = DATA_TYPE_OCTET_STRING
+	eb = eb[1:]
+	eb[0] = len(b)
+	eb = eb[1:]
+	copy(eb, b)
+}
+
+func (data *tDlmsData) decodeOctetString(eb []byte) (b []byte, len int) {
+	b := make([]byte, len(eb[0]))
+	eb = eb[1:]
+	copy(b, eb)
+}
+
+func (data *tDlmsData) SetVisibleString(b []byte) {
+	data.typ = DATA_TYPE_VISIBLE_STRING
+	if len(b) > 0xFF {
+		panic("visible string length exceeds 255 bytes")
+	}
+	data.val = b
+}
+
+func (data *tDlmsData) GetVisibleString() []byte {
+	return data.val.([]byte)
+}
+
+func (data *tDlmsData) encodeVisibleString(b []byte) (eb []byte) {
+	eb := make([]byte, len(b)+2)
+	eb[0] = DATA_TYPE_VISIBLE_STRING
+	eb = eb[1:]
+	eb[0] = len(b)
+	eb = eb[1:]
+	copy(eb, b)
+}
+
+func (data *tDlmsData) decodeVisibleString(eb []byte) (b []byte, len int) {
+	b := make([]byte, len(eb[0]))
+	eb = eb[1:]
+	copy(b, eb)
 }
 
 func encode_getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
