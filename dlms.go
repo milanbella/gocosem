@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	DATA_TYPE_NULL_DATA            = 0
+	DATA_TYPE_NULL                 = 0
 	DATA_TYPE_ARRAY                = 1
 	DATA_TYPE_STRUCTURE            = 2
 	DATA_TYPE_BOOLEAN              = 3
@@ -23,7 +23,6 @@ const (
 	DATA_TYPE_FLOATING_POINT       = 7
 	DATA_TYPE_OCTET_STRING         = 9
 	DATA_TYPE_VISIBLE_STRING       = 10
-	DATA_TYPE_TIME                 = 11
 	DATA_TYPE_BCD                  = 13
 	DATA_TYPE_INTEGER              = 15
 	DATA_TYPE_LONG                 = 16
@@ -37,7 +36,6 @@ const (
 	DATA_TYPE_DATETIME             = 25
 	DATA_TYPE_DATE                 = 26
 	DATA_TYPE_TIME                 = 27
-	DATA_TYPE_OBJECT_IDENTIFIER    = 6
 )
 
 const (
@@ -66,9 +64,11 @@ type tDlmsAttributeId uint8
 type tDlmsAccessSelector uint8
 
 type tDlmsData struct {
-	typ int
+	typ uint8
 	val interface{}
-	len int
+	len uint16
+	sct map[string]*tDlmsData // structure
+	arr []*tDlmsData          // array
 }
 
 type tDlmsDataAccessResult uint8
@@ -295,29 +295,222 @@ func (dateTime *tDlmsDateTime) isClockStatusDaylightSavingActive() bool {
 	return dateTime.clockStatus&0x80 > 0
 }
 
-func NewDlmsData() (data *tDlmsData) {
-
-	return (*tDlmsData)(new(tAsn1Choice))
-}
-
-func DecodeDlmsData(b []byte) (err error, data *tDlmsData, n int) {
-	err, adata, n := decode_Data(b)
-	if nil != err {
-		return err, nil, 0
+func encodeAxdrLength(w io.Writer, length uint16) (err error) {
+	var FNAME string = "encodeAxdrLength()"
+	if length <= 0x80 {
+		err = binary.Write(w, binary.BigEndian, uint8(length))
+		if nil != err {
+			errorLog.Printf("%s: binary.Write() failed: %v", FNAME, err)
+			return err
+		}
+		return nil
+	} else if length <= 0xFF {
+		err = binary.Write(w, binary.BigEndian, []uint8{0x081, uint8(length)})
+		if nil != err {
+			errorLog.Printf("%s: binary.Write() failed: %v", FNAME, err)
+			return err
+		}
+		return nil
+	} else {
+		err = binary.Write(w, binary.BigEndian, []uint8{0x082, uint8(length & 0xFF00 >> 8), uint8(0x00FF & length)})
+		if nil != err {
+			errorLog.Printf("%s: binary.Write() failed: %v", FNAME, err)
+			return err
+		}
+		return nil
 	}
-	return nil, (*tDlmsData)(adata), n
 }
 
-func (data *tDlmsData) Encode() (err error, b []byte) {
-	adata := (*tAsn1Choice)(data)
-	err, b = encode_Data(adata)
+func decodeAxdrLength(r io.Reader) (err error, length uint16) {
+	var FNAME string = "decodeAxdrLength()"
+	var (
+		u8  uint8
+		u16 uint16
+	)
+	err = binary.Read(r, binary.BigEndian, &u8)
 	if nil != err {
-		return err, nil
+		errorLog.Printf("%s: binary.Read() failed: %v", FNAME, err)
+		return err, 0
 	}
-	return nil, b
+	if u8 <= 0x80 {
+		return nil, uint16(u8)
+	} else if u8 == 0x81 {
+		err = binary.Read(r, binary.BigEndian, &u8)
+		if nil != err {
+			errorLog.Printf("%s: binary.Read() failed: %v", FNAME, err)
+			return err, 0
+		}
+		return nil, uint16(u8)
+	} else if u8 == 0x82 {
+		err = binary.Read(r, binary.BigEndian, &u16)
+		if nil != err {
+			errorLog.Printf("%s: binary.Read() failed: %v", FNAME, err)
+			return err, 0
+		}
+		return nil, u16
+	} else {
+		panic("incorrect encoding")
+	}
 }
 
-func (data *tDlmsData) GetType() {
+func (data *tDlmsData) Encode(w io.Writer) (err error) {
+	switch data.typ {
+	case DATA_TYPE_NULL:
+		return data.encodeNULL(w)
+	case DATA_TYPE_ARRAY:
+		err = encodeAxdrLength(w, uint16(len(data.arr)))
+		if nil != err {
+			return err
+		}
+		for i := 0; i < len(data.arr); i += 1 {
+			err = data.arr[i].Encode(w)
+			if nil != err {
+				return err
+			}
+		}
+	case DATA_TYPE_STRUCTURE:
+		err = encodeAxdrLength(w, uint16(len(data.sct)))
+		if nil != err {
+			return err
+		}
+		for k, _ := range data.sct {
+			err = data.sct[k].Encode(w)
+			if nil != err {
+				return err
+			}
+		}
+	case DATA_TYPE_BOOLEAN:
+		return data.encodeBoolean(w)
+	case DATA_TYPE_BIT_STRING:
+		return data.encodeBitString(w)
+	case DATA_TYPE_DOUBLE_LONG:
+		return data.encodeDoubleLong(w)
+	case DATA_TYPE_DOUBLE_LONG_UNSIGNED:
+		return data.encodeDoubleLongUnsigned(w)
+	case DATA_TYPE_FLOATING_POINT:
+		return data.encodeFloatingPoint(w)
+	case DATA_TYPE_OCTET_STRING:
+		return data.encodeOctetString(w)
+	case DATA_TYPE_VISIBLE_STRING:
+		return data.encodeVisibleString(w)
+	case DATA_TYPE_BCD:
+		return data.encodeBcd(w)
+	case DATA_TYPE_INTEGER:
+		return data.encodeInteger(w)
+	case DATA_TYPE_LONG:
+		return data.encodeLong(w)
+	case DATA_TYPE_UNSIGNED:
+		return data.encodeUnsigned(w)
+	case DATA_TYPE_LONG_UNSIGNED:
+		return data.encodeLongUnsigned(w)
+	case DATA_TYPE_LONG64:
+		return data.encodeLong64(w)
+	case DATA_TYPE_UNSIGNED_LONG64:
+		return data.encodeUnsignedLong64(w)
+	case DATA_TYPE_ENUM:
+		return data.encodeEnum(w)
+	case DATA_TYPE_REAL32:
+		return data.encodeReal32(w)
+	case DATA_TYPE_REAL64:
+		return data.encodeReal64(w)
+	case DATA_TYPE_DATETIME:
+		return data.encodeDateTime(w)
+	case DATA_TYPE_DATE:
+		return data.encodeDate(w)
+	case DATA_TYPE_TIME:
+		return data.encodeTime(w)
+	default:
+		panic("unknown data type")
+	}
+	return nil
+}
+
+func (data *tDlmsData) Decode(r io.Reader) (err error) {
+	var (
+		FNAME string = "tDlmsData.Decode()"
+	)
+	err = binary.Read(r, binary.BigEndian, &data.typ)
+	if nil != err {
+		errorLog.Printf("%s: binary.Read() failed: %v\n", FNAME, err)
+		return err
+	}
+	switch data.typ {
+	case DATA_TYPE_NULL:
+		return data.decodeNULL()
+	case DATA_TYPE_ARRAY:
+		err, length := decodeAxdrLength(r)
+		if nil != err {
+			return err
+		}
+		data.arr = make([]*tDlmsData, length)
+		for i := 0; i < len(data.arr); i += 1 {
+			data.arr[i] = new(tDlmsData)
+			err = data.arr[i].Decode(r)
+			if nil != err {
+				return err
+			}
+		}
+	case DATA_TYPE_STRUCTURE:
+		err, length := decodeAxdrLength(r)
+		if nil != err {
+			return err
+		}
+		data.sct = make(map[string]*tDlmsData, length)
+		for i := uint16(0); i < length; i += 1 {
+			_data := new(tDlmsData)
+			err = _data.Decode(r)
+			if nil != err {
+				return err
+			}
+			data.sct[fmt.Sprintf("item%d", i)] = _data
+		}
+	case DATA_TYPE_BOOLEAN:
+		return data.decodeBoolean(r)
+	case DATA_TYPE_BIT_STRING:
+		return data.decodeBitString(r)
+	case DATA_TYPE_DOUBLE_LONG:
+		return data.decodeDoubleLong(r)
+	case DATA_TYPE_DOUBLE_LONG_UNSIGNED:
+		return data.decodeDoubleLongUnsigned(r)
+	case DATA_TYPE_FLOATING_POINT:
+		return data.decodeFloatingPoint(r)
+	case DATA_TYPE_OCTET_STRING:
+		return data.decodeOctetString(r)
+	case DATA_TYPE_VISIBLE_STRING:
+		return data.decodeVisibleString(r)
+	case DATA_TYPE_BCD:
+		return data.decodeBcd(r)
+	case DATA_TYPE_INTEGER:
+		return data.decodeInteger(r)
+	case DATA_TYPE_LONG:
+		return data.decodeLong(r)
+	case DATA_TYPE_UNSIGNED:
+		return data.decodeUnsigned(r)
+	case DATA_TYPE_LONG_UNSIGNED:
+		return data.decodeLongUnsigned(r)
+	case DATA_TYPE_LONG64:
+		return data.decodeLong64(r)
+	case DATA_TYPE_UNSIGNED_LONG64:
+		return data.decodeUnsignedLong64(r)
+	case DATA_TYPE_ENUM:
+		return data.decodeEnum(r)
+	case DATA_TYPE_REAL32:
+		return data.decodeReal32(r)
+	case DATA_TYPE_REAL64:
+		return data.decodeReal64(r)
+	case DATA_TYPE_DATETIME:
+		return data.decodeDateTime(r)
+	case DATA_TYPE_DATE:
+		return data.decodeDate(r)
+	case DATA_TYPE_TIME:
+		return data.decodeTime(r)
+	default:
+		panic("unknown data type")
+	}
+	return nil
+}
+
+func (data *tDlmsData) GetType() uint8 {
 	return data.typ
 }
 
@@ -325,12 +518,17 @@ func (data *tDlmsData) SetNULL() {
 	data.typ = DATA_TYPE_NULL
 }
 
-func (data *tDlmsData) encodeNULL() []byte {
-	return []byte{DATA_TYPE_NULL}
+func (data *tDlmsData) encodeNULL(w io.Writer) (err error) {
+	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_NULL})
+	if nil != err {
+		errorLog.Printf("binary.Write() failed: %v\n", err)
+		return err
+	}
+	return nil
 }
 
-func (data *tDlmsData) decodeNULL(b []byte) (b *byte, len int) {
-	return nil, 0
+func (data *tDlmsData) decodeNULL() (err error) {
+	return nil
 }
 
 func (data *tDlmsData) SetBoolean(b bool) {
@@ -343,32 +541,40 @@ func (data *tDlmsData) GetBool() bool {
 }
 
 func (data *tDlmsData) encodeBoolean(w io.Writer) (err error) {
-	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_BOOLEAN, byte(data.val.(bool))})
+	if data.val.(bool) {
+		err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_BOOLEAN, 1})
+	} else {
+		err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_BOOLEAN, 0})
+	}
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
 }
 
-func (data *tDlmsData) deccodeBoolean(r io.Reader) (err error) {
-	var b bool
-	err := binary.Read(r, binary.BigEndian, &b)
+func (data *tDlmsData) decodeBoolean(r io.Reader) (err error) {
+	var b uint8
+	err = binary.Read(r, binary.BigEndian, &b)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_BOOLEAN
-	data.val = b
+	if 0 > b {
+		data.val = true
+	} else {
+		data.val = false
+	}
 	return nil
 }
 
-func (data *tDlmsData) SetBitString(b []byte, length uint8) {
+func (data *tDlmsData) SetBitString(b []byte, length uint16) {
 	n := length / 8
 	if length%8 > 0 {
 		n += 1
 	}
-	if len(b) != n {
+	if len(b) != int(n) {
 		panic("incorrect length")
 	}
 	data.typ = DATA_TYPE_BIT_STRING
@@ -376,43 +582,44 @@ func (data *tDlmsData) SetBitString(b []byte, length uint8) {
 	data.len = length
 }
 
-func (data *tDlmsData) GetBitString() (b []byte, length uint8) {
-	return data.val.([]byte), uint8(data.len)
+func (data *tDlmsData) GetBitString() (b []byte, length uint16) {
+	return data.val.([]byte), data.len
 }
 
 func (data *tDlmsData) encodeBitString(w io.Writer) (err error) {
-	if data.len > 0xFF {
-		panic("length exceeds 255")
+	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_BIT_STRING})
+	if nil != err {
+		errorLog.Printf("binary.Write() failed: %v\n", err)
+		return err
 	}
-	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_BIT_STRING, byte(data.len)})
+	err = encodeAxdrLength(w, data.len)
+	if nil != err {
+		return err
+	}
+	err = binary.Write(w, binary.BigEndian, data.val.([]byte))
 	if nil != err {
 		errorLog.Printf("binary.Write() failed: %v", err)
 		return err
 	}
-	err = binary.Write(w, binary.BigEndian, data.val([]byte))
-	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
-		return err
-	}
-	return eb
+	return nil
 }
 
 func (data *tDlmsData) decodeBitString(r io.Reader) (err error) {
-	var length uint8
-	err := binary.Read(r, binary.BigEndian, &length)
+	var length uint16
+	err, length = decodeAxdrLength(r)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
 		return err
 	}
 	b := make([]byte, length)
-	err := binary.Read(r, binary.BigEndian, b)
+	err = binary.Read(r, binary.BigEndian, b)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_BIT_STRING
 	data.val = b
 	data.len = length
+	return nil
 }
 
 func (data *tDlmsData) SetDoubleLong(i int32) {
@@ -427,12 +634,12 @@ func (data *tDlmsData) GetDoubleLong() int32 {
 func (data *tDlmsData) encodeDoubleLong(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_DOUBLE_LONG})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(buf, binary.BigEndian, data.val.(int32))
+	err = binary.Write(w, binary.BigEndian, data.val.(int32))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -440,9 +647,9 @@ func (data *tDlmsData) encodeDoubleLong(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeDoubleLong(r io.Reader) (err error) {
 	var i int32
-	err := binary.Read(buf, binary.BigEndian, &i)
+	err = binary.Read(r, binary.BigEndian, &i)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_DOUBLE_LONG
@@ -462,12 +669,12 @@ func (data *tDlmsData) GetDoubleLongUnsigned() uint32 {
 func (data *tDlmsData) encodeDoubleLongUnsigned(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_DOUBLE_LONG_UNSIGNED})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(buf, binary.BigEndian, data.val.(uint32))
+	err = binary.Write(w, binary.BigEndian, data.val.(uint32))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -475,9 +682,9 @@ func (data *tDlmsData) encodeDoubleLongUnsigned(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeDoubleLongUnsigned(r io.Reader) (err error) {
 	var i uint32
-	err := binary.Read(buf, binary.BigEndian, &i)
+	err = binary.Read(r, binary.BigEndian, &i)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_DOUBLE_LONG_UNSIGNED
@@ -497,12 +704,12 @@ func (data *tDlmsData) GetFloatingPoint() float32 {
 func (data *tDlmsData) encodeFloatingPoint(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_FLOATING_POINT})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(buf, binary.BigEndian, data.val.(float32))
+	err = binary.Write(w, binary.BigEndian, data.val.(float32))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -510,9 +717,9 @@ func (data *tDlmsData) encodeFloatingPoint(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeFloatingPoint(r io.Reader) (err error) {
 	var f float32
-	err := binary.Read(buf, binary.BigEndian, &f)
+	err = binary.Read(r, binary.BigEndian, &f)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_FLOATING_POINT
@@ -522,8 +729,8 @@ func (data *tDlmsData) decodeFloatingPoint(r io.Reader) (err error) {
 
 func (data *tDlmsData) SetOctetString(b []byte) {
 	data.typ = DATA_TYPE_OCTET_STRING
-	if len(b) > 0xFF {
-		panic("octet string length exceeds 255 bytes")
+	if len(b) > 0xFFFF {
+		panic("octet string too big")
 	}
 	data.val = b
 }
@@ -535,38 +742,32 @@ func (data *tDlmsData) GetOctetString() []byte {
 func (data *tDlmsData) encodeOctetString(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_OCTET_STRING})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	var length uint8
-	if len(data.val.([]byte)) > 0xFF {
-		panic("octet string length exceeds 255 bytes")
-	}
-	length = len(data.val.([]byte))
-	err = binary.Write(buf, binary.BigEndian, length)
+	length := uint16(len(data.val.([]byte)))
+	err = encodeAxdrLength(w, length)
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
 		return err
 	}
-	err = binary.Write(buf, binary.BigEndian, data.val.([]byte))
+	err = binary.Write(w, binary.BigEndian, data.val.([]byte))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
 }
 
 func (data *tDlmsData) decodeOctetString(r io.Reader) (err error) {
-	var length uint32
-	err := binary.Read(buf, binary.BigEndian, &length)
+	var length uint16
+	err, length = decodeAxdrLength(r)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
 		return err
 	}
 	b := make([]byte, length)
-	err := binary.Read(buf, binary.BigEndian, b)
+	err = binary.Read(r, binary.BigEndian, b)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_OCTET_STRING
@@ -589,38 +790,37 @@ func (data *tDlmsData) GetVisibleString() []byte {
 func (data *tDlmsData) encodeVisibleString(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_VISIBLE_STRING})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	var length uint8
-	if len(data.val.([]byte)) > 0xFF {
-		panic("viible string length exceeds 255 bytes")
-	}
-	length = len(data.val.([]byte))
-	err = binary.Write(buf, binary.BigEndian, length)
+	length := uint16(len(data.val.([]byte)))
+	err = encodeAxdrLength(w, length)
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
 		return err
 	}
-	err = binary.Write(buf, binary.BigEndian, data.val.([]byte))
+	err = binary.Write(w, binary.BigEndian, uint8(length))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
+		return err
+	}
+	err = binary.Write(w, binary.BigEndian, data.val.([]byte))
+	if nil != err {
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
 }
 
 func (data *tDlmsData) decodeVisibleString(r io.Reader) (err error) {
-	var length uint32
-	err := binary.Read(buf, binary.BigEndian, &length)
+	var length uint16
+	err, length = decodeAxdrLength(r)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
 		return err
 	}
 	b := make([]byte, length)
-	err := binary.Read(buf, binary.BigEndian, b)
+	err = binary.Read(r, binary.BigEndian, b)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_VISIBLE_STRING
@@ -628,7 +828,6 @@ func (data *tDlmsData) decodeVisibleString(r io.Reader) (err error) {
 	return nil
 }
 
-//@@@@@
 func (data *tDlmsData) SetBcd(bcd int8) {
 	data.typ = DATA_TYPE_BCD
 	data.val = bcd
@@ -641,12 +840,12 @@ func (data *tDlmsData) GetBcd() int8 {
 func (data *tDlmsData) encodeBcd(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_BCD})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(w, binary.BigEndian, data.val(int8))
+	err = binary.Write(w, binary.BigEndian, data.val.(int8))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -654,13 +853,14 @@ func (data *tDlmsData) encodeBcd(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeBcd(r io.Reader) (err error) {
 	var bcd int8
-	err := binary.Read(buf, binary.BigEndian, &bcd)
+	err = binary.Read(r, binary.BigEndian, &bcd)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_BCD
 	data.val = bcd
+	return nil
 }
 
 func (data *tDlmsData) SetInteger(i int8) {
@@ -675,12 +875,12 @@ func (data *tDlmsData) GetInteger() int8 {
 func (data *tDlmsData) encodeInteger(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_INTEGER})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(w, binary.BigEndian, data.val(int8))
+	err = binary.Write(w, binary.BigEndian, data.val.(int8))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -688,13 +888,14 @@ func (data *tDlmsData) encodeInteger(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeInteger(r io.Reader) (err error) {
 	var i int8
-	err := binary.Read(buf, binary.BigEndian, &i)
+	err = binary.Read(r, binary.BigEndian, &i)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_INTEGER
 	data.val = i
+	return nil
 }
 
 func (data *tDlmsData) SetLong(i int16) {
@@ -709,26 +910,27 @@ func (data *tDlmsData) GetLong() int16 {
 func (data *tDlmsData) encodeLong(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_LONG})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(w, binary.BigEndian, data.val(int16))
+	err = binary.Write(w, binary.BigEndian, data.val.(int16))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
 }
 
-func (data *tDlmsData) decodeInteger(r io.Reader) (err error) {
+func (data *tDlmsData) decodeLong(r io.Reader) (err error) {
 	var i int16
-	err := binary.Read(buf, binary.BigEndian, &i)
+	err = binary.Read(r, binary.BigEndian, &i)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_LONG
 	data.val = i
+	return nil
 }
 
 func (data *tDlmsData) SetUnsigned(i uint8) {
@@ -743,12 +945,12 @@ func (data *tDlmsData) GetUnsigned() uint8 {
 func (data *tDlmsData) encodeUnsigned(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_UNSIGNED})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(w, binary.BigEndian, data.val(uint8))
+	err = binary.Write(w, binary.BigEndian, data.val.(uint8))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -756,13 +958,49 @@ func (data *tDlmsData) encodeUnsigned(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeUnsigned(r io.Reader) (err error) {
 	var i uint8
-	err := binary.Read(buf, binary.BigEndian, &i)
+	err = binary.Read(r, binary.BigEndian, &i)
 	if nil != err {
 		errorLog.Printf("binary.Read() failed: %v", err)
 		return err
 	}
 	data.typ = DATA_TYPE_UNSIGNED
 	data.val = i
+	return nil
+}
+
+func (data *tDlmsData) SetLongUnsigned(i uint16) {
+	data.typ = DATA_TYPE_LONG_UNSIGNED
+	data.val = i
+}
+
+func (data *tDlmsData) GetLongUnsigned() uint16 {
+	return data.val.(uint16)
+}
+
+func (data *tDlmsData) encodeLongUnsigned(w io.Writer) (err error) {
+	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_LONG_UNSIGNED})
+	if nil != err {
+		errorLog.Printf("binary.Write() failed: %v\n", err)
+		return err
+	}
+	err = binary.Write(w, binary.BigEndian, data.val.(uint16))
+	if nil != err {
+		errorLog.Printf("binary.Write() failed: %v\n", err)
+		return err
+	}
+	return nil
+}
+
+func (data *tDlmsData) decodeLongUnsigned(r io.Reader) (err error) {
+	var i uint16
+	err = binary.Read(r, binary.BigEndian, &i)
+	if nil != err {
+		errorLog.Printf("binary.Read() failed: %v", err)
+		return err
+	}
+	data.typ = DATA_TYPE_LONG_UNSIGNED
+	data.val = i
+	return nil
 }
 
 func (data *tDlmsData) SetLong64(i int64) {
@@ -777,12 +1015,12 @@ func (data *tDlmsData) GetLong64() int64 {
 func (data *tDlmsData) encodeLong64(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_LONG64})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(w, binary.BigEndian, data.val(int64))
+	err = binary.Write(w, binary.BigEndian, data.val.(int64))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -790,13 +1028,14 @@ func (data *tDlmsData) encodeLong64(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeLong64(r io.Reader) (err error) {
 	var i int64
-	err := binary.Read(buf, binary.BigEndian, &i)
+	err = binary.Read(r, binary.BigEndian, &i)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_LONG64
 	data.val = i
+	return nil
 }
 
 func (data *tDlmsData) SetUnsignedLong64(i uint64) {
@@ -811,12 +1050,12 @@ func (data *tDlmsData) GetUnsignedLong64() uint64 {
 func (data *tDlmsData) encodeUnsignedLong64(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_UNSIGNED_LONG64})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(w, binary.BigEndian, data.val(uint64))
+	err = binary.Write(w, binary.BigEndian, data.val.(uint64))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -824,13 +1063,14 @@ func (data *tDlmsData) encodeUnsignedLong64(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeUnsignedLong64(r io.Reader) (err error) {
 	var i uint64
-	err := binary.Read(buf, binary.BigEndian, &i)
+	err = binary.Read(r, binary.BigEndian, &i)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_UNSIGNED_LONG64
 	data.val = i
+	return nil
 }
 
 func (data *tDlmsData) SetEnum(i uint8) {
@@ -845,12 +1085,12 @@ func (data *tDlmsData) GetEnum() uint8 {
 func (data *tDlmsData) encodeEnum(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_ENUM})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(w, binary.BigEndian, data.val(uint8))
+	err = binary.Write(w, binary.BigEndian, data.val.(uint8))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -858,17 +1098,18 @@ func (data *tDlmsData) encodeEnum(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeEnum(r io.Reader) (err error) {
 	var i uint8
-	err := binary.Read(buf, binary.BigEndian, &i)
+	err = binary.Read(r, binary.BigEndian, &i)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_ENUM
 	data.val = i
+	return nil
 }
 
 func (data *tDlmsData) SetReal32(f float32) {
-	data.typ = DATA_TYPE_UNSIGNED_REAL32
+	data.typ = DATA_TYPE_REAL32
 	data.val = f
 }
 
@@ -877,14 +1118,14 @@ func (data *tDlmsData) GetReal32() float32 {
 }
 
 func (data *tDlmsData) encodeReal32(w io.Writer) (err error) {
-	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_UNSIGNED_REAL32})
+	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_REAL32})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(w, binary.BigEndian, data.val(float32))
+	err = binary.Write(w, binary.BigEndian, data.val.(float32))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -892,17 +1133,18 @@ func (data *tDlmsData) encodeReal32(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeReal32(r io.Reader) (err error) {
 	var f float32
-	err := binary.Read(buf, binary.BigEndian, &f)
+	err = binary.Read(r, binary.BigEndian, &f)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
-	data.typ = DATA_TYPE_UNSIGNED_REAL32
+	data.typ = DATA_TYPE_REAL32
 	data.val = f
+	return nil
 }
 
 func (data *tDlmsData) SetReal64(f float64) {
-	data.typ = DATA_TYPE_UNSIGNED_REAL64
+	data.typ = DATA_TYPE_REAL64
 	data.val = f
 }
 
@@ -911,14 +1153,14 @@ func (data *tDlmsData) GetReal64() float64 {
 }
 
 func (data *tDlmsData) encodeReal64(w io.Writer) (err error) {
-	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_UNSIGNED_REAL64})
+	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_REAL64})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(w, binary.BigEndian, data.val(float64))
+	err = binary.Write(w, binary.BigEndian, data.val.(float64))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -926,13 +1168,14 @@ func (data *tDlmsData) encodeReal64(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeReal64(r io.Reader) (err error) {
 	var f float64
-	err := binary.Read(buf, binary.BigEndian, &f)
+	err = binary.Read(r, binary.BigEndian, &f)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
-	data.typ = DATA_TYPE_UNSIGNED_REAL64
+	data.typ = DATA_TYPE_REAL64
 	data.val = f
+	return nil
 }
 
 func (data *tDlmsData) SetDateTime(b []byte) {
@@ -950,12 +1193,12 @@ func (data *tDlmsData) GetDateTime() []byte {
 func (data *tDlmsData) encodeDateTime(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_DATETIME})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(buf, binary.BigEndian, data.val.([]byte))
+	err = binary.Write(w, binary.BigEndian, data.val.([]byte))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -963,9 +1206,9 @@ func (data *tDlmsData) encodeDateTime(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeDateTime(r io.Reader) (err error) {
 	b := make([]byte, 12)
-	err := binary.Read(buf, binary.BigEndian, b)
+	err = binary.Read(r, binary.BigEndian, b)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_DATETIME
@@ -988,12 +1231,12 @@ func (data *tDlmsData) GetDate() []byte {
 func (data *tDlmsData) encodeDate(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_DATE})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(buf, binary.BigEndian, data.val.([]byte))
+	err = binary.Write(w, binary.BigEndian, data.val.([]byte))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -1001,9 +1244,9 @@ func (data *tDlmsData) encodeDate(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeDate(r io.Reader) (err error) {
 	b := make([]byte, 5)
-	err := binary.Read(buf, binary.BigEndian, b)
+	err = binary.Read(r, binary.BigEndian, b)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_DATE
@@ -1026,12 +1269,12 @@ func (data *tDlmsData) GetTime() []byte {
 func (data *tDlmsData) encodeTime(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_TIME})
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
-	err = binary.Write(buf, binary.BigEndian, data.val.([]byte))
+	err = binary.Write(w, binary.BigEndian, data.val.([]byte))
 	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v", err)
+		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	return nil
@@ -1039,9 +1282,9 @@ func (data *tDlmsData) encodeTime(w io.Writer) (err error) {
 
 func (data *tDlmsData) decodeTime(r io.Reader) (err error) {
 	b := make([]byte, 4)
-	err := binary.Read(buf, binary.BigEndian, b)
+	err = binary.Read(r, binary.BigEndian, b)
 	if nil != err {
-		errorLog.Printf("binary.Read() failed: %v", err)
+		errorLog.Printf("binary.Read() failed: %v\n", err)
 		return err
 	}
 	data.typ = DATA_TYPE_TIME
@@ -1088,10 +1331,12 @@ func encode_getRequest(classId tDlmsClassId, instanceId *tDlmsOid, attributeId t
 			as = []byte{byte(*accessSelector)}
 		}
 		if nil != accessParameters {
-			err, ap = encode_Data((*tAsn1Choice)(accessParameters))
+			var buf bytes.Buffer
+			err = accessParameters.Encode(&buf)
 			if nil != err {
 				return err, nil
 			}
+			ap = buf.Bytes()
 		} else {
 			ap = make([]byte, 0)
 		}
@@ -1175,12 +1420,14 @@ func decode_getRequest(pdu []byte) (err error, n int, classId tDlmsClassId, inst
 	//if len(b) >= 1 {
 	if false {
 		var nn int
-		var data *tAsn1Choice
-		err, data, nn = decode_Data(b)
+		data := new(tDlmsData)
+		buf := bytes.NewBuffer(b)
+		err = data.Decode(buf)
 		if nil != err {
 			return err, 0, 0, nil, 0, nil, nil
 		}
-		accessParameters = (*tDlmsData)(data)
+		accessParameters = data
+		nn = len(b) - buf.Len()
 		b = b[nn:]
 		n += nn
 	}
@@ -1206,11 +1453,12 @@ func encode_getResponse(dataAccessResult tDlmsDataAccessResult, data *tDlmsData)
 	}
 
 	if nil != data {
-		err, b = encode_Data((*tAsn1Choice)(data))
+		var buf bytes.Buffer
+		err = data.Encode(&buf)
 		if nil != err {
 			return err, nil
 		}
-		_, err = w.Write(b)
+		_, err = w.Write(buf.Bytes())
 		if nil != err {
 			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
 			return err, nil
@@ -1237,16 +1485,18 @@ func decode_getResponse(pdu []byte) (err error, n int, dataAccessResult tDlmsDat
 	b = b[1:]
 	n += 1
 
-	var cdata *tAsn1Choice
 	if dataAccessResult_success == dataAccessResult {
-		err, cdata, nn = decode_Data(b)
+		buf := bytes.NewBuffer(b)
+		data = new(tDlmsData)
+		err = data.Decode(buf)
+		nn = len(b) - buf.Len()
 		if nil != err {
 			return err, n + nn, 0, nil
 		}
 		n += nn
 	}
 
-	return nil, n, dataAccessResult, (*tDlmsData)(cdata)
+	return nil, n, dataAccessResult, data
 }
 
 func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (err error, pdu []byte) {
