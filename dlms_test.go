@@ -1,11 +1,139 @@
 package gocosem
 
 import (
+	"bytes"
 	"testing"
 )
 
 func oidEquals(oid1 *tDlmsOid, oid2 *tDlmsOid) bool {
 	return (oid1[0] == oid2[0]) || (oid1[1] == oid2[1]) || (oid1[2] == oid2[2]) || (oid1[3] == oid2[3]) || (oid1[4] == oid2[4]) || (oid1[5] == oid2[5])
+}
+
+func TestX_encode_decode_DlmsData_array(t *testing.T) {
+
+	data := new(tDlmsData)
+	data.typ = DATA_TYPE_ARRAY
+	data.arr = make([]*tDlmsData, 20)
+
+	i := 0
+	d := new(tDlmsData)
+	d.SetNULL()
+	data.arr[i] = d
+
+	i = 1
+	d = new(tDlmsData)
+	d.SetBoolean(true)
+	data.arr[i] = d
+
+	i = 2
+	d = new(tDlmsData)
+	d.SetBitString([]byte{0xFF, 0x80}, 9)
+	data.arr[i] = d
+
+	i = 3
+	d = new(tDlmsData)
+	d.SetDoubleLong(0x11223344)
+	data.arr[i] = d
+
+	i = 4
+	d = new(tDlmsData)
+	d.SetDoubleLongUnsigned(0x11223344)
+	data.arr[i] = d
+
+	i = 5
+	d = new(tDlmsData)
+	d.SetFloatingPoint(0.25)
+	data.arr[i] = d
+
+	i = 6
+	d = new(tDlmsData)
+	d.SetOctetString([]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09})
+	data.arr[i] = d
+
+	i = 7
+	d = new(tDlmsData)
+	d.SetVisibleString([]byte{0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19})
+	data.arr[i] = d
+
+	i = 8
+	d = new(tDlmsData)
+	d.SetBcd(5)
+	data.arr[i] = d
+
+	i = 9
+	d = new(tDlmsData)
+	d.SetInteger(-11)
+	data.arr[i] = d
+
+	i = 10
+	d = new(tDlmsData)
+	d.SetLong(-23457)
+	data.arr[i] = d
+
+	i = 11
+	d = new(tDlmsData)
+	d.SetUnsigned(254)
+	data.arr[i] = d
+
+	i = 12
+	d = new(tDlmsData)
+	d.SetLong64(-1254999)
+	data.arr[i] = d
+
+	i = 13
+	d = new(tDlmsData)
+	d.SetUnsignedLong64(91254999)
+	data.arr[i] = d
+
+	i = 14
+	d = new(tDlmsData)
+	d.SetEnum(0x70)
+	data.arr[i] = d
+
+	i = 15
+	d = new(tDlmsData)
+	d.SetReal32(100.57)
+	data.arr[i] = d
+
+	i = 16
+	d = new(tDlmsData)
+	d.SetReal64(1105.9)
+	data.arr[i] = d
+
+	i = 17
+	d = new(tDlmsData)
+	d.SetDateTime([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x08, 0x10, 0x11, 0x12})
+	data.arr[i] = d
+
+	i = 18
+	d = new(tDlmsData)
+	d.SetDate([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	data.arr[i] = d
+
+	i = 19
+	d = new(tDlmsData)
+	d.SetTime([]byte{0x01, 0x02, 0x03, 0x04})
+	data.arr[i] = d
+
+	var ebuf bytes.Buffer
+
+	err := data.Encode(&ebuf)
+	if nil != err {
+		t.Fatalf("DlmsData.Encode() failed, err: %v", err)
+	}
+	t.Logf("@@@@@@@@@@@@@@ cp 100: %02X", ebuf.Bytes())
+
+	dbuf := bytes.NewBuffer(ebuf.Bytes())
+	ddata := new(tDlmsData)
+	err = ddata.Decode(dbuf)
+	if nil != err {
+		t.Fatalf("DlmsData.Decode() failed, err: %v", err)
+	}
+
+	if DATA_TYPE_ARRAY != ddata.GetType() {
+		t.Fatalf("failed")
+	}
+
 }
 
 func TestX_encode_GetRequestNormal(t *testing.T) {
@@ -70,8 +198,8 @@ func TestX_encode_GetResponseNormal(t *testing.T) {
 		0x09, 0x06,
 		0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
 
-	_data := new(tAsn1Choice)
-	_data.setVal(C_Data_PR_octet_string, &tAsn1OctetString{0x11, 0x22, 0x33, 0x44, 0x55, 0x66})
+	_data := new(tDlmsData)
+	_data.SetOctetString([]byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66})
 	err, pdu := encode_GetResponseNormal(0x81, 0, (*tDlmsData)(_data))
 	if nil != err {
 		t.Fatalf("encode_GetRequestNormal() failed, err: %v", err)
@@ -99,8 +227,8 @@ func TestX_decode_GetResponseNormal(t *testing.T) {
 	t.Logf("dataAccessResult: %d", dataAccessResult)
 	t.Logf("data: %p", data)
 
-	tag := ((*tAsn1Choice)(data)).getTag()
-	val := *(((*tAsn1Choice)(data)).getVal()).(*tAsn1OctetString)
+	tag := data.GetType()
+	val := data.GetOctetString()
 	if 0 == dataAccessResult {
 		t.Logf("data.tag: %d", tag)
 		printBuffer(t, val)
@@ -207,9 +335,9 @@ func TestX_encode_GetResponseWithList(t *testing.T) {
 		0x30, 0x30, 0x30}
 
 	data1 := new(tDlmsData)
-	data1.setBytes([]byte{0x01, 0x02, 0x03, 0x04})
+	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04})
 	data2 := new(tDlmsData)
-	data2.setVisibleString("000")
+	data2.SetVisibleString([]byte{0x30, 0x30, 0x30})
 
 	dataAccessResults := make([]tDlmsDataAccessResult, 2)
 	datas := make([]*tDlmsData, 2)
@@ -255,18 +383,18 @@ func TestX_decode_GetResponseWithList(t *testing.T) {
 	count := len(dataAccessResults)
 
 	for i := 0; i < count; i += 1 {
-		choice := (*tAsn1Choice)(datas[i])
-		t.Logf("%d: dataAccessResult: %d tag: %d", i, dataAccessResults[i], choice.getTag())
+		data := datas[i]
+		t.Logf("%d: dataAccessResult: %d tag: %d", i, dataAccessResults[i], data.GetType())
 	}
 
 	if 0 != dataAccessResults[0] {
 		t.Fatalf("wrong dataAccessResults[0]: ", dataAccessResults[0])
 	}
-	choice := (*tAsn1Choice)(datas[0])
-	if C_Data_PR_octet_string != choice.getTag() {
-		t.Fatalf("wrong tag[0]: ", choice.getTag())
+	data := datas[0]
+	if DATA_TYPE_OCTET_STRING != data.GetType() {
+		t.Fatalf("wrong tag[0]: ", data.GetType)
 	}
-	db := *(choice.getVal().(*tAsn1OctetString))
+	db := data.GetOctetString()
 	printBuffer(t, db)
 	if !byteEquals(t, db, []byte{0x01, 0x02, 0x03, 0x04}, true) {
 		t.Fatalf("wrong data[0]")
@@ -275,11 +403,11 @@ func TestX_decode_GetResponseWithList(t *testing.T) {
 	if 0 != dataAccessResults[1] {
 		t.Fatalf("wrong dataAccessResults[1]: ", dataAccessResults[1])
 	}
-	choice = (*tAsn1Choice)(datas[1])
-	if C_Data_PR_visible_string != choice.getTag() {
-		t.Fatalf("wrong tag[1]: ", choice.getTag())
+	data = datas[1]
+	if DATA_TYPE_VISIBLE_STRING != data.GetType() {
+		t.Fatalf("wrong tag[1]: ", data.GetType())
 	}
-	vs := *(choice.getVal().(*tAsn1VisibleString))
+	vs := data.GetVisibleString()
 	printBuffer(t, vs)
 	if !byteEquals(t, vs, []byte{0x30, 0x30, 0x30}, true) {
 		t.Fatalf("wrong data[1]")

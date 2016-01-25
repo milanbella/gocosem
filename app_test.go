@@ -441,7 +441,7 @@ func TestX_GetRequestNormal(t *testing.T) {
 	mockCosemServer.Init()
 
 	data := (new(tDlmsData))
-	data.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
 	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
 
 	ch := make(DlmsChannel)
@@ -477,7 +477,7 @@ func TestX_GetRequestNormal(t *testing.T) {
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
 	}
-	if !bytes.Equal(data.getBytes(), rep.DataAt(0).getBytes()) {
+	if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
 
@@ -492,7 +492,7 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	mockCosemServer.blockLength = 10
 
 	data := (new(tDlmsData))
-	data.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
 	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
 
 	ch := make(DlmsChannel)
@@ -528,7 +528,7 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
 	}
-	if !bytes.Equal(data.getBytes(), rep.DataAt(0).getBytes()) {
+	if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
 
@@ -542,11 +542,11 @@ func TestX_GetRequestWithList(t *testing.T) {
 	mockCosemServer.Init()
 
 	data1 := (new(tDlmsData))
-	data1.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
 	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
 
 	data2 := (new(tDlmsData))
-	data2.setBytes([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	data2.SetOctetString([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
 	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
 
 	ch := make(DlmsChannel)
@@ -590,13 +590,13 @@ func TestX_GetRequestWithList(t *testing.T) {
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
 	}
-	if !bytes.Equal(data1.getBytes(), rep.DataAt(0).getBytes()) {
+	if !bytes.Equal(data1.GetOctetString(), rep.DataAt(0).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
 	if 0 != rep.DataAccessResultAt(1) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
 	}
-	if !bytes.Equal(data2.getBytes(), rep.DataAt(1).getBytes()) {
+	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
 
@@ -611,11 +611,11 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	mockCosemServer.blockLength = 10
 
 	data1 := (new(tDlmsData))
-	data1.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
 	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
 
 	data2 := (new(tDlmsData))
-	data2.setBytes([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	data2.SetOctetString([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
 	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
 
 	ch := make(DlmsChannel)
@@ -659,13 +659,13 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
 	}
-	if !bytes.Equal(data1.getBytes(), rep.DataAt(0).getBytes()) {
+	if !bytes.Equal(data1.GetOctetString(), rep.DataAt(0).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
 	if 0 != rep.DataAccessResultAt(1) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
 	}
-	if !bytes.Equal(data2.getBytes(), rep.DataAt(1).getBytes()) {
+	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
 
@@ -681,11 +681,11 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	mockCosemServer.replyDelayMsec = 1000
 
 	data1 := (new(tDlmsData))
-	data1.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
 	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
 
 	data2 := (new(tDlmsData))
-	data2.setBytes([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	data2.SetOctetString([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
 	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
 
 	ch := make(DlmsChannel)
@@ -740,13 +740,13 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
 	}
-	if !bytes.Equal(data1.getBytes(), rep.DataAt(0).getBytes()) {
+	if !bytes.Equal(data1.GetOctetString(), rep.DataAt(0).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
 	if 0 != rep.DataAccessResultAt(1) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
 	}
-	if !bytes.Equal(data2.getBytes(), rep.DataAt(1).getBytes()) {
+	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
 
@@ -760,7 +760,7 @@ func TestX_1000parallelRequests(t *testing.T) {
 	mockCosemServer.Init()
 
 	data := (new(tDlmsData))
-	data.setBytes([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
 	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
 
 	ch := make(DlmsChannel)
@@ -810,7 +810,7 @@ sinkLoop:
 		if 0 != rep.DataAccessResultAt(0) {
 			t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
 		}
-		if !bytes.Equal(data.getBytes(), rep.DataAt(0).getBytes()) {
+		if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
 			t.Fatalf("value differs")
 		}
 		if 0 == count {

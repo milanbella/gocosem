@@ -13,29 +13,29 @@ import (
 )
 
 const (
-	DATA_TYPE_NULL                 = 0
-	DATA_TYPE_ARRAY                = 1
-	DATA_TYPE_STRUCTURE            = 2
-	DATA_TYPE_BOOLEAN              = 3
-	DATA_TYPE_BIT_STRING           = 4
-	DATA_TYPE_DOUBLE_LONG          = 5
-	DATA_TYPE_DOUBLE_LONG_UNSIGNED = 6
-	DATA_TYPE_FLOATING_POINT       = 7
-	DATA_TYPE_OCTET_STRING         = 9
-	DATA_TYPE_VISIBLE_STRING       = 10
-	DATA_TYPE_BCD                  = 13
-	DATA_TYPE_INTEGER              = 15
-	DATA_TYPE_LONG                 = 16
-	DATA_TYPE_UNSIGNED             = 17
-	DATA_TYPE_LONG_UNSIGNED        = 18
-	DATA_TYPE_LONG64               = 20
-	DATA_TYPE_UNSIGNED_LONG64      = 21
-	DATA_TYPE_ENUM                 = 22
-	DATA_TYPE_REAL32               = 23
-	DATA_TYPE_REAL64               = 24
-	DATA_TYPE_DATETIME             = 25
-	DATA_TYPE_DATE                 = 26
-	DATA_TYPE_TIME                 = 27
+	DATA_TYPE_NULL                 uint8 = 0
+	DATA_TYPE_ARRAY                uint8 = 1
+	DATA_TYPE_STRUCTURE            uint8 = 2
+	DATA_TYPE_BOOLEAN              uint8 = 3
+	DATA_TYPE_BIT_STRING           uint8 = 4
+	DATA_TYPE_DOUBLE_LONG          uint8 = 5
+	DATA_TYPE_DOUBLE_LONG_UNSIGNED uint8 = 6
+	DATA_TYPE_FLOATING_POINT       uint8 = 7
+	DATA_TYPE_OCTET_STRING         uint8 = 9
+	DATA_TYPE_VISIBLE_STRING       uint8 = 10
+	DATA_TYPE_BCD                  uint8 = 13
+	DATA_TYPE_INTEGER              uint8 = 15
+	DATA_TYPE_LONG                 uint8 = 16
+	DATA_TYPE_UNSIGNED             uint8 = 17
+	DATA_TYPE_LONG_UNSIGNED        uint8 = 18
+	DATA_TYPE_LONG64               uint8 = 20
+	DATA_TYPE_UNSIGNED_LONG64      uint8 = 21
+	DATA_TYPE_ENUM                 uint8 = 22
+	DATA_TYPE_REAL32               uint8 = 23
+	DATA_TYPE_REAL64               uint8 = 24
+	DATA_TYPE_DATETIME             uint8 = 25
+	DATA_TYPE_DATE                 uint8 = 26
+	DATA_TYPE_TIME                 uint8 = 27
 )
 
 const (
@@ -305,14 +305,14 @@ func encodeAxdrLength(w io.Writer, length uint16) (err error) {
 		}
 		return nil
 	} else if length <= 0xFF {
-		err = binary.Write(w, binary.BigEndian, []uint8{0x081, uint8(length)})
+		err = binary.Write(w, binary.BigEndian, []uint8{0x81, uint8(length)})
 		if nil != err {
 			errorLog.Printf("%s: binary.Write() failed: %v", FNAME, err)
 			return err
 		}
 		return nil
 	} else {
-		err = binary.Write(w, binary.BigEndian, []uint8{0x082, uint8(length & 0xFF00 >> 8), uint8(0x00FF & length)})
+		err = binary.Write(w, binary.BigEndian, []uint8{0x82, uint8(length & 0xFF00 >> 8), uint8(0x00FF & length)})
 		if nil != err {
 			errorLog.Printf("%s: binary.Write() failed: %v", FNAME, err)
 			return err
@@ -322,10 +322,11 @@ func encodeAxdrLength(w io.Writer, length uint16) (err error) {
 }
 
 func decodeAxdrLength(r io.Reader) (err error, length uint16) {
-	var FNAME string = "decodeAxdrLength()"
 	var (
-		u8  uint8
-		u16 uint16
+		FNAME string = "decodeAxdrLength()"
+		serr  string
+		u8    uint8
+		u16   uint16
 	)
 	err = binary.Read(r, binary.BigEndian, &u8)
 	if nil != err {
@@ -349,15 +350,26 @@ func decodeAxdrLength(r io.Reader) (err error, length uint16) {
 		}
 		return nil, u16
 	} else {
-		panic("incorrect encoding")
+		serr = fmt.Sprintf("%s: incorrect encoding\n", FNAME)
+		errorLog.Printf(serr)
+		return errors.New(serr), 0
 	}
 }
 
 func (data *tDlmsData) Encode(w io.Writer) (err error) {
+	var (
+		FNAME string = "DlmsData.Encode()"
+		serr  string
+	)
 	switch data.typ {
 	case DATA_TYPE_NULL:
 		return data.encodeNULL(w)
 	case DATA_TYPE_ARRAY:
+		err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_ARRAY})
+		if nil != err {
+			errorLog.Printf("%s: binary.Write() failed: %v\n", FNAME, err)
+			return err
+		}
 		err = encodeAxdrLength(w, uint16(len(data.arr)))
 		if nil != err {
 			return err
@@ -369,6 +381,11 @@ func (data *tDlmsData) Encode(w io.Writer) (err error) {
 			}
 		}
 	case DATA_TYPE_STRUCTURE:
+		err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_STRUCTURE})
+		if nil != err {
+			errorLog.Printf("binary.Write() failed: %v\n", err)
+			return err
+		}
 		err = encodeAxdrLength(w, uint16(len(data.sct)))
 		if nil != err {
 			return err
@@ -420,14 +437,17 @@ func (data *tDlmsData) Encode(w io.Writer) (err error) {
 	case DATA_TYPE_TIME:
 		return data.encodeTime(w)
 	default:
-		panic("unknown data type")
+		serr = fmt.Sprintf("%s: unknown data tag: %d: %d\n", FNAME, data.typ)
+		errorLog.Printf(serr)
+		return errors.New(serr)
 	}
 	return nil
 }
 
 func (data *tDlmsData) Decode(r io.Reader) (err error) {
 	var (
-		FNAME string = "tDlmsData.Decode()"
+		FNAME string = "DlmsData.Decode()"
+		serr  string
 	)
 	err = binary.Read(r, binary.BigEndian, &data.typ)
 	if nil != err {
@@ -505,7 +525,9 @@ func (data *tDlmsData) Decode(r io.Reader) (err error) {
 	case DATA_TYPE_TIME:
 		return data.decodeTime(r)
 	default:
-		panic("unknown data type")
+		serr = fmt.Sprintf("%s: unknown data tag: %d\n", FNAME, data.typ)
+		errorLog.Printf(serr)
+		return errors.New(serr)
 	}
 	return nil
 }
@@ -579,7 +601,7 @@ func (data *tDlmsData) SetBitString(b []byte, length uint16) {
 	}
 	data.typ = DATA_TYPE_BIT_STRING
 	data.val = b
-	data.len = length
+	data.len = n
 }
 
 func (data *tDlmsData) GetBitString() (b []byte, length uint16) {
@@ -776,10 +798,10 @@ func (data *tDlmsData) decodeOctetString(r io.Reader) (err error) {
 }
 
 func (data *tDlmsData) SetVisibleString(b []byte) {
-	data.typ = DATA_TYPE_VISIBLE_STRING
-	if len(b) > 0xFF {
-		panic("visible string length exceeds 255 bytes")
+	if len(b) > 0xFFFF {
+		panic("visible string too big")
 	}
+	data.typ = DATA_TYPE_VISIBLE_STRING
 	data.val = b
 }
 
@@ -796,11 +818,6 @@ func (data *tDlmsData) encodeVisibleString(w io.Writer) (err error) {
 	length := uint16(len(data.val.([]byte)))
 	err = encodeAxdrLength(w, length)
 	if nil != err {
-		return err
-	}
-	err = binary.Write(w, binary.BigEndian, uint8(length))
-	if nil != err {
-		errorLog.Printf("binary.Write() failed: %v\n", err)
 		return err
 	}
 	err = binary.Write(w, binary.BigEndian, data.val.([]byte))
