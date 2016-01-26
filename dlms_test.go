@@ -5,115 +5,131 @@ import (
 	"testing"
 )
 
-func oidEquals(oid1 *tDlmsOid, oid2 *tDlmsOid) bool {
+func oidEquals(oid1 *DlmsOid, oid2 *DlmsOid) bool {
 	return (oid1[0] == oid2[0]) || (oid1[1] == oid2[1]) || (oid1[2] == oid2[2]) || (oid1[3] == oid2[3]) || (oid1[4] == oid2[4]) || (oid1[5] == oid2[5])
 }
 
 func TestX_encode_decode_DlmsData_array(t *testing.T) {
 
-	data := new(tDlmsData)
-	data.typ = DATA_TYPE_ARRAY
-	data.arr = make([]*tDlmsData, 20)
+	data := new(DlmsData)
+	data.Typ = DATA_TYPE_ARRAY
+	data.Arr = make([]*DlmsData, 21)
 
 	i := 0
-	d := new(tDlmsData)
+	d := new(DlmsData)
 	d.SetNULL()
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 1
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetBoolean(true)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 2
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetBitString([]byte{0xFF, 0x80}, 9)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 3
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetDoubleLong(0x11223344)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 4
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetDoubleLongUnsigned(0x11223344)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 5
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetFloatingPoint(0.25)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 6
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetOctetString([]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09})
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 7
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetVisibleString([]byte{0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19})
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 8
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetBcd(5)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 9
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetInteger(-11)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 10
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetLong(-23457)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 11
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetUnsigned(254)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 12
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetLong64(-1254999)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 13
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetUnsignedLong64(91254999)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 14
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetEnum(0x70)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 15
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetReal32(100.57)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 16
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetReal64(1105.9)
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 17
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetDateTime([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x08, 0x10, 0x11, 0x12})
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 18
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetDate([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
-	data.arr[i] = d
+	data.Arr[i] = d
 
 	i = 19
-	d = new(tDlmsData)
+	d = new(DlmsData)
 	d.SetTime([]byte{0x01, 0x02, 0x03, 0x04})
-	data.arr[i] = d
+	data.Arr[i] = d
+
+	i = 20
+	d = new(DlmsData)
+	d.Typ = DATA_TYPE_ARRAY
+	d.Arr = make([]*DlmsData, 2)
+	data.Arr[20] = d
+
+	i = 0
+	d = new(DlmsData)
+	d.SetOctetString([]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05})
+	data.Arr[20].Arr[i] = d
+
+	i = 1
+	d = new(DlmsData)
+	d.SetLong64(-9254799)
+	data.Arr[20].Arr[i] = d
 
 	var ebuf bytes.Buffer
 
@@ -121,10 +137,9 @@ func TestX_encode_decode_DlmsData_array(t *testing.T) {
 	if nil != err {
 		t.Fatalf("DlmsData.Encode() failed, err: %v", err)
 	}
-	t.Logf("@@@@@@@@@@@@@@ cp 100: %02X", ebuf.Bytes())
 
 	dbuf := bytes.NewBuffer(ebuf.Bytes())
-	ddata := new(tDlmsData)
+	ddata := new(DlmsData)
 	err = ddata.Decode(dbuf)
 	if nil != err {
 		t.Fatalf("DlmsData.Decode() failed, err: %v", err)
@@ -134,6 +149,165 @@ func TestX_encode_decode_DlmsData_array(t *testing.T) {
 		t.Fatalf("failed")
 	}
 
+	if DATA_TYPE_NULL != ddata.Arr[0].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+
+	if DATA_TYPE_BOOLEAN != ddata.Arr[1].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if true != ddata.Arr[1].GetBoolean() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_BIT_STRING != ddata.Arr[2].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	bitString, bitStringLen := ddata.Arr[2].GetBitString()
+	if !bytes.Equal(bitString, []byte{0xFF, 0x80}) {
+		t.Fatalf("failed: decoded wrong value")
+	}
+	if 9 != bitStringLen {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_DOUBLE_LONG != ddata.Arr[3].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if 0x11223344 != ddata.Arr[3].GetDoubleLong() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_DOUBLE_LONG_UNSIGNED != ddata.Arr[4].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if 0x11223344 != ddata.Arr[4].GetDoubleLongUnsigned() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_FLOATING_POINT != ddata.Arr[5].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if 0.25 != ddata.Arr[5].GetFloatingPoint() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_OCTET_STRING != ddata.Arr[6].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if !bytes.Equal(ddata.Arr[6].GetOctetString(), []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}) {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_VISIBLE_STRING != ddata.Arr[7].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if !bytes.Equal(ddata.Arr[7].GetVisibleString(), []byte{0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19}) {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_BCD != ddata.Arr[8].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if 5 != ddata.Arr[8].GetBcd() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_INTEGER != ddata.Arr[9].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if -11 != ddata.Arr[9].GetInteger() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_LONG != ddata.Arr[10].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if -23457 != ddata.Arr[10].GetLong() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_UNSIGNED != ddata.Arr[11].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if 254 != ddata.Arr[11].GetUnsigned() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_LONG64 != ddata.Arr[12].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if -1254999 != ddata.Arr[12].GetLong64() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_UNSIGNED_LONG64 != ddata.Arr[13].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if 91254999 != ddata.Arr[13].GetUnsignedLong64() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_ENUM != ddata.Arr[14].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if 0x70 != ddata.Arr[14].GetEnum() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_REAL32 != ddata.Arr[15].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if 100.57 != ddata.Arr[15].GetReal32() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_REAL64 != ddata.Arr[16].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if 1105.9 != ddata.Arr[16].GetReal64() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_DATETIME != ddata.Arr[17].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if !bytes.Equal(ddata.Arr[17].GetDateTime(), []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x08, 0x10, 0x11, 0x12}) {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_DATE != ddata.Arr[18].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if !bytes.Equal(ddata.Arr[18].GetDate(), []byte{0x01, 0x02, 0x03, 0x04, 0x05}) {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_TIME != ddata.Arr[19].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if !bytes.Equal(ddata.Arr[19].GetTime(), []byte{0x01, 0x02, 0x03, 0x04}) {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_ARRAY != ddata.Arr[20].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+
+	if DATA_TYPE_OCTET_STRING != ddata.Arr[20].Arr[0].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if !bytes.Equal(ddata.Arr[20].Arr[0].GetOctetString(), []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05}) {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
+	if DATA_TYPE_LONG64 != ddata.Arr[20].Arr[1].Typ {
+		t.Fatalf("failed: decoded wrong type")
+	}
+	if -9254799 != ddata.Arr[20].Arr[1].GetLong64() {
+		t.Fatalf("failed: decoded wrong value")
+	}
+
 }
 
 func TestX_encode_GetRequestNormal(t *testing.T) {
@@ -141,7 +315,7 @@ func TestX_encode_GetRequestNormal(t *testing.T) {
 		0xC0, 0x01, 0x81,
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00}
 
-	err, pdu := encode_GetRequestNormal(0x81, 1, &tDlmsOid{0, 0, 128, 0, 0, 255}, 2, nil, nil)
+	err, pdu := encode_GetRequestNormal(0x81, 1, &DlmsOid{0, 0, 128, 0, 0, 255}, 2, nil, nil)
 	if nil != err {
 		t.Fatalf("encode_GetRequestNormal() failed, err: %v", err)
 	}
@@ -176,7 +350,7 @@ func TestX_decode_GetRequestNormal(t *testing.T) {
 	if 1 != classId {
 		t.Fatalf("classId wrong:  %d", classId)
 	}
-	if !oidEquals(&tDlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
+	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
 		t.Fatalf("instanceId wrong:  %02X", *instanceId)
 	}
 	if 0x02 != attributeId {
@@ -198,9 +372,9 @@ func TestX_encode_GetResponseNormal(t *testing.T) {
 		0x09, 0x06,
 		0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
 
-	_data := new(tDlmsData)
+	_data := new(DlmsData)
 	_data.SetOctetString([]byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66})
-	err, pdu := encode_GetResponseNormal(0x81, 0, (*tDlmsData)(_data))
+	err, pdu := encode_GetResponseNormal(0x81, 0, (*DlmsData)(_data))
 	if nil != err {
 		t.Fatalf("encode_GetRequestNormal() failed, err: %v", err)
 	}
@@ -259,7 +433,7 @@ func TestX_encode_GetRequestWithList(t *testing.T) {
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x01, 0x00, 0xFF, 0x02, 0x00}
 
-	err, pdu := encode_GetRequestWithList(0x81, []tDlmsClassId{1, 1}, []*tDlmsOid{&tDlmsOid{0, 0, 128, 0, 0, 255}, &tDlmsOid{0, 0, 128, 1, 0, 255}}, []tDlmsAttributeId{2, 2}, []*tDlmsAccessSelector{nil, nil}, []*tDlmsData{nil, nil})
+	err, pdu := encode_GetRequestWithList(0x81, []DlmsClassId{1, 1}, []*DlmsOid{&DlmsOid{0, 0, 128, 0, 0, 255}, &DlmsOid{0, 0, 128, 1, 0, 255}}, []DlmsAttributeId{2, 2}, []*DlmsAccessSelector{nil, nil}, []*DlmsData{nil, nil})
 	if nil != err {
 		t.Fatalf("encode_GetRequestWithList() failed, err: %v", err)
 	}
@@ -293,7 +467,7 @@ func TestX_decode_GetRequestWithList(t *testing.T) {
 	if 0x0001 != classIds[0] {
 		t.Fatalf("wrong classId[0] ")
 	}
-	if !oidEquals(&tDlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceIds[0]) {
+	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceIds[0]) {
 		t.Fatalf("wrong instanceId[0] ")
 	}
 	if 0x02 != attributeIds[0] {
@@ -309,7 +483,7 @@ func TestX_decode_GetRequestWithList(t *testing.T) {
 	if 0x0001 != classIds[1] {
 		t.Fatalf("wrong classId[1] ")
 	}
-	if !oidEquals(&tDlmsOid{0x00, 0x00, 0x80, 0x01, 0x00, 0xFF}, instanceIds[1]) {
+	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x01, 0x00, 0xFF}, instanceIds[1]) {
 		t.Fatalf("wrong instanceId[1] ")
 	}
 	if 0x02 != attributeIds[1] {
@@ -334,13 +508,13 @@ func TestX_encode_GetResponseWithList(t *testing.T) {
 		0x0A, 0x03,
 		0x30, 0x30, 0x30}
 
-	data1 := new(tDlmsData)
+	data1 := new(DlmsData)
 	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04})
-	data2 := new(tDlmsData)
+	data2 := new(DlmsData)
 	data2.SetVisibleString([]byte{0x30, 0x30, 0x30})
 
-	dataAccessResults := make([]tDlmsDataAccessResult, 2)
-	datas := make([]*tDlmsData, 2)
+	dataAccessResults := make([]DlmsDataAccessResult, 2)
+	datas := make([]*DlmsData, 2)
 
 	dataAccessResults[0] = 0
 	datas[0] = data1

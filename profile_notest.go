@@ -8,7 +8,6 @@ import (
 func TestX__profileRead(t *testing.T) {
 
 	var FNAME string = "profileRead()"
-	fmt.Printf("@@@@@@@@@@@@@@@@ cp 100\n")
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "172.16.123.182", 4059)
@@ -34,14 +33,14 @@ func TestX__profileRead(t *testing.T) {
 
 	val := new(DlmsValueRequest)
 	val.classId = 7
-	val.instanceId = &tDlmsOid{1, 0, 99, 1, 0, 255}
+	val.instanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.attributeId = 7
 	//vals[0] = val
 
 	val = new(DlmsValueRequest)
 	val.classId = 7
 	//0100630100FF
-	val.instanceId = &tDlmsOid{1, 0, 99, 1, 0, 255}
+	val.instanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.attributeId = 2
 	vals[0] = val
 

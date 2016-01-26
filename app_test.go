@@ -11,8 +11,8 @@ import (
 )
 
 type tMockCosemObject struct {
-	classId    tDlmsClassId
-	attributes map[tDlmsAttributeId]*tDlmsData
+	classId    DlmsClassId
+	attributes map[DlmsAttributeId]*DlmsData
 }
 
 type tMockCosemServer struct {
@@ -114,8 +114,8 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 		}
 		count := len(classIds)
 		var rawData []byte
-		datas := make([]*tDlmsData, count)
-		dataAccessResults := make([]tDlmsDataAccessResult, count)
+		datas := make([]*DlmsData, count)
+		dataAccessResults := make([]DlmsDataAccessResult, count)
 		for i := 0; i < count; i += 1 {
 			dataAccessResult, data := conn.srv.getData(t, classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
 			t.Logf("%s: dataAccessResult[%d]: %d", FNAME, i, dataAccessResult)
@@ -137,7 +137,7 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 		}
 		invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
 
-		var dataAccessResult tDlmsDataAccessResult
+		var dataAccessResult DlmsDataAccessResult
 		var rawData []byte
 		var lastBlock bool
 
@@ -228,11 +228,11 @@ func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) (err error
 	return nil
 }
 
-func (srv *tMockCosemServer) objectKey(instanceId *tDlmsOid) string {
+func (srv *tMockCosemServer) objectKey(instanceId *DlmsOid) string {
 	return fmt.Sprintf("%d_%d_%d_%d_%d_%d_%d", instanceId[0], instanceId[1], instanceId[2], instanceId[3], instanceId[4], instanceId[5])
 }
 
-func (srv *tMockCosemServer) getData(t *testing.T, classId tDlmsClassId, instanceId *tDlmsOid, attributeId tDlmsAttributeId, accessSelector *tDlmsAccessSelector, accessParameters *tDlmsData) (dataAccessResult tDlmsDataAccessResult, data *tDlmsData) {
+func (srv *tMockCosemServer) getData(t *testing.T, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector *DlmsAccessSelector, accessParameters *DlmsData) (dataAccessResult DlmsDataAccessResult, data *DlmsData) {
 	if nil == instanceId {
 		panic("assertion failed")
 	}
@@ -256,7 +256,7 @@ func (srv *tMockCosemServer) getData(t *testing.T, classId tDlmsClassId, instanc
 	}
 }
 
-func (srv *tMockCosemServer) setAttribute(instanceId *tDlmsOid, classId tDlmsClassId, attributeId tDlmsAttributeId, data *tDlmsData) {
+func (srv *tMockCosemServer) setAttribute(instanceId *DlmsOid, classId DlmsClassId, attributeId DlmsAttributeId, data *DlmsData) {
 
 	key := srv.objectKey(instanceId)
 	obj := srv.objects[key]
@@ -267,7 +267,7 @@ func (srv *tMockCosemServer) setAttribute(instanceId *tDlmsOid, classId tDlmsCla
 	obj.classId = classId
 	attributes := obj.attributes
 	if nil == attributes {
-		attributes = make(map[tDlmsAttributeId]*tDlmsData)
+		attributes = make(map[DlmsAttributeId]*DlmsData)
 		obj.attributes = attributes
 	}
 	attributes[attributeId] = data
@@ -440,9 +440,9 @@ func TestX_GetRequestNormal(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 
-	data := (new(tDlmsData))
+	data := (new(DlmsData))
 	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
-	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
@@ -463,7 +463,7 @@ func TestX_GetRequestNormal(t *testing.T) {
 
 	val := new(DlmsValueRequest)
 	val.classId = 1
-	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.attributeId = 0x02
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val
@@ -491,9 +491,9 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	mockCosemServer.Init()
 	mockCosemServer.blockLength = 10
 
-	data := (new(tDlmsData))
+	data := (new(DlmsData))
 	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
-	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
@@ -514,7 +514,7 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 
 	val := new(DlmsValueRequest)
 	val.classId = 1
-	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.attributeId = 0x02
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val
@@ -541,13 +541,13 @@ func TestX_GetRequestWithList(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 
-	data1 := (new(tDlmsData))
+	data1 := (new(DlmsData))
 	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
-	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
 
-	data2 := (new(tDlmsData))
+	data2 := (new(DlmsData))
 	data2.SetOctetString([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
-	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
@@ -570,13 +570,13 @@ func TestX_GetRequestWithList(t *testing.T) {
 
 	val := new(DlmsValueRequest)
 	val.classId = 1
-	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.attributeId = 0x02
 	vals[0] = val
 
 	val = new(DlmsValueRequest)
 	val.classId = 1
-	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.instanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
 	val.attributeId = 0x02
 	vals[1] = val
 
@@ -610,13 +610,13 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	mockCosemServer.Init()
 	mockCosemServer.blockLength = 10
 
-	data1 := (new(tDlmsData))
+	data1 := (new(DlmsData))
 	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
-	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
 
-	data2 := (new(tDlmsData))
+	data2 := (new(DlmsData))
 	data2.SetOctetString([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
-	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
@@ -639,13 +639,13 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 
 	val := new(DlmsValueRequest)
 	val.classId = 1
-	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.attributeId = 0x02
 	vals[0] = val
 
 	val = new(DlmsValueRequest)
 	val.classId = 1
-	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.instanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
 	val.attributeId = 0x02
 	vals[1] = val
 
@@ -680,13 +680,13 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	mockCosemServer.blockLength = 10
 	mockCosemServer.replyDelayMsec = 1000
 
-	data1 := (new(tDlmsData))
+	data1 := (new(DlmsData))
 	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
-	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
 
-	data2 := (new(tDlmsData))
+	data2 := (new(DlmsData))
 	data2.SetOctetString([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
-	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
@@ -709,13 +709,13 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 
 	val := new(DlmsValueRequest)
 	val.classId = 1
-	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.attributeId = 0x02
 	vals[0] = val
 
 	val = new(DlmsValueRequest)
 	val.classId = 1
-	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.instanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
 	val.attributeId = 0x02
 	vals[1] = val
 
@@ -759,9 +759,9 @@ func TestX_1000parallelRequests(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 
-	data := (new(tDlmsData))
+	data := (new(DlmsData))
 	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
-	mockCosemServer.setAttribute(&tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "localhost", 4059)
@@ -782,7 +782,7 @@ func TestX_1000parallelRequests(t *testing.T) {
 
 	val := new(DlmsValueRequest)
 	val.classId = 1
-	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.attributeId = 0x02
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val

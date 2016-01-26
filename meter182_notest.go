@@ -61,7 +61,7 @@ func TestX_meter182_get_time(t *testing.T) {
 	//func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
 	val := new(DlmsValueRequest)
 	val.classId = 1
-	val.instanceId = &tDlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.attributeId = 0x02
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val

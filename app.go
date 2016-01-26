@@ -9,16 +9,16 @@ import (
 var ErrorRequestTimeout = errors.New("request timeout")
 
 type DlmsValueRequest struct {
-	classId         tDlmsClassId
-	instanceId      *tDlmsOid
-	attributeId     tDlmsAttributeId
-	accessSelector  *tDlmsAccessSelector
-	accessParameter *tDlmsData
+	classId         DlmsClassId
+	instanceId      *DlmsOid
+	attributeId     DlmsAttributeId
+	accessSelector  *DlmsAccessSelector
+	accessParameter *DlmsData
 }
 
 type DlmsValueResponse struct {
-	dataAccessResult tDlmsDataAccessResult
-	data             *tDlmsData
+	dataAccessResult DlmsDataAccessResult
+	data             *DlmsData
 }
 
 type DlmsValueRequestResponse struct {
@@ -51,11 +51,11 @@ func (rep DlmsResponse) RequestAt(i int) (req *DlmsValueRequest) {
 	return rep[i].req
 }
 
-func (rep DlmsResponse) DataAt(i int) *tDlmsData {
+func (rep DlmsResponse) DataAt(i int) *DlmsData {
 	return rep[i].rep.data
 }
 
-func (rep DlmsResponse) DataAccessResultAt(i int) tDlmsDataAccessResult {
+func (rep DlmsResponse) DataAccessResultAt(i int) DlmsDataAccessResult {
 	return rep[i].rep.dataAccessResult
 }
 
@@ -244,12 +244,12 @@ func (aconn *AppConn) processReply(pdu []byte) {
 	}
 
 	if (0xC4 == pdu[0]) && (0x01 == pdu[1]) {
-		errorLog.Printf("%s: processing ResponseNormal", FNAME)
+		debugLog.Printf("%s: processing ResponseNormal", FNAME)
 
 		aconn.processGetResponseNormal(rips, pdu)
 
 	} else if (0xC4 == pdu[0]) && (0x03 == pdu[1]) {
-		errorLog.Printf("%s: processing ResponseWithList", FNAME)
+		debugLog.Printf("%s: processing ResponseWithList", FNAME)
 
 		aconn.processGetResponseWithList(rips, pdu)
 
@@ -434,11 +434,11 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 			err, pdu = encode_GetRequestNormal(invokeIdAndPriority, vals[0].classId, vals[0].instanceId, vals[0].attributeId, vals[0].accessSelector, vals[0].accessParameter)
 		} else {
 			var (
-				classIds         []tDlmsClassId         = make([]tDlmsClassId, len(vals))
-				instanceIds      []*tDlmsOid            = make([]*tDlmsOid, len(vals))
-				attributeIds     []tDlmsAttributeId     = make([]tDlmsAttributeId, len(vals))
-				accessSelectors  []*tDlmsAccessSelector = make([]*tDlmsAccessSelector, len(vals))
-				accessParameters []*tDlmsData           = make([]*tDlmsData, len(vals))
+				classIds         []DlmsClassId         = make([]DlmsClassId, len(vals))
+				instanceIds      []*DlmsOid            = make([]*DlmsOid, len(vals))
+				attributeIds     []DlmsAttributeId     = make([]DlmsAttributeId, len(vals))
+				accessSelectors  []*DlmsAccessSelector = make([]*DlmsAccessSelector, len(vals))
+				accessParameters []*DlmsData           = make([]*DlmsData, len(vals))
 			)
 			for i := 0; i < len(vals); i += 1 {
 				classIds[i] = vals[i].classId
