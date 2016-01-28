@@ -7,30 +7,33 @@ import (
 )
 
 var ErrorRequestTimeout = errors.New("request timeout")
+var ErrorBlockTimeout = errors.New("block receive timeout")
 
 type DlmsValueRequest struct {
-	classId         DlmsClassId
-	instanceId      *DlmsOid
-	attributeId     DlmsAttributeId
-	accessSelector  *DlmsAccessSelector
-	accessParameter *DlmsData
+	ClassId         DlmsClassId
+	InstanceId      *DlmsOid
+	AttributeId     DlmsAttributeId
+	AccessSelector  *DlmsAccessSelector
+	AccessParameter *DlmsData
 }
 
 type DlmsValueResponse struct {
-	dataAccessResult DlmsDataAccessResult
-	data             *DlmsData
+	DataAccessResult DlmsDataAccessResult
+	Data             *DlmsData
 }
 
 type DlmsValueRequestResponse struct {
-	req *DlmsValueRequest
-	rep *DlmsValueResponse
+	Req *DlmsValueRequest
+	Rep *DlmsValueResponse
 
 	invokeId           uint8
-	dead               *string     // If non nil then this request is already dead from whatever reason (e.g. timeot) and MUST NOT be used anymore. String value indicates reason.
-	ch                 DlmsChannel // channel to deliver reply
-	requestSubmittedAt time.Time
-	replyDeliveredAt   time.Time
-	timeoutAt          time.Time
+	Dead               *string     // If non nil then this request is already dead from whatever reason (e.g. timeot) and MUST NOT be used anymore. String value indicates reason.
+	Ch                 DlmsChannel // channel to deliver reply
+	RequestSubmittedAt time.Time
+	ReplyDeliveredAt   time.Time
+	TimeoutAt          *time.Time
+	msecBlockTimeout   int64
+	blockTimeoutAt     *time.Time
 	highPriority       bool
 	rawData            []byte
 }
@@ -48,19 +51,19 @@ type AppConn struct {
 type DlmsResponse []*DlmsValueRequestResponse
 
 func (rep DlmsResponse) RequestAt(i int) (req *DlmsValueRequest) {
-	return rep[i].req
+	return rep[i].Req
 }
 
 func (rep DlmsResponse) DataAt(i int) *DlmsData {
-	return rep[i].rep.data
+	return rep[i].Rep.Data
 }
 
 func (rep DlmsResponse) DataAccessResultAt(i int) DlmsDataAccessResult {
-	return rep[i].rep.dataAccessResult
+	return rep[i].Rep.DataAccessResult
 }
 
 func (rep DlmsResponse) DeliveredIn() time.Duration {
-	return rep[0].replyDeliveredAt.Sub(rep[0].requestSubmittedAt)
+	return rep[0].ReplyDeliveredAt.Sub(rep[0].RequestSubmittedAt)
 }
 
 func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16) (aconn *AppConn) {
@@ -128,16 +131,21 @@ func (aconn *AppConn) killRequest(invokeId uint8, err error) {
 	if !ok {
 		return
 	}
-	if nil != rips[0].dead {
+	if nil != rips[0].Dead {
 		return
 	}
 	for _, rip := range rips {
-		rip.dead = new(string)
-		*rip.dead = fmt.Sprintf("killed, error: %s", err.Error())
+		rip.Dead = new(string)
+		if nil != err {
+			*rip.Dead = fmt.Sprintf("killed, error: %s", err.Error())
+		} else {
+			*rip.Dead = "reply delivered"
+			rip.ReplyDeliveredAt = time.Now()
+		}
 	}
-	serr = fmt.Sprintf("%s: request killed, invokeId: %d, reason: %s", FNAME, invokeId, *rips[0].dead)
+	serr = fmt.Sprintf("%s: request killed, invokeId: %d, reason: %s", FNAME, invokeId, *rips[0].Dead)
 	errorLog.Println(serr)
-	rips[0].ch <- &DlmsChannelMessage{err, nil}
+	rips[0].Ch <- &DlmsChannelMessage{err, DlmsResponse(rips)}
 	aconn.invokeIdsCh <- invokeId
 }
 
@@ -150,17 +158,17 @@ func (aconn *AppConn) deliverReply(invokeId uint8) {
 		debugLog.Printf("%s: no such request, invokeId: %d", FNAME, invokeId)
 		return
 	}
-	if nil != rips[0].dead {
+	if nil != rips[0].Dead {
 		debugLog.Printf("%s: dead request, invokeId: %d", FNAME, invokeId)
 		return
 	}
 	for _, rip := range rips {
-		rip.dead = new(string)
-		*rip.dead = "reply delivered"
-		rip.replyDeliveredAt = time.Now()
+		rip.Dead = new(string)
+		*rip.Dead = "reply delivered"
+		rip.ReplyDeliveredAt = time.Now()
 	}
 	debugLog.Printf("%s: reply delivered, invokeId: %d\n", FNAME, invokeId)
-	rips[0].ch <- &DlmsChannelMessage{nil, DlmsResponse(rips)}
+	rips[0].Ch <- &DlmsChannelMessage{nil, DlmsResponse(rips)}
 	aconn.invokeIdsCh <- invokeId
 }
 
@@ -178,9 +186,23 @@ func (aconn *AppConn) deliverTimeouts() {
 			currentTime := time.Now()
 			for invokeId, rips := range aconn.rips {
 
-				if currentTime.After(rips[0].timeoutAt) {
-					errorLog.Printf("%s request invokeId %d timed out, killed after %v", FNAME, invokeId, currentTime.Sub(rips[0].requestSubmittedAt))
-					aconn.killRequest(invokeId, ErrorRequestTimeout)
+				if (nil != rips[0].TimeoutAt) && (currentTime.After(*rips[0].TimeoutAt)) {
+					errorLog.Printf("%s request invokeId %d timed out, killed after %v", FNAME, invokeId, currentTime.Sub(rips[0].RequestSubmittedAt))
+					if nil != rips[0].rawData {
+						// If in the middle of receiving block response try to parse received data so far.
+						aconn.processBlockResponse(rips, rips[0].rawData, ErrorRequestTimeout)
+					} else {
+						aconn.killRequest(invokeId, ErrorRequestTimeout)
+					}
+				}
+				if (nil != rips[0].blockTimeoutAt) && (currentTime.After(*rips[0].blockTimeoutAt)) {
+					errorLog.Printf("%s request invokeId %d block timed out, killed after %v", FNAME, invokeId, currentTime.Sub(rips[0].RequestSubmittedAt))
+					if nil != rips[0].rawData {
+						// If in the middle of receiving block response try to parse received data so far.
+						aconn.processBlockResponse(rips, rips[0].rawData, ErrorBlockTimeout)
+					} else {
+						aconn.killRequest(invokeId, ErrorBlockTimeout)
+					}
 				}
 			}
 			go deliver()
@@ -190,38 +212,67 @@ func (aconn *AppConn) deliverTimeouts() {
 	go deliver()
 }
 
-func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse, pdu []byte) {
+func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse, pdu []byte, errr error) {
 
 	err, _, dataAccessResult, data := decode_GetResponseNormal(pdu)
-	if nil != err {
-		aconn.killRequest(rips[0].invokeId, err)
-		return
+
+	rips[0].Rep = new(DlmsValueResponse)
+	rips[0].Rep.DataAccessResult = dataAccessResult
+	rips[0].Rep.Data = data
+
+	if nil == err {
+		aconn.killRequest(rips[0].invokeId, nil)
+	} else {
+		if nil != errr {
+			aconn.killRequest(rips[0].invokeId, errr)
+		} else {
+			aconn.killRequest(rips[0].invokeId, err)
+		}
 	}
-
-	rips[0].rep = new(DlmsValueResponse)
-	rips[0].rep.dataAccessResult = dataAccessResult
-	rips[0].rep.data = data
-
-	aconn.deliverReply(rips[0].invokeId)
 }
 
-func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestResponse, pdu []byte) {
+func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestResponse, pdu []byte, errr error) {
 
 	err, _, dataAccessResults, datas := decode_GetResponseWithList(pdu)
-	if nil != err {
-		aconn.killRequest(rips[0].invokeId, err)
-		return
-	}
 
 	for i := 0; i < len(dataAccessResults); i += 1 {
 		rip := rips[i]
-
-		rip.rep = new(DlmsValueResponse)
-		rip.rep.dataAccessResult = dataAccessResults[i]
-		rip.rep.data = datas[i]
+		rip.Rep = new(DlmsValueResponse)
+		rip.Rep.DataAccessResult = dataAccessResults[i]
+		rip.Rep.Data = datas[i]
 	}
 
-	aconn.deliverReply(rips[0].invokeId)
+	if nil == err {
+		aconn.killRequest(rips[0].invokeId, nil)
+	} else {
+		if nil != errr {
+			aconn.killRequest(rips[0].invokeId, errr)
+		} else {
+			aconn.killRequest(rips[0].invokeId, err)
+		}
+	}
+
+}
+
+func (aconn *AppConn) processBlockResponse(rips []*DlmsValueRequestResponse, pdu []byte, err error) {
+	var (
+		FNAME string = "AppConn.processBlockResponse()"
+		serr  string
+	)
+
+	if (0xC4 == pdu[0]) && (0x01 == pdu[1]) {
+		debugLog.Printf("%s: all blocks received, processing ResponseNormal", FNAME)
+		aconn.processGetResponseNormal(rips, pdu, err)
+	} else if (0xC4 == pdu[0]) && (0x03 == pdu[1]) {
+		debugLog.Printf("%s: all blocks received, processing ResponseWithList", FNAME)
+		aconn.processGetResponseWithList(rips, pdu, err)
+	} else {
+		panic("assertion failed")
+		serr = fmt.Sprintf("%s: assembled pdu discarded due to unknown tag: %02X %02X", pdu[0], pdu[1])
+		errorLog.Println(serr)
+		aconn.killRequest(rips[0].invokeId, errors.New(serr))
+		return
+	}
 }
 
 func (aconn *AppConn) processReply(pdu []byte) {
@@ -238,20 +289,20 @@ func (aconn *AppConn) processReply(pdu []byte) {
 		errorLog.Printf("%s: no request in progresss for invokeId %d, pdu is discarded\n", FNAME, invokeId)
 		return
 	}
-	if nil != rips[0].dead {
-		debugLog.Printf("%s: ignore pdu, request is dead, invokeId %d, reason: %s\n", FNAME, rips[0].invokeId, *rips[0].dead)
+	if nil != rips[0].Dead {
+		debugLog.Printf("%s: ignore pdu, request is dead, invokeId %d, reason: %s\n", FNAME, rips[0].invokeId, *rips[0].Dead)
 		return
 	}
 
 	if (0xC4 == pdu[0]) && (0x01 == pdu[1]) {
 		debugLog.Printf("%s: processing ResponseNormal", FNAME)
 
-		aconn.processGetResponseNormal(rips, pdu)
+		aconn.processGetResponseNormal(rips, pdu, nil)
 
 	} else if (0xC4 == pdu[0]) && (0x03 == pdu[1]) {
 		debugLog.Printf("%s: processing ResponseWithList", FNAME)
 
-		aconn.processGetResponseWithList(rips, pdu)
+		aconn.processGetResponseWithList(rips, pdu, nil)
 
 	} else if (0xC4 == pdu[0]) && (0x02 == pdu[1]) {
 		// data blocks response
@@ -277,17 +328,15 @@ func (aconn *AppConn) processReply(pdu []byte) {
 		_pdu := rips[0].rawData
 
 		if lastBlock {
-			if (0xC4 == _pdu[0]) && (0x01 == _pdu[1]) {
-				debugLog.Printf("%s: all blocks received, processing ResponseNormal", FNAME)
-				aconn.processGetResponseNormal(rips, _pdu)
-			} else if (0xC4 == _pdu[0]) && (0x03 == _pdu[1]) {
-				debugLog.Printf("%s: all blocks received, processing ResponseWithList", FNAME)
-				aconn.processGetResponseWithList(rips, _pdu)
-			} else {
-				panic("assertion failed")
-			}
+			aconn.processBlockResponse(rips, _pdu, nil)
 		} else {
 			// requests next data block
+
+			blockTimeoutAt := time.Now().Add(time.Millisecond * time.Duration(rips[0].msecBlockTimeout))
+
+			if 0 != rips[0].msecBlockTimeout {
+				rips[0].blockTimeoutAt = &blockTimeoutAt
+			}
 
 			debugLog.Printf("%s: requesting data block: %d", FNAME, blockNumber)
 			err, _pdu := encode_GetRequestForNextDataBlock(invokeIdAndPriority, blockNumber)
@@ -367,7 +416,7 @@ func (aconn *AppConn) getInvokeId(ch DlmsChannel, msecTimeout int64) {
 	}()
 }
 
-func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
+func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, msecBlockTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
 	go func() {
 		var (
 			FNAME string = "AppConn.getRquest()"
@@ -387,6 +436,9 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 
 		currentTime := time.Now()
 		timeoutAt := currentTime.Add(time.Millisecond * time.Duration(msecTimeout))
+		if 0 != msecTimeout {
+			timeoutAt = currentTime.Add(time.Millisecond * time.Duration(msecTimeout))
+		}
 
 		_ch := make(DlmsChannel)
 
@@ -405,16 +457,20 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 		rips := make([]*DlmsValueRequestResponse, len(vals))
 		for i := 0; i < len(vals); i += 1 {
 			rip := new(DlmsValueRequestResponse)
-			rip.req = vals[i]
+			rip.Req = vals[i]
 
 			rip.invokeId = invokeId
-			rip.requestSubmittedAt = currentTime
-			rip.timeoutAt = timeoutAt
-			rip.ch = ch
+			rip.RequestSubmittedAt = currentTime
+			if 0 != msecTimeout {
+				rip.TimeoutAt = &timeoutAt
+			}
+			rip.Ch = ch
 			rip.highPriority = highPriority
 			rips[i] = rip
 		}
 		aconn.rips[invokeId] = rips
+
+		rips[0].msecBlockTimeout = msecBlockTimeout
 
 		// build and forward pdu to transport
 
@@ -431,7 +487,7 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 		)
 
 		if 1 == len(vals) {
-			err, pdu = encode_GetRequestNormal(invokeIdAndPriority, vals[0].classId, vals[0].instanceId, vals[0].attributeId, vals[0].accessSelector, vals[0].accessParameter)
+			err, pdu = encode_GetRequestNormal(invokeIdAndPriority, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
 		} else {
 			var (
 				classIds         []DlmsClassId         = make([]DlmsClassId, len(vals))
@@ -441,11 +497,11 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority 
 				accessParameters []*DlmsData           = make([]*DlmsData, len(vals))
 			)
 			for i := 0; i < len(vals); i += 1 {
-				classIds[i] = vals[i].classId
-				instanceIds[i] = vals[i].instanceId
-				attributeIds[i] = vals[i].attributeId
-				accessSelectors[i] = vals[i].accessSelector
-				accessParameters[i] = vals[i].accessParameter
+				classIds[i] = vals[i].ClassId
+				instanceIds[i] = vals[i].InstanceId
+				attributeIds[i] = vals[i].AttributeId
+				accessSelectors[i] = vals[i].AccessSelector
+				accessParameters[i] = vals[i].AccessParameter
 			}
 			err, pdu = encode_GetRequestWithList(invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters)
 		}

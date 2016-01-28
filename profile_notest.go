@@ -32,19 +32,19 @@ func TestX__profileRead(t *testing.T) {
 	vals := make([]*DlmsValueRequest, 1)
 
 	val := new(DlmsValueRequest)
-	val.classId = 7
-	val.instanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
-	val.attributeId = 7
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 7
 	//vals[0] = val
 
 	val = new(DlmsValueRequest)
-	val.classId = 7
+	val.ClassId = 7
 	//0100630100FF
-	val.instanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
-	val.attributeId = 2
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 2
 	vals[0] = val
 
-	aconn.getRquest(ch, 10000, true, vals)
+	aconn.getRquest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		errorLog.Printf(fmt.Sprintf("%s: %v\n", FNAME, msg.Err))
