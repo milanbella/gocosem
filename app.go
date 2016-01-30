@@ -95,7 +95,10 @@ func (aconn *AppConn) Close() {
 	aconn.closed = true
 	close(aconn.finish)
 	aconn.dconn.Close()
-	for invokeId, _ := range aconn.rips {
+	for invokeId, rips := range aconn.rips {
+		if nil != rips[0].Dead {
+			continue
+		}
 		aconn.killRequest(invokeId, errors.New("app connection closed"))
 	}
 }
@@ -124,14 +127,13 @@ func (aconn *AppConn) killRequest(invokeId uint8, err error) {
 		FNAME string = "AppConn.killRequest()"
 		serr  string
 	)
-	if nil == err {
-		panic("assertion failed")
-	}
 	rips, ok := aconn.rips[invokeId]
 	if !ok {
+		debugLog.Printf("%s: no such request, invokeId: %d", FNAME, invokeId)
 		return
 	}
 	if nil != rips[0].Dead {
+		debugLog.Printf("%s: already dead request, invokeId: %d", FNAME, invokeId)
 		return
 	}
 	for _, rip := range rips {
@@ -149,29 +151,6 @@ func (aconn *AppConn) killRequest(invokeId uint8, err error) {
 	aconn.invokeIdsCh <- invokeId
 }
 
-func (aconn *AppConn) deliverReply(invokeId uint8) {
-	var (
-		FNAME string = "AppConn.deliverReply()"
-	)
-	rips, ok := aconn.rips[invokeId]
-	if !ok {
-		debugLog.Printf("%s: no such request, invokeId: %d", FNAME, invokeId)
-		return
-	}
-	if nil != rips[0].Dead {
-		debugLog.Printf("%s: dead request, invokeId: %d", FNAME, invokeId)
-		return
-	}
-	for _, rip := range rips {
-		rip.Dead = new(string)
-		*rip.Dead = "reply delivered"
-		rip.ReplyDeliveredAt = time.Now()
-	}
-	debugLog.Printf("%s: reply delivered, invokeId: %d\n", FNAME, invokeId)
-	rips[0].Ch <- &DlmsChannelMessage{nil, DlmsResponse(rips)}
-	aconn.invokeIdsCh <- invokeId
-}
-
 func (aconn *AppConn) deliverTimeouts() {
 	var FNAME string = "AppConn.deliverTimeouts()"
 
@@ -185,6 +164,9 @@ func (aconn *AppConn) deliverTimeouts() {
 		case <-time.After(time.Millisecond * 100):
 			currentTime := time.Now()
 			for invokeId, rips := range aconn.rips {
+				if nil != rips[0].Dead {
+					continue
+				}
 
 				if (nil != rips[0].TimeoutAt) && (currentTime.After(*rips[0].TimeoutAt)) {
 					errorLog.Printf("%s request invokeId %d timed out, killed after %v", FNAME, invokeId, currentTime.Sub(rips[0].RequestSubmittedAt))
@@ -261,13 +243,12 @@ func (aconn *AppConn) processBlockResponse(rips []*DlmsValueRequestResponse, pdu
 	)
 
 	if (0xC4 == pdu[0]) && (0x01 == pdu[1]) {
-		debugLog.Printf("%s: all blocks received, processing ResponseNormal", FNAME)
+		debugLog.Printf("%s: blocks received, processing ResponseNormal", FNAME)
 		aconn.processGetResponseNormal(rips, pdu, err)
 	} else if (0xC4 == pdu[0]) && (0x03 == pdu[1]) {
-		debugLog.Printf("%s: all blocks received, processing ResponseWithList", FNAME)
+		debugLog.Printf("%s: blocks received, processing ResponseWithList", FNAME)
 		aconn.processGetResponseWithList(rips, pdu, err)
 	} else {
-		panic("assertion failed")
 		serr = fmt.Sprintf("%s: assembled pdu discarded due to unknown tag: %02X %02X", pdu[0], pdu[1])
 		errorLog.Println(serr)
 		aconn.killRequest(rips[0].invokeId, errors.New(serr))

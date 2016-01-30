@@ -22,6 +22,7 @@ type tMockCosemServer struct {
 	objects        map[string]*tMockCosemObject
 	blockLength    int
 	replyDelayMsec int
+	blockDelayMsec int
 }
 
 type tMockCosemServerConnection struct {
@@ -129,55 +130,66 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 		}
 		conn.sendEncodedReply(t, invokeIdAndPriority, rawData)
 	} else if bytes.Equal(pdu[0:2], []byte{0xC0, 0x02}) {
-		t.Logf("%s: GetRequestForNextDataBlock", FNAME)
-		err, invokeIdAndPriority, blockNumber := decode_GetRequestForNextDataBlock(pdu)
-		if nil != err {
-			errorLog.Printf("%s: %v\n", FNAME, err)
+		f := func() error {
+			t.Logf("%s: GetRequestForNextDataBlock", FNAME)
+			err, invokeIdAndPriority, blockNumber := decode_GetRequestForNextDataBlock(pdu)
+			if nil != err {
+				errorLog.Printf("%s: %v\n", FNAME, err)
+				return err
+			}
+			invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
+
+			var dataAccessResult DlmsDataAccessResult
+			var rawData []byte
+			var lastBlock bool
+
+			if nil == conn.blocks[invokeId] {
+				t.Logf("no blocks for invokeId: setting dataAccessResult to 1")
+				dataAccessResult = 1
+				rawData = nil
+			} else if int(blockNumber) >= len(conn.blocks[invokeId]) {
+				t.Logf("no such block for invokeId: setting dataAccessResult to 1")
+				dataAccessResult = 1
+				rawData = nil
+			} else {
+				dataAccessResult = 0
+				rawData = conn.blocks[invokeId][blockNumber]
+			}
+			t.Logf("%s: dataAccessResult: %d", FNAME, dataAccessResult)
+
+			if (len(conn.blocks[invokeId]) - 1) == int(blockNumber) {
+				lastBlock = true
+			} else {
+				lastBlock = false
+			}
+
+			if lastBlock {
+				conn.blocks[invokeId] = nil
+			}
+
+			if !lastBlock {
+				blockNumber += 1
+			}
+			err, reply := encode_GetResponsewithDataBlock(invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData)
+			if nil != err {
+				errorLog.Printf("%s: %v\n", FNAME, err)
+				return err
+			}
+			ch := make(DlmsChannel)
+			ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
+			msg := <-ch
+			if nil != msg.Err {
+				errorLog.Printf("%s: %v\n", FNAME, msg.Err)
+				return err
+			}
+			return nil
+		}
+		if conn.srv.blockDelayMsec > 0 {
+			<-time.After(time.Millisecond * time.Duration(conn.srv.blockDelayMsec))
+			err = f()
 			return err
-		}
-		invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
-
-		var dataAccessResult DlmsDataAccessResult
-		var rawData []byte
-		var lastBlock bool
-
-		if nil == conn.blocks[invokeId] {
-			t.Logf("no blocks for invokeId: setting dataAccessResult to 1")
-			dataAccessResult = 1
-			rawData = nil
-		} else if int(blockNumber) >= len(conn.blocks[invokeId]) {
-			t.Logf("no such block for invokeId: setting dataAccessResult to 1")
-			dataAccessResult = 1
-			rawData = nil
 		} else {
-			dataAccessResult = 0
-			rawData = conn.blocks[invokeId][blockNumber]
-		}
-		t.Logf("%s: dataAccessResult: %d", FNAME, dataAccessResult)
-
-		if (len(conn.blocks[invokeId]) - 1) == int(blockNumber) {
-			lastBlock = true
-		} else {
-			lastBlock = false
-		}
-
-		if lastBlock {
-			conn.blocks[invokeId] = nil
-		}
-
-		if !lastBlock {
-			blockNumber += 1
-		}
-		err, reply := encode_GetResponsewithDataBlock(invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData)
-		if nil != err {
-			errorLog.Printf("%s: %v\n", FNAME, err)
-			return err
-		}
-		ch := make(DlmsChannel)
-		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
-		msg := <-ch
-		if nil != msg.Err {
-			errorLog.Printf("%s: %v\n", FNAME, msg.Err)
+			err = f()
 			return err
 		}
 	} else {
@@ -462,12 +474,12 @@ func TestX_GetRequestNormal(t *testing.T) {
 	aconn := msg.Data.(*AppConn)
 
 	val := new(DlmsValueRequest)
-	val.classId = 1
-	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
-	val.attributeId = 0x02
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val
-	aconn.getRquest(ch, 10000, true, vals)
+	aconn.getRquest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -513,12 +525,12 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	aconn := msg.Data.(*AppConn)
 
 	val := new(DlmsValueRequest)
-	val.classId = 1
-	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
-	val.attributeId = 0x02
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val
-	aconn.getRquest(ch, 10000, true, vals)
+	aconn.getRquest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -569,18 +581,18 @@ func TestX_GetRequestWithList(t *testing.T) {
 	vals := make([]*DlmsValueRequest, 2)
 
 	val := new(DlmsValueRequest)
-	val.classId = 1
-	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
-	val.attributeId = 0x02
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
 	vals[0] = val
 
 	val = new(DlmsValueRequest)
-	val.classId = 1
-	val.instanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
-	val.attributeId = 0x02
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
 	vals[1] = val
 
-	aconn.getRquest(ch, 10000, true, vals)
+	aconn.getRquest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -638,18 +650,18 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	vals := make([]*DlmsValueRequest, 2)
 
 	val := new(DlmsValueRequest)
-	val.classId = 1
-	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
-	val.attributeId = 0x02
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
 	vals[0] = val
 
 	val = new(DlmsValueRequest)
-	val.classId = 1
-	val.instanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
-	val.attributeId = 0x02
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
 	vals[1] = val
 
-	aconn.getRquest(ch, 10000, true, vals)
+	aconn.getRquest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -708,20 +720,20 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	vals := make([]*DlmsValueRequest, 2)
 
 	val := new(DlmsValueRequest)
-	val.classId = 1
-	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
-	val.attributeId = 0x02
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
 	vals[0] = val
 
 	val = new(DlmsValueRequest)
-	val.classId = 1
-	val.instanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
-	val.attributeId = 0x02
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
 	vals[1] = val
 
 	// expect request timeout
 
-	aconn.getRquest(ch, 500, true, vals)
+	aconn.getRquest(ch, 500, 10000, true, vals)
 	msg = <-ch
 	if ErrorRequestTimeout != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -730,7 +742,88 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	// timeouted request must not disable following requests
 
 	mockCosemServer.replyDelayMsec = 0
-	aconn.getRquest(ch, 500, true, vals)
+	aconn.getRquest(ch, 500, 100, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep := msg.Data.(DlmsResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data1.GetOctetString(), rep.DataAt(0).GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+	}
+	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+
+	aconn.Close()
+
+	mockCosemServer.Close()
+}
+
+func TestX_GetRequestWithList_blockTransfer_blockTimeout(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+	mockCosemServer.blockLength = 10
+	mockCosemServer.blockDelayMsec = 1000
+
+	data1 := (new(DlmsData))
+	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
+
+	data2 := (new(DlmsData))
+	data2.SetOctetString([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("application connected")
+	aconn := msg.Data.(*AppConn)
+
+	vals := make([]*DlmsValueRequest, 2)
+
+	val := new(DlmsValueRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[0] = val
+
+	val = new(DlmsValueRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[1] = val
+
+	// expect block request timeout
+
+	aconn.getRquest(ch, 10000, 900, true, vals)
+	msg = <-ch
+	if ErrorBlockTimeout != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+
+	// timeouted request must not disable following requests
+
+	mockCosemServer.replyDelayMsec = 0
+	aconn.getRquest(ch, 10000, 2000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -781,9 +874,9 @@ func TestX_1000parallelRequests(t *testing.T) {
 	aconn := msg.Data.(*AppConn)
 
 	val := new(DlmsValueRequest)
-	val.classId = 1
-	val.instanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
-	val.attributeId = 0x02
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val
 
@@ -792,7 +885,7 @@ func TestX_1000parallelRequests(t *testing.T) {
 
 	for i := 0; i < count; i += 1 {
 		go func() {
-			aconn.getRquest(ch, 10000, true, vals)
+			aconn.getRquest(ch, 10000, 1000, true, vals)
 			msg = <-ch
 			sink <- msg
 		}()
