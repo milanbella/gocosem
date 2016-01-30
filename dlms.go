@@ -455,7 +455,7 @@ func (data *DlmsData) Decode(r io.Reader) (err error) {
 			data.Arr[i] = new(DlmsData)
 			err = data.Arr[i].Decode(r)
 			if nil != err {
-				data.Arr = data.Arr[0 : i-1] // cut off remaining garbage
+				data.Arr = data.Arr[0:i] // cut off remaining garbage
 				data.Err = err
 				return err
 			}

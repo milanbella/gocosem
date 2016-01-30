@@ -31,7 +31,7 @@ type DlmsValueRequestResponse struct {
 	Ch                 DlmsChannel // channel to deliver reply
 	RequestSubmittedAt time.Time
 	ReplyDeliveredAt   time.Time
-	TimeoutAt          *time.Time
+	timeoutAt          *time.Time
 	msecBlockTimeout   int64
 	blockTimeoutAt     *time.Time
 	highPriority       bool
@@ -140,13 +140,16 @@ func (aconn *AppConn) killRequest(invokeId uint8, err error) {
 		rip.Dead = new(string)
 		if nil != err {
 			*rip.Dead = fmt.Sprintf("killed, error: %s", err.Error())
+			rip.ReplyDeliveredAt = time.Now()
 		} else {
 			*rip.Dead = "reply delivered"
 			rip.ReplyDeliveredAt = time.Now()
 		}
 	}
-	serr = fmt.Sprintf("%s: request killed, invokeId: %d, reason: %s", FNAME, invokeId, *rips[0].Dead)
-	errorLog.Println(serr)
+	if nil != err {
+		serr = fmt.Sprintf("%s: request killed, invokeId: %d, reason: %s", FNAME, invokeId, *rips[0].Dead)
+		errorLog.Println(serr)
+	}
 	rips[0].Ch <- &DlmsChannelMessage{err, DlmsResponse(rips)}
 	aconn.invokeIdsCh <- invokeId
 }
@@ -168,7 +171,7 @@ func (aconn *AppConn) deliverTimeouts() {
 					continue
 				}
 
-				if (nil != rips[0].TimeoutAt) && (currentTime.After(*rips[0].TimeoutAt)) {
+				if (nil != rips[0].timeoutAt) && (currentTime.After(*rips[0].timeoutAt)) {
 					errorLog.Printf("%s request invokeId %d timed out, killed after %v", FNAME, invokeId, currentTime.Sub(rips[0].RequestSubmittedAt))
 					if nil != rips[0].rawData {
 						// If in the middle of receiving block response try to parse received data so far.
@@ -443,7 +446,7 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, msecBlockTime
 			rip.invokeId = invokeId
 			rip.RequestSubmittedAt = currentTime
 			if 0 != msecTimeout {
-				rip.TimeoutAt = &timeoutAt
+				rip.timeoutAt = &timeoutAt
 			}
 			rip.Ch = ch
 			rip.highPriority = highPriority

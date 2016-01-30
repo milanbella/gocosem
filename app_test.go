@@ -16,13 +16,14 @@ type tMockCosemObject struct {
 }
 
 type tMockCosemServer struct {
-	closed         bool
-	ln             net.Listener
-	connections    *list.List // list of *tMockCosemServerConnection
-	objects        map[string]*tMockCosemObject
-	blockLength    int
-	replyDelayMsec int
-	blockDelayMsec int
+	closed              bool
+	ln                  net.Listener
+	connections         *list.List // list of *tMockCosemServerConnection
+	objects             map[string]*tMockCosemObject
+	blockLength         int
+	replyDelayMsec      int
+	blockDelayMsec      int
+	blockDelayLastBlock bool
 }
 
 type tMockCosemServerConnection struct {
@@ -38,12 +39,13 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, invokeIdA
 	var FNAME string = "tMockCosemServerConnection.sendEncodedReply()"
 
 	invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
-	l := conn.srv.blockLength // block length
+	l := conn.srv.blockLength                                                                       // block length
+	t.Logf("%s: len(reply): %d, conn.srv.blockLength: %d", FNAME, len(reply), conn.srv.blockLength) //@@@@@@@@@@@@@@@@
 	if len(reply) > l {
 		// use block transfer
 		t.Logf("%s: using block transfer", FNAME)
 
-		blocks := make([][]byte, len(reply)/10+1)
+		blocks := make([][]byte, len(reply)/l+1)
 		b := reply[0:]
 		var i int
 		for i = 0; len(b) > l; i += 1 {
@@ -96,7 +98,7 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 			return err
 		}
 		dataAccessResult, data := conn.srv.getData(t, classId, instanceId, attributeId, accessSelector, accessParameters)
-		t.Logf("%s: dataAccessResult: %d", FNAME, dataAccessResult)
+		t.Logf("%s: dataAccessResult: %d %d", FNAME, dataAccessResult)
 		err, rawData := encode_GetResponseNormal(invokeIdAndPriority, dataAccessResult, data)
 		if nil != err {
 			errorLog.Printf("%s: %v\n", FNAME, err)
@@ -130,68 +132,63 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, pdu []byte)
 		}
 		conn.sendEncodedReply(t, invokeIdAndPriority, rawData)
 	} else if bytes.Equal(pdu[0:2], []byte{0xC0, 0x02}) {
-		f := func() error {
-			t.Logf("%s: GetRequestForNextDataBlock", FNAME)
-			err, invokeIdAndPriority, blockNumber := decode_GetRequestForNextDataBlock(pdu)
-			if nil != err {
-				errorLog.Printf("%s: %v\n", FNAME, err)
-				return err
-			}
-			invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
-
-			var dataAccessResult DlmsDataAccessResult
-			var rawData []byte
-			var lastBlock bool
-
-			if nil == conn.blocks[invokeId] {
-				t.Logf("no blocks for invokeId: setting dataAccessResult to 1")
-				dataAccessResult = 1
-				rawData = nil
-			} else if int(blockNumber) >= len(conn.blocks[invokeId]) {
-				t.Logf("no such block for invokeId: setting dataAccessResult to 1")
-				dataAccessResult = 1
-				rawData = nil
-			} else {
-				dataAccessResult = 0
-				rawData = conn.blocks[invokeId][blockNumber]
-			}
-			t.Logf("%s: dataAccessResult: %d", FNAME, dataAccessResult)
-
-			if (len(conn.blocks[invokeId]) - 1) == int(blockNumber) {
-				lastBlock = true
-			} else {
-				lastBlock = false
-			}
-
-			if lastBlock {
-				conn.blocks[invokeId] = nil
-			}
-
-			if !lastBlock {
-				blockNumber += 1
-			}
-			err, reply := encode_GetResponsewithDataBlock(invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData)
-			if nil != err {
-				errorLog.Printf("%s: %v\n", FNAME, err)
-				return err
-			}
-			ch := make(DlmsChannel)
-			ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
-			msg := <-ch
-			if nil != msg.Err {
-				errorLog.Printf("%s: %v\n", FNAME, msg.Err)
-				return err
-			}
-			return nil
-		}
-		if conn.srv.blockDelayMsec > 0 {
-			<-time.After(time.Millisecond * time.Duration(conn.srv.blockDelayMsec))
-			err = f()
+		t.Logf("%s: GetRequestForNextDataBlock", FNAME)
+		err, invokeIdAndPriority, blockNumber := decode_GetRequestForNextDataBlock(pdu)
+		if nil != err {
+			errorLog.Printf("%s: %v\n", FNAME, err)
 			return err
+		}
+		invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
+
+		var dataAccessResult DlmsDataAccessResult
+		var rawData []byte
+		var lastBlock bool
+
+		if nil == conn.blocks[invokeId] {
+			t.Logf("no blocks for invokeId: setting dataAccessResult to 1")
+			dataAccessResult = 1
+			rawData = nil
+		} else if int(blockNumber) >= len(conn.blocks[invokeId]) {
+			t.Logf("no such block for invokeId: setting dataAccessResult to 1")
+			dataAccessResult = 1
+			rawData = nil
 		} else {
-			err = f()
+			dataAccessResult = 0
+			rawData = conn.blocks[invokeId][blockNumber]
+		}
+		t.Logf("%s: dataAccessResult: %d", FNAME, dataAccessResult)
+
+		if (len(conn.blocks[invokeId]) - 1) == int(blockNumber) {
+			lastBlock = true
+		} else {
+			lastBlock = false
+		}
+
+		if lastBlock {
+			conn.blocks[invokeId] = nil
+		}
+
+		if !lastBlock {
+			blockNumber += 1
+		}
+		err, reply := encode_GetResponsewithDataBlock(invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData)
+		if nil != err {
+			errorLog.Printf("%s: %v\n", FNAME, err)
 			return err
 		}
+		ch := make(DlmsChannel)
+		if conn.srv.blockDelayMsec > 0 {
+			if !conn.srv.blockDelayLastBlock || (conn.srv.blockDelayLastBlock && lastBlock) {
+				<-time.After(time.Millisecond * time.Duration(conn.srv.blockDelayMsec))
+			}
+		}
+		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, reply)
+		msg := <-ch
+		if nil != msg.Err {
+			errorLog.Printf("%s: %v\n", FNAME, msg.Err)
+			return err
+		}
+		return nil
 	} else {
 		panic("assertion failed")
 	}
@@ -386,6 +383,8 @@ func (srv *tMockCosemServer) Init() {
 	srv.objects = make(map[string]*tMockCosemObject)
 	srv.blockLength = 1000
 	srv.replyDelayMsec = 0
+	srv.blockDelayMsec = 0
+	srv.blockDelayLastBlock = false
 }
 
 const c_TEST_ADDR = "localhost"
@@ -541,6 +540,105 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
 	}
 	if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+
+	aconn.Close()
+
+	mockCosemServer.Close()
+}
+
+func TestX_GetRequestNormal_blockTransfer_timeout(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+	mockCosemServer.blockLength = 5
+	mockCosemServer.blockDelayMsec = 200
+	mockCosemServer.blockDelayLastBlock = true
+
+	data := (new(DlmsData))
+	data.Typ = DATA_TYPE_ARRAY
+	data.Arr = make([]*DlmsData, 4)
+
+	i := 0
+	d := (new(DlmsData))
+	d.SetOctetString([]byte{0x00, 0x01, 0x02, 0x03})
+	data.Arr[i] = d
+
+	i += 1
+	d = (new(DlmsData))
+	d.SetLong(10)
+	data.Arr[i] = d
+
+	i += 1
+	d = (new(DlmsData))
+	d.SetLong(20)
+	data.Arr[i] = d
+
+	i += 1
+	d = (new(DlmsData))
+	d.SetOctetString([]byte{0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01})
+	data.Arr[i] = d
+
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("application connected")
+	aconn := msg.Data.(*AppConn)
+
+	val := new(DlmsValueRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals := make([]*DlmsValueRequest, 1)
+	vals[0] = val
+
+	aconn.getRquest(ch, 100000, 100, true, vals)
+	msg = <-ch
+	if ErrorBlockTimeout != msg.Err {
+		t.Fatalf("%v\n", msg.Err)
+	}
+
+	rep := msg.Data.(DlmsResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+
+	// even if request timeouted partially received data must be decoded correctly
+
+	rdata := rep.DataAt(0)
+
+	if nil != rdata.Arr[0].Err {
+		t.Fatalf("data not parsed")
+	}
+	if !bytes.Equal(data.Arr[0].GetOctetString(), rdata.Arr[0].GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+
+	if nil != rdata.Arr[1].Err {
+		t.Fatalf("data not parsed")
+	}
+	if data.Arr[1].GetLong() != rdata.Arr[1].GetLong() {
+		t.Fatalf("value differs")
+	}
+
+	if nil != rdata.Arr[2].Err {
+		t.Fatalf("data not parsed")
+	}
+	if data.Arr[2].GetLong() != rdata.Arr[2].GetLong() {
 		t.Fatalf("value differs")
 	}
 
@@ -822,7 +920,6 @@ func TestX_GetRequestWithList_blockTransfer_blockTimeout(t *testing.T) {
 
 	// timeouted request must not disable following requests
 
-	mockCosemServer.replyDelayMsec = 0
 	aconn.getRquest(ch, 10000, 2000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
