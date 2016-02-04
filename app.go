@@ -2,6 +2,7 @@ package gocosem
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -177,7 +178,7 @@ func (aconn *AppConn) deliverTimeouts() {
 					errorLog.Printf("%s request invokeId %d timed out, killed after %v", FNAME, invokeId, currentTime.Sub(rips[0].RequestSubmittedAt))
 					if nil != rips[0].rawData {
 						// If in the middle of receiving block response try to parse received data so far.
-						aconn.processBlockResponse(rips, rips[0].rawData, ErrorRequestTimeout)
+						aconn.processBlockResponse(rips, bytes.NewBuffer(rips[0].rawData), ErrorRequestTimeout)
 					} else {
 						aconn.killRequest(invokeId, ErrorRequestTimeout)
 					}
@@ -186,7 +187,7 @@ func (aconn *AppConn) deliverTimeouts() {
 					errorLog.Printf("%s request invokeId %d block timed out, killed after %v", FNAME, invokeId, currentTime.Sub(rips[0].RequestSubmittedAt))
 					if nil != rips[0].rawData {
 						// If in the middle of receiving block response try to parse received data so far.
-						aconn.processBlockResponse(rips, rips[0].rawData, ErrorBlockTimeout)
+						aconn.processBlockResponse(rips, bytes.NewBuffer(rips[0].rawData), ErrorBlockTimeout)
 					} else {
 						aconn.killRequest(invokeId, ErrorBlockTimeout)
 					}
@@ -262,7 +263,7 @@ func (aconn *AppConn) processReply(r io.Reader) {
 	)
 
 	p := make([]byte, 3)
-	err := io.Read(p)
+	err := binary.Read(r, binary.BigEndian, p)
 	if nil != err {
 		errorLog.Printf("%s: io.Read() failed: %v", FNAME, err)
 		return
@@ -315,7 +316,7 @@ func (aconn *AppConn) processReply(r io.Reader) {
 		_pdu := rips[0].rawData
 
 		if lastBlock {
-			aconn.processBlockResponse(rips, _pdu, nil)
+			aconn.processBlockResponse(rips, bytes.NewBuffer(_pdu), nil)
 		} else {
 			// requests next data block
 
@@ -329,9 +330,13 @@ func (aconn *AppConn) processReply(r io.Reader) {
 
 			var buf bytes.Buffer
 			invokeIdAndPriority := p[2]
-			buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
+			_, err := buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
+			if nil != err {
+				aconn.killRequest(rips[0].invokeId, err)
+				return
+			}
 
-			err := encode_GetRequestForNextDataBlock(&buf, blockNumber)
+			err = encode_GetRequestForNextDataBlock(&buf, blockNumber)
 			if nil != err {
 				aconn.killRequest(rips[0].invokeId, err)
 				return
@@ -341,7 +346,7 @@ func (aconn *AppConn) processReply(r io.Reader) {
 		}
 
 	} else {
-		serr = fmt.Sprintf("%s: received pdu discarded due to unknown tag: %02X %02X", pdu[0], pdu[1])
+		serr = fmt.Sprintf("%s: received pdu discarded due to unknown tag: %02X %02X", FNAME, p[0], p[1])
 		errorLog.Println(serr)
 		return
 	}
@@ -480,8 +485,24 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, msecBlockTime
 		)
 
 		if 1 == len(vals) {
-			err = encode_GetRequestNormal(&buf, invokeIdAndPriority, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
+			_, err = buf.Write([]byte{0xC0, 0x01, byte(invokeIdAndPriority)})
+			if nil != err {
+				errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
+				aconn.killRequest(invokeId, err)
+				return
+			}
+			err = encode_GetRequestNormal(&buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
+			if nil != err {
+				aconn.killRequest(invokeId, err)
+				return
+			}
 		} else {
+			_, err = buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
+			if nil != err {
+				errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
+				aconn.killRequest(invokeId, err)
+				return
+			}
 			var (
 				classIds         []DlmsClassId        = make([]DlmsClassId, len(vals))
 				instanceIds      []*DlmsOid           = make([]*DlmsOid, len(vals))
@@ -496,14 +517,13 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, msecBlockTime
 				accessSelectors[i] = vals[i].AccessSelector
 				accessParameters[i] = vals[i].AccessParameter
 			}
-			err = encode_GetRequestWithList(&buf, invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters)
+			err = encode_GetRequestWithList(&buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters)
+			if nil != err {
+				aconn.killRequest(invokeId, err)
+				return
+			}
 		}
 
-		if nil != err {
-			aconn.killRequest(invokeId, err)
-			return
-		}
-		aconn.transportSend(invokeId, pdu)
+		aconn.transportSend(invokeId, buf.Bytes())
 	}()
-
 }
