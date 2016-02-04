@@ -1356,540 +1356,282 @@ func (data *DlmsData) decodeTime(r io.Reader) (err error) {
 	return nil
 }
 
-func encode_getRequest(classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector *DlmsAccessSelector, accessParameters *DlmsData) (err error, pdu []byte) {
-	var FNAME = "encode_getRequest()"
+func encode_getRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData) (err error) {
+	var FNAME string = "encode_getRequest()"
 
-	var w bytes.Buffer
-
-	var buf bytes.Buffer
-	err = binary.Write(&buf, binary.BigEndian, classId)
+	err = binary.Write(w, binary.BigEndian, classId)
 	if nil != err {
 		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
-		return err, nil
-	}
-	b := buf.Bytes()
-	_, err = w.Write(b)
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
+		return err
 	}
 
-	_, err = w.Write((*instanceId)[0:6])
+	err = binary.Write(w, binary.BigEndian, instanceId)
 	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err
 	}
 
-	_, err = w.Write([]byte{byte(attributeId)})
+	err = binary.Write(w, binary.BigEndian, attributeId)
 	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err
 	}
 
 	if 0 != attributeId {
-		var as []byte
-		var ap []byte
-		if nil == accessSelector {
-			as = []byte{0}
-		} else {
-			as = []byte{byte(*accessSelector)}
+		err = binary.Write(w, binary.BigEndian, accessSelector)
+		if nil != err {
+			errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+			return err
 		}
 		if nil != accessParameters {
-			var buf bytes.Buffer
-			err = accessParameters.Encode(&buf)
+			err = accessParameters.Encode(w)
 			if nil != err {
-				return err, nil
+				return err
 			}
-			ap = buf.Bytes()
-		} else {
-			ap = make([]byte, 0)
-		}
-
-		_, err = w.Write(as)
-		if nil != err {
-			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-			return err, nil
-		}
-
-		_, err = w.Write(ap)
-		if nil != err {
-			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-			return err, nil
 		}
 	}
-
-	return nil, w.Bytes()
+	return nil
 }
 
-func decode_getRequest(pdu []byte) (err error, n int, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector *DlmsAccessSelector, accessParameters *DlmsData) {
+func decode_getRequest(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData) {
 	var FNAME = "decode_getRequest()"
 	var serr string
 
-	b := pdu[0:]
-	n = 0
-
-	if len(b) < 2 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, 0, nil, 0, nil, nil
-	}
-	err = binary.Read(bytes.NewBuffer(b[0:2]), binary.BigEndian, &classId)
+	var _classId DlmsClassId
+	err = binary.Read(r, binary.BigEndian, &_classId)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", err)
-		return err, 0, 0, nil, 0, nil, nil
+		return err, 0, nil, 0, nil, nil
 	}
-	b = b[2:]
-	n += 2
 
-	if len(b) < 6 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, 0, nil, 0, nil, nil
-	}
-	instanceId = new(DlmsOid)
-	err = binary.Read(bytes.NewBuffer(b[0:6]), binary.BigEndian, instanceId)
+	_instanceId := new(DlmsOid)
+	err = binary.Read(r, binary.BigEndian, _instanceId)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", err)
-		return err, 0, 0, nil, 0, nil, nil
+		return err, _classId, nil, 0, nil, nil
 	}
-	b = b[6:]
-	n += 6
 
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, 0, nil, 0, nil, nil
-	}
-	err = binary.Read(bytes.NewBuffer(b[0:1]), binary.BigEndian, &attributeId)
+	var _attributeId DlmsAttributeId
+	err = binary.Read(r, binary.BigEndian, &_attributeId)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", err)
-		return err, 0, 0, nil, 0, nil, nil
+		return err, _classId, _instanceId, 0, nil, nil
 	}
-	b = b[1:]
-	n += 1
 
-	if len(b) >= 1 {
-		accessSelector = new(DlmsAccessSelector)
-		err = binary.Read(bytes.NewBuffer(b[0:1]), binary.BigEndian, accessSelector)
+	var _accessSelector DlmsAccessSelector
+	err = binary.Read(r, binary.BigEndian, &_accessSelector)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+	}
+
+	if accessSelector > 0 {
+		data = new(DlmsData)
+		err = data.Decode(&r)
 		if nil != err {
-			errorLog.Println("%s: binary.Read() failed, err: %v", err)
-			return err, 0, 0, nil, 0, nil, nil
-		}
-		b = b[1:]
-		n += 1
-	}
-
-	//TODO: Cosem green book full of uselss garbage is not precise on how and when access selector parameters are to be encoded/decoded
-	// We skip this to avoid reading too much into next item in case of decoding GetRequestWithList.
-	//if len(b) >= 1 {
-	if false {
-		var nn int
-		data := new(DlmsData)
-		buf := bytes.NewBuffer(b)
-		err = data.Decode(buf)
-		if nil != err {
-			return err, 0, 0, nil, 0, nil, nil
+			return err, _classId, _instanceId, _attributeId, _accessSelector, nil
 		}
 		accessParameters = data
-		nn = len(b) - buf.Len()
-		b = b[nn:]
-		n += nn
 	}
-	return nil, n, classId, instanceId, attributeId, accessSelector, accessParameters
+	return nil, _classId, _instanceId, _attributeId, _accessSelector, accessParameters
 }
 
-func encode_getResponse(dataAccessResult DlmsDataAccessResult, data *DlmsData) (err error, pdu []byte) {
+func encode_getResponse(w io.Writer, dataAccessResult DlmsDataAccessResult, data *DlmsData) (err error) {
 	var FNAME = "encode_getResponse()"
 
-	var w bytes.Buffer
-
-	var buf bytes.Buffer
-	err = binary.Write(&buf, binary.BigEndian, dataAccessResult)
+	err = binary.Write(&w, binary.BigEndian, dataAccessResult)
 	if nil != err {
 		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
-		return err, nil
-	}
-	b := buf.Bytes()
-	_, err = w.Write(b)
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
+		return err
 	}
 
 	if nil != data {
-		var buf bytes.Buffer
-		err = data.Encode(&buf)
+		err = data.Encode(&w)
 		if nil != err {
-			return err, nil
-		}
-		_, err = w.Write(buf.Bytes())
-		if nil != err {
-			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-			return err, nil
+			return err
 		}
 	}
 
-	return nil, w.Bytes()
+	return nil
 }
 
-func decode_getResponse(pdu []byte) (err error, n int, dataAccessResult DlmsDataAccessResult, data *DlmsData) {
+func decode_getResponse(r io.Reader) (err error, dataAccessResult DlmsDataAccessResult, data *DlmsData) {
 	var FNAME = "decode_getResponse()"
 	var serr string
-	var nn = 0
 
-	b := pdu[0:]
-	n = 0
+	r := bytes.NewBuffer(pdu)
 
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, 0, nil
+	err = binary.Read(&r, binary.BigEndian, &dataAccessResult)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, 0, nil
 	}
-	dataAccessResult = DlmsDataAccessResult(b[0])
-	b = b[1:]
-	n += 1
 
+	data = nil
 	if dataAccessResult_success == dataAccessResult {
-		buf := bytes.NewBuffer(b)
 		data = new(DlmsData)
-		err = data.Decode(buf)
-		nn = len(b) - buf.Len()
+		err = data.Decode(&r)
 		if nil != err {
-			return err, n + nn, 0, data
+			return err, dataAccessResult, nil
 		}
-		n += nn
 	}
 
-	return nil, n, dataAccessResult, data
+	return nil, dataAccessResult, data
 }
 
-func encode_GetRequestNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector *DlmsAccessSelector, accessParameters *DlmsData) (err error, pdu []byte) {
+func encode_GetRequestNormal(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData) (err error) {
 	var FNAME = "encode_GetRequestNormal()"
 
-	var w bytes.Buffer
-
-	_, err = w.Write([]byte{0xc0, 0x01})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-
-	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-
-	err, pdu = encode_getRequest(classId, instanceId, attributeId, accessSelector, accessParameters)
+	err, pdu = encode_getRequest(w, classId, instanceId, attributeId, accessSelector, accessParameters)
 	if nil != err {
 		errorLog.Printf("%s: encode_getRequest() failed, err: %v\n", FNAME, err)
-		return err, nil
+		return err
 	}
 
-	_, err = w.Write(pdu)
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-
-	return nil, w.Bytes()
+	return nil
 }
 
-func decode_GetRequestNormal(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector *DlmsAccessSelector, accessParameters *DlmsData) {
+func decode_GetRequestNormal(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData) {
 	var FNAME = "decode_GetRequestNormal"
-	var serr string
-	b := pdu[0:]
 
-	if len(b) < 2 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, 0, nil, 0, nil, nil
-	}
-	if !bytes.Equal(b[0:2], []byte{0xC0, 0x01}) {
-		errorLog.Printf("%s: pdu is not GetRequestNormal: 0x%02X 0x%02X\n", FNAME, b[0], b[1])
-		return errors.New("pdu is not GetRequestNormal"), 0, 0, nil, 0, nil, nil
-	}
-	b = b[2:]
-
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, 0, nil, 0, nil, nil
-	}
-	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
-	b = b[1:]
-
-	err, _, classId, instanceId, attributeId, accessSelector, accessParameters = decode_getRequest(b)
+	err, _, classId, instanceId, attributeId, accessSelector, accessParameters = decode_getRequest(r)
 	if nil != err {
-		return err, 0, 0, nil, 0, nil, nil
+		return err, 0, nil, 0, 0, nil
 	}
-	return nil, invokeIdAndPriority, classId, instanceId, attributeId, accessSelector, accessParameters
+	return nil, classId, instanceId, attributeId, accessSelector, accessParameters
 }
 
-func encode_GetResponseNormal(invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResult DlmsDataAccessResult, data *DlmsData) (err error, pdu []byte) {
+func encode_GetResponseNormal(w io.Writer, dataAccessResult DlmsDataAccessResult, data *DlmsData) (err error) {
 	var FNAME = "encode_GetResponseNormal()"
 
-	var w bytes.Buffer
-	var b []byte
-
-	_, err = w.Write([]byte{0xC4, 0x01})
+	err, pdu = encode_getResponse(w, dataAccessResult, data)
 	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
+		return err
 	}
 
-	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-
-	err, b = encode_getResponse(dataAccessResult, data)
-	if nil != err {
-		return err, nil
-	}
-	_, err = w.Write(b)
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-
-	return nil, w.Bytes()
+	return nil
 }
 
-func decode_GetResponseNormal(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResult DlmsDataAccessResult, data *DlmsData) {
-	var FNAME = "decode_GetResponsenormal()"
-	var serr string
-	b := pdu[0:]
+func decode_GetResponseNormal(r io.Reader) (err error, dataAccessResult DlmsDataAccessResult, data *DlmsData) {
 
-	if len(b) < 2 {
-		return errors.New("short pdu"), 0, 0, nil
-	}
-	if !bytes.Equal(b[0:2], []byte{0xC4, 0x01}) {
-		errorLog.Printf("%s: pdu is not GetResponsenormal: 0x%02X 0x%02X\n", FNAME, b[0], b[1])
-		return errors.New("pdu is not GetResponsenormal"), 0, 0, nil
-	}
-	b = b[2:]
-
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, 0, nil
-	}
-	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
-	b = b[1:]
-
-	err, _, dataAccessResult, data = decode_getResponse(b)
+	err, dataAccessResult, data = decode_getResponse(r)
 	if nil != err {
-		return err, 0, 0, data
+		return err, dataAccessResult, data
 	}
 
-	return nil, invokeIdAndPriority, dataAccessResult, data
+	return nil, dataAccessResult, data
 }
 
-func encode_GetRequestWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, classIds []DlmsClassId, instanceIds []*DlmsOid, attributeIds []DlmsAttributeId, accessSelectors []*DlmsAccessSelector, accessParameters []*DlmsData) (err error, pdu []byte) {
+func encode_GetRequestWithList(w io.Writer, classIds []DlmsClassId, instanceIds []*DlmsOid, attributeIds []DlmsAttributeId, accessSelectors []DlmsAccessSelector, accessParameters []*DlmsData) (err error) {
 	var FNAME = "encode_GetRequestWithList()"
 
 	var w bytes.Buffer
 
-	_, err = w.Write([]byte{0xc0, 0x03})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
+	count := uint8(len(classIds)) // count of get requests
 
-	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
+	err = binary.Write(w, binary.BigEndian, count)
 	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-
-	count := len(classIds) // count of get requests
-
-	_, err = w.Write([]byte{byte(count)})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err
 	}
 
 	for i := 0; i < count; i += 1 {
 
-		err, pdu = encode_getRequest(classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
+		err = encode_getRequest(w, classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
 		if nil != err {
 			errorLog.Printf("%s: encode_getRequest() failed, err: %v\n", FNAME, err)
-			return err, nil
+			return err
 		}
 
-		_, err = w.Write(pdu)
-		if nil != err {
-			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-			return err, nil
-		}
 	}
 
-	return nil, w.Bytes()
+	return nil
 }
 
-func decode_GetRequestWithList(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, classIds []DlmsClassId, instanceIds []*DlmsOid, attributeIds []DlmsAttributeId, accessSelectors []*DlmsAccessSelector, accessParameters []*DlmsData) {
+func decode_GetRequestWithList(r io.Reader) (err error, classIds []DlmsClassId, instanceIds []*DlmsOid, attributeIds []DlmsAttributeId, accessSelectors []DlmsAccessSelector, accessParameters []*DlmsData) {
 	var FNAME = "decode_GetRequestWithList()"
 	var serr string
-	b := pdu[0:]
 
-	if len(b) < 2 {
-		return errors.New("short pdu"), 0, nil, nil, nil, nil, nil
+	var count uint8
+	err = binary.Read(r, binary.BigEndian, &count)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, nil, nil, nil, nil, nil
 	}
-	if !bytes.Equal(b[0:2], []byte{0xC0, 0x03}) {
-		errorLog.Printf("%s: pdu is not GetRequestWithList: 0x%02X 0x%02X\n", FNAME, b[0], b[1])
-		return errors.New("pdu is not GetRequestWithList"), 0, nil, nil, nil, nil, nil
-	}
-	b = b[2:]
-
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, nil, nil, nil, nil, nil
-	}
-	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
-	b = b[1:]
-
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, nil, nil, nil, nil, nil
-	}
-	count := int(b[0])
-	b = b[1:]
 
 	classIds = make([]DlmsClassId, count)
 	instanceIds = make([]*DlmsOid, count)
 	attributeIds = make([]DlmsAttributeId, count)
-	accessSelectors = make([]*DlmsAccessSelector, count)
+	accessSelectors = make([]DlmsAccessSelector, count)
 	accessParameters = make([]*DlmsData, count)
 
 	for i := 0; i < count; i += 1 {
-		err, n, classId, instanceId, attributeId, accessSelector, accessParameter := decode_getRequest(b)
+		err, n, classId, instanceId, attributeId, accessSelector, accessParameter := decode_getRequest(r)
 		if nil != err {
-			return err, 0, nil, nil, nil, nil, nil
+			return err, classIds[0:i], instanceIds[0:i], attributeIds[0:i], accessSelectors[0:i], accessParameters[0:i]
 		}
 		classIds[i] = classId
 		instanceIds[i] = instanceId
 		attributeIds[i] = attributeId
 		accessSelectors[i] = accessSelector
 		accessParameters[i] = accessParameter
-		b = b[n:]
 	}
-	return nil, invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters
-
+	return nil, classIds, instanceIds, attributeIds, accessSelectors, accessParameters
 }
 
-func encode_GetResponseWithList(invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResults []DlmsDataAccessResult, datas []*DlmsData) (err error, pdu []byte) {
+func encode_GetResponseWithList(w io.Writer, dataAccessResults []DlmsDataAccessResult, datas []*DlmsData) (err error) {
 	var FNAME = "encode_GetResponseWithList()"
 
 	var w bytes.Buffer
 
-	_, err = w.Write([]byte{0xC4, 0x03})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
+	count := uint8(len(dataAccessResults))
 
-	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
+	err = binary.Write(w, binary.BigEndian, count)
 	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-
-	count := len(dataAccessResults)
-
-	_, err = w.Write([]byte{byte(count)})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err
 	}
 
 	for i := 0; i < count; i += 1 {
 
-		err, b := encode_getResponse(dataAccessResults[i], datas[i])
+		err := encode_getResponse(w, dataAccessResults[i], datas[i])
 		if nil != err {
-			return err, nil
-		}
-		_, err = w.Write(b)
-		if nil != err {
-			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-			return err, nil
+			return err
 		}
 	}
 
-	return nil, w.Bytes()
+	return nil
 }
 
-func decode_GetResponseWithList(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResults []DlmsDataAccessResult, datas []*DlmsData) {
+func decode_GetResponseWithList(r io.Reader) (err error, dataAccessResults []DlmsDataAccessResult, datas []*DlmsData) {
 	var FNAME = "decode_GetResponseWithList()"
 	var serr string
-	b := pdu[0:]
 
-	if len(b) < 2 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, nil, nil
+	var count uint8
+	err = binary.Read(&r, binary.BigEndian, &count)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, nil, nil
 	}
-	if !bytes.Equal(b[0:2], []byte{0xC4, 0x03}) {
-		errorLog.Printf("%s: pdu is not GetResponseWithList: 0x%02X 0x%02X\n", FNAME, b[0], b[1])
-		return errors.New("pdu is not GetResponseWithList"), 0, nil, nil
-	}
-	b = b[2:]
-
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, nil, nil
-	}
-	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
-	b = b[1:]
-
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, nil, nil
-	}
-	count := int(b[0])
-	b = b[1:]
 
 	dataAccessResults = make([]DlmsDataAccessResult, count)
 	datas = make([]*DlmsData, count)
 
 	var dataAccessResult DlmsDataAccessResult
 	var data *DlmsData
-	var n int
 	for i := 0; i < count; i += 1 {
-		err, n, dataAccessResult, data = decode_getResponse(b)
+		err, dataAccessResult, data = decode_getResponse(r)
 		if nil != err {
-			return err, 0, nil, nil
+			return err, dataAccessResults[0:i], datas[0:i]
 		}
-		b = b[n:]
 		dataAccessResults[i] = dataAccessResult
 		datas[i] = data
 	}
 
-	return nil, invokeIdAndPriority, dataAccessResults, datas
+	return nil, dataAccessResults, datas
 }
 
-func encode_GetResponsewithDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPriority, lastBlock bool, blockNumber uint32, dataAccessResult DlmsDataAccessResult, rawData []byte) (err error, pdu []byte) {
+func encode_GetResponsewithDataBlock(w io.Writer, lastBlock bool, blockNumber uint32, dataAccessResult DlmsDataAccessResult, rawData []byte) (err error) {
 	var FNAME = "encode_GetResponsewithDataBlock()"
-
-	var w bytes.Buffer
-
-	_, err = w.Write([]byte{0xC4, 0x02})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-
-	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
 
 	var bb byte
 	if lastBlock {
@@ -1897,197 +1639,106 @@ func encode_GetResponsewithDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPriorit
 	} else {
 		bb = 0
 	}
-	_, err = w.Write([]byte{bb})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-
-	var buf bytes.Buffer
-
-	err = binary.Write(&buf, binary.BigEndian, blockNumber)
+	err = binary.Write(w, binary.BigEndian, bb)
 	if nil != err {
 		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
-		return err, nil
-	}
-	b := buf.Bytes()
-	_, err = w.Write(b)
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
+		return err
 	}
 
-	_, err = w.Write([]byte{byte(dataAccessResult)})
+	err = binary.Write(w, binary.BigEndian, blockNumber)
 	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err
+	}
+
+	err = binary.Write(w, binary.BigEndian, dataAccessResult)
+	if nil != err {
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err
 	}
 
 	if nil != rawData {
-		_, err = w.Write([]byte{0x1E}) // raw data tag
+		err = encodeAxdrLength(&w, uint16(len(rawData)))
 		if nil != err {
-			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-			return err, nil
+			errorLog.Printf("%s: encodeAxdrLength() failed, err: %v\n", FNAME, err)
+			return err
 		}
 
 		_, err = w.Write(rawData)
 		if nil != err {
 			errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-			return err, nil
+			return err
 		}
 	}
 
-	return nil, w.Bytes()
-
+	return nil
 }
 
-func decode_GetResponsewithDataBlock(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, lastBlock bool, blockNumber uint32, dataAccessResult DlmsDataAccessResult, rawData []byte) {
+func decode_GetResponsewithDataBlock(r io.Reader) (err error, lastBlock bool, blockNumber uint32, dataAccessResult DlmsDataAccessResult, rawData []byte) {
 	var FNAME = "decode_GetResponsewithDataBlock()"
 	var serr string
-	b := pdu[0:]
 
-	if len(b) < 2 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, false, 0, 0, nil
-	}
-	if !bytes.Equal(b[0:2], []byte{0xC4, 0x02}) {
-		serr = fmt.Sprintf("%s: pdu is not GetResponsewithDataBlock: 0x%02X 0x%02X ", FNAME, b[0], b[1])
-		errorLog.Println(serr)
-		return errors.New(serr), 0, false, 0, 0, nil
-	}
-	b = b[2:]
-
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, false, 0, 0, nil
-	}
-	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
-	b = b[1:]
-
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, false, 0, 0, nil
-	}
-	if 0 == b[0] {
-		lastBlock = false
-	} else {
-		lastBlock = true
-	}
-	b = b[1:]
-
-	if len(b) < 4 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, false, 0, 0, nil
-	}
-	err = binary.Read(bytes.NewBuffer(b[0:4]), binary.BigEndian, &blockNumber)
+	var _lastBlock bool
+	err = binary.Read(r, binary.BigEndian, &_lastBlock)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", err)
-		return err, 0, false, 0, 0, nil
-	}
-	b = b[4:]
-
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, false, 0, 0, nil
-	}
-	dataAccessResult = DlmsDataAccessResult(b[0])
-	b = b[1:]
-
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, false, 0, 0, nil
-	}
-	tag := b[0]
-	b = b[1:]
-
-	if 0x1E != tag {
-		serr = fmt.Sprintf("%s: wrong raw data tag: 0X%02X", FNAME, tag)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, false, 0, 0, nil
+		return err, false, 0, 0, nil
 	}
 
-	rawData = b
+	var _blockNumber uint32
+	err = binary.Read(r, binary.BigEndian, &_blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, _lastBlock, 0, 0, nil
+	}
 
-	return nil, invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData
+	var _dataAccessResult DlmsDataAccessResult
+	err = binary.Read(r, binary.BigEndian, &_dataAccessResult)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, _lastBlock, _blockNumber, 0, nil
+	}
+
+	err, length := decodeAxdrLength(r)
+	if nil != err {
+		errorLog.Printf("%s: decodeAxdrLength() failed, err: %v\n", FNAME, err)
+		return err, _lastBlock, _blockNumber, _dataAccessResult, nil
+	}
+
+	rawData = make([]byte, length)
+	err = binary.Read(r, binary.BigEndian, rawData)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, lastBlock, blockNumber, dataAccessResult, nil
+	}
+
+	return nil, _lastBlock, _blockNumber, _dataAccessResult, rawData
 }
 
-func encode_GetRequestForNextDataBlock(invokeIdAndPriority tDlmsInvokeIdAndPriority, blockNumber uint32) (err error, pdu []byte) {
+func encode_GetRequestForNextDataBlock(w io.Writer, blockNumber uint32) (err error) {
 	var FNAME = "encode_GetRequestForNextDataBlock()"
 
-	var w bytes.Buffer
-
-	_, err = w.Write([]byte{0xc0, 0x02})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-
-	_, err = w.Write([]byte{byte(invokeIdAndPriority)})
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
-	}
-
-	var buf bytes.Buffer
-	err = binary.Write(&buf, binary.BigEndian, blockNumber)
+	err = binary.Write(w, binary.BigEndian, blockNumber)
 	if nil != err {
 		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", err))
-		return err, nil
-	}
-	b := buf.Bytes()
-	_, err = w.Write(b)
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err, nil
+		return err
 	}
 
-	return nil, w.Bytes()
+	return nil
 }
 
-func decode_GetRequestForNextDataBlock(pdu []byte) (err error, invokeIdAndPriority tDlmsInvokeIdAndPriority, blockNumber uint32) {
+func decode_GetRequestForNextDataBlock(r io.Reader) (err error, blockNumber uint32) {
 	var FNAME = "decode_GetRequestForNextDataBlock()"
 	var serr string
-	b := pdu[0:]
 
-	if len(b) < 2 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, 0
-	}
-	if !bytes.Equal(b[0:2], []byte{0xc0, 0x02}) {
-		serr = fmt.Sprintf("%s: pdu is not GetRequestForNextDataBlock: 0x%02X 0x%02X ", FNAME, b[0], b[1])
-		errorLog.Println(serr)
-		return errors.New(serr), 0, 0
-	}
-	b = b[2:]
-
-	if len(b) < 1 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, 0
-	}
-	invokeIdAndPriority = tDlmsInvokeIdAndPriority(b[0])
-	b = b[1:]
-
-	if len(b) < 4 {
-		serr = fmt.Sprintf("%s: short pdu", FNAME)
-		errorLog.Println(serr)
-		return errors.New(serr), 0, 0
-	}
-	err = binary.Read(bytes.NewBuffer(b[0:4]), binary.BigEndian, &blockNumber)
+	var _blockNumber uint32
+	err = binary.Read(r, binary.BigEndian, &_blockNumber)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", err)
-		return err, 0, 0
+		return err, 0
 	}
-	b = b[4:]
 
-	return nil, invokeIdAndPriority, blockNumber
+	return nil, _blockNumber
 }
 
 const (
@@ -2293,24 +1944,13 @@ func ipTransportReceive(ch DlmsChannel, rwc io.ReadWriteCloser, srcWport *uint16
 		)
 
 		debugLog.Printf("%s: receiving pdu ...\n", FNAME)
-		err, headerPdu = readLength(rwc, int(unsafe.Sizeof(header)))
-		if nil != err {
-			ch <- &DlmsChannelMessage{err, nil}
-			return
-		}
-		err = binary.Read(bytes.NewBuffer(headerPdu), binary.BigEndian, &header)
+		err = binary.Read(rwc, binary.BigEndian, &header)
 		if nil != err {
 			errorLog.Printf("%s: binary.Read() failed, err: %v\n", FNAME, err)
 			ch <- &DlmsChannelMessage{err, nil}
 			return
 		}
 		debugLog.Printf("%s: header: ok\n", FNAME)
-		if header.DataLength <= 0 {
-			serr = fmt.Sprintf("%s: wrong pdu length: %d", FNAME, header.DataLength)
-			errorLog.Println(serr)
-			ch <- &DlmsChannelMessage{errors.New(serr), nil}
-			return
-		}
 		if (nil != srcWport) && (header.SrcWport != *srcWport) {
 			serr = fmt.Sprintf("%s: wrong srcWport: %d, expected: %d", FNAME, header.SrcWport, *srcWport)
 			errorLog.Println(serr)
@@ -2323,8 +1963,10 @@ func ipTransportReceive(ch DlmsChannel, rwc io.ReadWriteCloser, srcWport *uint16
 			ch <- &DlmsChannelMessage{errors.New(serr), nil}
 			return
 		}
-		err, pdu := readLength(rwc, int(header.DataLength))
+		pdu := make([]byte, header.DataLength)
+		err = binary.Read(rwc, binary.BigEndian, pdu)
 		if nil != err {
+			errorLog.Printf("%s: binary.Read() failed, err: %v\n", FNAME, err)
 			ch <- &DlmsChannelMessage{err, nil}
 			return
 		}
@@ -2339,7 +1981,6 @@ func ipTransportReceive(ch DlmsChannel, rwc io.ReadWriteCloser, srcWport *uint16
 
 		return
 	}()
-
 }
 
 // Never call this method directly or else you risk race condtitions on io.Writer() in case of paralell call.

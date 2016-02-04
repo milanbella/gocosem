@@ -1,8 +1,10 @@
 package gocosem
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 )
 
@@ -13,7 +15,7 @@ type DlmsValueRequest struct {
 	ClassId         DlmsClassId
 	InstanceId      *DlmsOid
 	AttributeId     DlmsAttributeId
-	AccessSelector  *DlmsAccessSelector
+	AccessSelector  DlmsAccessSelector
 	AccessParameter *DlmsData
 }
 
@@ -197,9 +199,9 @@ func (aconn *AppConn) deliverTimeouts() {
 	go deliver()
 }
 
-func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse, pdu []byte, errr error) {
+func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse, r io.Reader, errr error) {
 
-	err, _, dataAccessResult, data := decode_GetResponseNormal(pdu)
+	err, dataAccessResult, data := decode_GetResponseNormal(r)
 
 	rips[0].Rep = new(DlmsValueResponse)
 	rips[0].Rep.DataAccessResult = dataAccessResult
@@ -216,9 +218,9 @@ func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse,
 	}
 }
 
-func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestResponse, pdu []byte, errr error) {
+func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestResponse, r io.Reader, errr error) {
 
-	err, _, dataAccessResults, datas := decode_GetResponseWithList(pdu)
+	err, dataAccessResults, datas := decode_GetResponseWithList(r)
 
 	for i := 0; i < len(dataAccessResults); i += 1 {
 		rip := rips[i]
@@ -239,33 +241,34 @@ func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestRespons
 
 }
 
-func (aconn *AppConn) processBlockResponse(rips []*DlmsValueRequestResponse, pdu []byte, err error) {
+func (aconn *AppConn) processBlockResponse(rips []*DlmsValueRequestResponse, r io.Reader, err error) {
 	var (
 		FNAME string = "AppConn.processBlockResponse()"
-		serr  string
 	)
 
-	if (0xC4 == pdu[0]) && (0x01 == pdu[1]) {
+	if 1 == len(rips) {
 		debugLog.Printf("%s: blocks received, processing ResponseNormal", FNAME)
-		aconn.processGetResponseNormal(rips, pdu, err)
-	} else if (0xC4 == pdu[0]) && (0x03 == pdu[1]) {
-		debugLog.Printf("%s: blocks received, processing ResponseWithList", FNAME)
-		aconn.processGetResponseWithList(rips, pdu, err)
+		aconn.processGetResponseNormal(rips, r, err)
 	} else {
-		serr = fmt.Sprintf("%s: assembled pdu discarded due to unknown tag: %02X %02X", pdu[0], pdu[1])
-		errorLog.Println(serr)
-		aconn.killRequest(rips[0].invokeId, errors.New(serr))
-		return
+		debugLog.Printf("%s: blocks received, processing ResponseWithList", FNAME)
+		aconn.processGetResponseWithList(rips, r, err)
 	}
 }
 
-func (aconn *AppConn) processReply(pdu []byte) {
+func (aconn *AppConn) processReply(r io.Reader) {
 	var (
 		FNAME string = "processReply()"
 		serr  string
 	)
 
-	invokeId := uint8((pdu[2] & 0xF0) >> 4)
+	p := make([]byte, 3)
+	err := io.Read(p)
+	if nil != err {
+		errorLog.Printf("%s: io.Read() failed: %v", FNAME, err)
+		return
+	}
+
+	invokeId := uint8((p[2] & 0xF0) >> 4)
 	debugLog.Printf("%s: invokeId %d\n", FNAME, invokeId)
 
 	rips := aconn.rips[invokeId]
@@ -278,21 +281,21 @@ func (aconn *AppConn) processReply(pdu []byte) {
 		return
 	}
 
-	if (0xC4 == pdu[0]) && (0x01 == pdu[1]) {
+	if (0xC4 == p[0]) && (0x01 == p[1]) {
 		debugLog.Printf("%s: processing ResponseNormal", FNAME)
 
-		aconn.processGetResponseNormal(rips, pdu, nil)
+		aconn.processGetResponseNormal(rips, r, nil)
 
-	} else if (0xC4 == pdu[0]) && (0x03 == pdu[1]) {
+	} else if (0xC4 == p[0]) && (0x03 == p[1]) {
 		debugLog.Printf("%s: processing ResponseWithList", FNAME)
 
-		aconn.processGetResponseWithList(rips, pdu, nil)
+		aconn.processGetResponseWithList(rips, r, nil)
 
-	} else if (0xC4 == pdu[0]) && (0x02 == pdu[1]) {
+	} else if (0xC4 == p[0]) && (0x02 == p[1]) {
 		// data blocks response
 		debugLog.Printf("%s: processing ResponsewithDataBlock", FNAME)
 
-		err, invokeIdAndPriority, lastBlock, blockNumber, dataAccessResult, rawData := decode_GetResponsewithDataBlock(pdu)
+		err, lastBlock, blockNumber, dataAccessResult, rawData := decode_GetResponsewithDataBlock(r)
 		if nil != err {
 			aconn.killRequest(rips[0].invokeId, err)
 			return
@@ -323,12 +326,18 @@ func (aconn *AppConn) processReply(pdu []byte) {
 			}
 
 			debugLog.Printf("%s: requesting data block: %d", FNAME, blockNumber)
-			err, _pdu := encode_GetRequestForNextDataBlock(invokeIdAndPriority, blockNumber)
+
+			var buf bytes.Buffer
+			invokeIdAndPriority := p[2]
+			buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
+
+			err := encode_GetRequestForNextDataBlock(&buf, blockNumber)
 			if nil != err {
 				aconn.killRequest(rips[0].invokeId, err)
 				return
 			}
-			aconn.transportSend(rips[0].invokeId, _pdu)
+
+			aconn.transportSend(rips[0].invokeId, buf.Bytes())
 		}
 
 	} else {
@@ -371,7 +380,7 @@ func (aconn *AppConn) receiveReplies() {
 				return
 			}
 			pdu := m["pdu"].([]byte)
-			go aconn.processReply(pdu)
+			go aconn.processReply(bytes.NewBuffer(pdu))
 		}
 	}()
 }
@@ -445,15 +454,15 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, msecBlockTime
 
 			rip.invokeId = invokeId
 			rip.RequestSubmittedAt = currentTime
-			if 0 != msecTimeout {
-				rip.timeoutAt = &timeoutAt
-			}
 			rip.Ch = ch
 			rip.highPriority = highPriority
 			rips[i] = rip
 		}
 		aconn.rips[invokeId] = rips
 
+		if 0 != msecTimeout {
+			rips[0].timeoutAt = &timeoutAt
+		}
 		rips[0].msecBlockTimeout = msecBlockTimeout
 
 		// build and forward pdu to transport
@@ -467,18 +476,18 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, msecBlockTime
 
 		var (
 			err error
-			pdu []byte
+			buf bytes.Buffer
 		)
 
 		if 1 == len(vals) {
-			err, pdu = encode_GetRequestNormal(invokeIdAndPriority, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
+			err = encode_GetRequestNormal(&buf, invokeIdAndPriority, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
 		} else {
 			var (
-				classIds         []DlmsClassId         = make([]DlmsClassId, len(vals))
-				instanceIds      []*DlmsOid            = make([]*DlmsOid, len(vals))
-				attributeIds     []DlmsAttributeId     = make([]DlmsAttributeId, len(vals))
-				accessSelectors  []*DlmsAccessSelector = make([]*DlmsAccessSelector, len(vals))
-				accessParameters []*DlmsData           = make([]*DlmsData, len(vals))
+				classIds         []DlmsClassId        = make([]DlmsClassId, len(vals))
+				instanceIds      []*DlmsOid           = make([]*DlmsOid, len(vals))
+				attributeIds     []DlmsAttributeId    = make([]DlmsAttributeId, len(vals))
+				accessSelectors  []DlmsAccessSelector = make([]DlmsAccessSelector, len(vals))
+				accessParameters []*DlmsData          = make([]*DlmsData, len(vals))
 			)
 			for i := 0; i < len(vals); i += 1 {
 				classIds[i] = vals[i].ClassId
@@ -487,7 +496,7 @@ func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, msecBlockTime
 				accessSelectors[i] = vals[i].AccessSelector
 				accessParameters[i] = vals[i].AccessParameter
 			}
-			err, pdu = encode_GetRequestWithList(invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters)
+			err = encode_GetRequestWithList(&buf, invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters)
 		}
 
 		if nil != err {
