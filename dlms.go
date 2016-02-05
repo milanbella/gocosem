@@ -1465,7 +1465,7 @@ func decode_getResponse(r io.Reader) (err error, dataAccessResult DlmsDataAccess
 		data = new(DlmsData)
 		err = data.Decode(r)
 		if nil != err {
-			return err, dataAccessResult, nil
+			return err, dataAccessResult, data
 		}
 	}
 
@@ -1661,11 +1661,17 @@ func encode_GetResponsewithDataBlock(w io.Writer, lastBlock bool, blockNumber ui
 func decode_GetResponsewithDataBlock(r io.Reader) (err error, lastBlock bool, blockNumber uint32, dataAccessResult DlmsDataAccessResult, rawData []byte) {
 	var FNAME = "decode_GetResponsewithDataBlock()"
 
-	var _lastBlock bool
-	err = binary.Read(r, binary.BigEndian, &_lastBlock)
+	var __lastBlock uint8
+	err = binary.Read(r, binary.BigEndian, &__lastBlock)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", err)
 		return err, false, 0, 0, nil
+	}
+	var _lastBlock bool
+	if 0 == __lastBlock {
+		_lastBlock = false
+	} else {
+		_lastBlock = true
 	}
 
 	var _blockNumber uint32

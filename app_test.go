@@ -3,6 +3,7 @@ package gocosem
 import (
 	"bytes"
 	"container/list"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"net"
@@ -39,7 +40,6 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 	var FNAME string = "tMockCosemServerConnection.sendEncodedReply()"
 
 	var buf bytes.Buffer
-	buf.Write([]byte{b0, b1, byte(invokeIdAndPriority)})
 
 	invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
 	l := conn.srv.blockLength                                                                       // block length
@@ -60,10 +60,13 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 		conn.blocks[invokeId] = blocks
 
 		t.Logf("%s: blocks count: %d", FNAME, len(blocks))
-		for i = 0; i < len(blocks); i += 1 {
-			t.Logf("%s: block[%d]: %02X", FNAME, i, blocks[i]) //@@@@@@@@@@@@@@@@
-		}
+		/*
+			for i = 0; i < len(blocks); i += 1 {
+				t.Logf("%s: block[%d]: %02X", FNAME, i, blocks[i])
+			}
+		*/
 
+		buf.Write([]byte{0xC4, 0x02, byte(invokeIdAndPriority)})
 		err := encode_GetResponsewithDataBlock(&buf, false, 1, 0, blocks[0])
 		if nil != err {
 			errorLog.Printf("%s: %v\n", FNAME, err)
@@ -80,6 +83,7 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 	} else {
 		t.Logf("%s: using normal transfer", FNAME)
 		ch := make(DlmsChannel)
+		buf.Write([]byte{b0, b1, byte(invokeIdAndPriority)})
 		buf.Write(reply)
 		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, buf.Bytes())
 		msg := <-ch
@@ -95,13 +99,13 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 	var FNAME string = "tMockCosemServerConnection.replyToRequest()"
 
 	p := make([]byte, 3)
-	err := r.Read(p)
+	err = binary.Read(r, binary.BigEndian, p)
 	if nil != err {
 		errorLog.Printf("%s: %v\n", FNAME, err)
 		return err
 	}
 
-	invokeIdAndPriority := p[2]
+	invokeIdAndPriority := tDlmsInvokeIdAndPriority(p[2])
 
 	if bytes.Equal(p[0:2], []byte{0xC0, 0x01}) {
 		t.Logf("%s: GetRequestNormal", FNAME)
@@ -113,10 +117,10 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 		}
 
 		dataAccessResult, data := conn.srv.getData(t, classId, instanceId, attributeId, accessSelector, accessParameters)
-		t.Logf("%s: dataAccessResult: %d %d", FNAME, dataAccessResult)
+		t.Logf("%s: dataAccessResult: %d", FNAME, dataAccessResult)
 
 		var buf bytes.Buffer
-		err := encode_GetResponseNormal(&buf, dataAccessResult, data)
+		err = encode_GetResponseNormal(&buf, dataAccessResult, data)
 		if nil != err {
 			errorLog.Printf("%s: %v\n", FNAME, err)
 			return err
@@ -126,7 +130,7 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 			return err
 		}
 
-	} else if bytes.Equal(pdu[0:2], []byte{0xC0, 0x03}) {
+	} else if bytes.Equal(p[0:2], []byte{0xC0, 0x03}) {
 		t.Logf("%s: GetRequestWithList", FNAME)
 
 		err, classIds, instanceIds, attributeIds, accessSelectors, accessParameters := decode_GetRequestWithList(r)
@@ -136,7 +140,6 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 		}
 
 		count := len(classIds)
-		var rawData []byte
 		datas := make([]*DlmsData, count)
 		dataAccessResults := make([]DlmsDataAccessResult, count)
 
@@ -148,14 +151,14 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 		}
 
 		var buf bytes.Buffer
-		err, rawData = encode_GetResponseWithList(&buf, dataAccessResults, datas)
+		err = encode_GetResponseWithList(&buf, dataAccessResults, datas)
 		if nil != err {
 			errorLog.Printf("%s: %v\n", FNAME, err)
 			return err
 		}
 		conn.sendEncodedReply(t, 0xC4, 0x03, invokeIdAndPriority, buf.Bytes())
 
-	} else if bytes.Equal(pdu[0:2], []byte{0xC0, 0x02}) {
+	} else if bytes.Equal(p[0:2], []byte{0xC0, 0x02}) {
 		t.Logf("%s: GetRequestForNextDataBlock", FNAME)
 
 		err, blockNumber := decode_GetRequestForNextDataBlock(r)
@@ -199,7 +202,7 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 		if !lastBlock {
 			blockNumber += 1
 		}
-		err := encode_GetResponsewithDataBlock(&buf, lastBlock, blockNumber, dataAccessResult, rawData)
+		err = encode_GetResponsewithDataBlock(&buf, lastBlock, blockNumber, dataAccessResult, rawData)
 		if nil != err {
 			errorLog.Printf("%s: %v\n", FNAME, err)
 			return err
@@ -245,14 +248,14 @@ func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) (err error
 
 		go func() {
 			if conn.srv.replyDelayMsec <= 0 {
-				err := conn.replyToRequest(t, m["pdu"].([]byte))
+				err := conn.replyToRequest(t, bytes.NewBuffer(m["pdu"].([]byte)))
 				if nil != err {
 					errorLog.Printf("%s: %v\n", FNAME, err)
 					conn.rwc.Close()
 				}
 			} else {
 				<-time.After(time.Millisecond * time.Duration(conn.srv.replyDelayMsec))
-				err := conn.replyToRequest(t, m["pdu"].([]byte))
+				err := conn.replyToRequest(t, bytes.NewBuffer(m["pdu"].([]byte)))
 				if nil != err {
 					errorLog.Printf("%s: %v\n", FNAME, err)
 					conn.rwc.Close()
@@ -528,7 +531,7 @@ func TestX_GetRequestNormal(t *testing.T) {
 func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
-	mockCosemServer.blockLength = 10
+	mockCosemServer.blockLength = 3
 
 	data := (new(DlmsData))
 	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})

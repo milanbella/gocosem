@@ -329,7 +329,7 @@ func TestX_encode_GetRequestNormal(t *testing.T) {
 func TestX_decode_GetRequestNormal(t *testing.T) {
 	pdu := []byte{
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00}
-	buf = bytes.NewBuffer(pdu)
+	buf := bytes.NewBuffer(pdu)
 
 	err, classId, instanceId, attributeId, accessSelector, accessParameters := decode_GetRequestNormal(buf)
 	if nil != err {
@@ -339,14 +339,14 @@ func TestX_decode_GetRequestNormal(t *testing.T) {
 	if 1 != classId {
 		t.Fatalf("classId wrong:  %d", classId)
 	}
-	if !oidEqual(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
+	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
 		t.Fatalf("instanceId wrong:  %02X", *instanceId)
 	}
 	if 0x02 != attributeId {
 		t.Fatalf("attributeId wrong:  %d", attributeId)
 	}
 	if 0x00 != accessSelector {
-		t.Fatalf("accessSelector wrong:  %d", *accessSelector)
+		t.Fatalf("accessSelector wrong:  %d", accessSelector)
 	}
 	if nil != accessParameters {
 		t.Fatalf("accessParameters wrong:  %p", accessParameters)
@@ -364,7 +364,7 @@ func TestX_encode_GetResponseNormal(t *testing.T) {
 	data.SetOctetString([]byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66})
 
 	var buf bytes.Buffer
-	err, pdu := encode_GetResponseNormal(&buf, 0, data)
+	err := encode_GetResponseNormal(&buf, 0, data)
 	if nil != err {
 		t.Fatalf("encode_GetRequestNormal() failed, err: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestX_decode_GetResponseNormal(t *testing.T) {
 		0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
 	buf := bytes.NewBuffer(pdu)
 
-	err, dataAccessResult, data := decode_GetResponseNormal(&buf)
+	err, dataAccessResult, data := decode_GetResponseNormal(buf)
 	if nil != err {
 		t.Fatalf("decode_GetResponseNormal() failed, err %v", err)
 	}
@@ -409,7 +409,6 @@ func TestX_encode_GetRequestWithList(t *testing.T) {
 		0x02,
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x01, 0x00, 0xFF, 0x02, 0x00}
-	buf := bytes.NewBuffer()
 
 	var buf bytes.Buffer
 	err := encode_GetRequestWithList(&buf, []DlmsClassId{1, 1}, []*DlmsOid{&DlmsOid{0, 0, 128, 0, 0, 255}, &DlmsOid{0, 0, 128, 1, 0, 255}}, []DlmsAttributeId{2, 2}, []DlmsAccessSelector{0, 0}, []*DlmsData{nil, nil})
@@ -417,7 +416,9 @@ func TestX_encode_GetRequestWithList(t *testing.T) {
 		t.Fatalf("encode_GetRequestWithList() failed, err: %v", err)
 	}
 
-	if bytes.Equal(buf.Bytes(), b) {
+	bd := buf.Bytes()
+
+	if !bytes.Equal(bd, b) {
 		t.Fatalf("bytes don't match")
 	}
 }
@@ -429,7 +430,7 @@ func TestX_decode_GetRequestWithList(t *testing.T) {
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x01, 0x00, 0xFF, 0x02, 0x00}
 	buf := bytes.NewBuffer(b)
 
-	err, invokeIdAndPriority, classIds, instanceIds, attributeIds, accessSelectors, accessParameters := decode_GetRequestWithList(&buf)
+	err, classIds, instanceIds, attributeIds, accessSelectors, accessParameters := decode_GetRequestWithList(buf)
 	if nil != err {
 		t.Fatalf("decode_GetRequestWithList() failed, err: %v", err)
 	}
@@ -518,12 +519,10 @@ func TestX_decode_GetResponseWithList(t *testing.T) {
 		0x30, 0x30, 0x30}
 	buf := bytes.NewBuffer(b)
 
-	err, dataAccessResults, datas := decode_GetResponseWithList(&buf)
+	err, dataAccessResults, datas := decode_GetResponseWithList(buf)
 	if nil != err {
 		t.Fatalf("decode_GetResponseWithList() failed, err: %v", err)
 	}
-
-	count := len(dataAccessResults)
 
 	if 0 != dataAccessResults[0] {
 		t.Fatalf("wrong dataAccessResults[0]: ", dataAccessResults[0])
@@ -543,7 +542,7 @@ func TestX_decode_GetResponseWithList(t *testing.T) {
 	if DATA_TYPE_VISIBLE_STRING != data.GetType() {
 		t.Fatalf("wrong tag[1]: ", data.GetType())
 	}
-	if !byteEquals(data.GetVisibleString(), []byte{0x30, 0x30, 0x30}) {
+	if !bytes.Equal(data.GetVisibleString(), []byte{0x30, 0x30, 0x30}) {
 		t.Fatalf("wrong data[1]")
 	}
 }
@@ -576,9 +575,9 @@ func TestX_decode_GetResponsewithDataBlock(t *testing.T) {
 		0x1E,
 		0x09, 0x32, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13,
 		0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28}
-	buf := bytes.Buffer(b)
 
-	err, lastBlock, blockNumber, dataAccessResult, rawData := decode_GetResponsewithDataBlock(&buf)
+	buf := bytes.NewBuffer(b)
+	err, lastBlock, blockNumber, dataAccessResult, rawData := decode_GetResponsewithDataBlock(buf)
 	if nil != err {
 		t.Fatalf("decode_GetResponsewithDataBlock() failed, err %v", err)
 	}
@@ -615,18 +614,14 @@ func TestX_encode_GetRequestForNextDataBlock(t *testing.T) {
 
 func TestX_decode_GetRequestForNextDataBlock(t *testing.T) {
 	b := []byte{
-		0xC0, 0x02, 0x81,
 		0x00, 0x00, 0x00, 0x01}
 	buf := bytes.NewBuffer(b)
 
-	err, invokeIdAndPriority, blockNumber := decode_GetRequestForNextDataBlock(buf)
+	err, blockNumber := decode_GetRequestForNextDataBlock(buf)
 	if nil != err {
 		t.Fatalf("decode_GetRequestForNextDataBlock() failed, err: %v", err)
 	}
 
-	if 0x81 != invokeIdAndPriority {
-		t.Fatalf("wrong invokeIdAndPriority")
-	}
 	if 1 != blockNumber {
 		t.Fatalf("wrong blockNumber")
 	}

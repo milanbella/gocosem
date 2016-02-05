@@ -220,8 +220,18 @@ func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse,
 }
 
 func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestResponse, r io.Reader, errr error) {
+	var (
+		FNAME string = "AppConn.processGetResponseWithList()"
+		serr  string
+	)
 
 	err, dataAccessResults, datas := decode_GetResponseWithList(r)
+
+	if len(dataAccessResults) != len(rips) {
+		serr = fmt.Sprintf("%s: unexpected count of received list entries", FNAME)
+		errorLog.Print(serr)
+		err = errors.New(serr)
+	}
 
 	for i := 0; i < len(dataAccessResults); i += 1 {
 		rip := rips[i]
@@ -330,7 +340,7 @@ func (aconn *AppConn) processReply(r io.Reader) {
 
 			var buf bytes.Buffer
 			invokeIdAndPriority := p[2]
-			_, err := buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
+			_, err := buf.Write([]byte{0xC0, 0x02, byte(invokeIdAndPriority)})
 			if nil != err {
 				aconn.killRequest(rips[0].invokeId, err)
 				return
