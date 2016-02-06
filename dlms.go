@@ -1452,6 +1452,18 @@ func encode_getResponse(w io.Writer, dataAccessResult DlmsDataAccessResult, data
 	return nil
 }
 
+func encode_getResponseBlock(w io.Writer, data *DlmsData) (err error) {
+
+	if nil != data {
+		err = data.Encode(w)
+		if nil != err {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func decode_getResponse(r io.Reader) (err error, dataAccessResult DlmsDataAccessResult, data *DlmsData) {
 
 	err = binary.Read(r, binary.BigEndian, &dataAccessResult)
@@ -1470,6 +1482,17 @@ func decode_getResponse(r io.Reader) (err error, dataAccessResult DlmsDataAccess
 	}
 
 	return nil, dataAccessResult, data
+}
+
+func decode_getResponseBlock(r io.Reader) (err error, data *DlmsData) {
+
+	data = new(DlmsData)
+	err = data.Decode(r)
+	if nil != err {
+		return err, data
+	}
+
+	return nil, data
 }
 
 func encode_GetRequestNormal(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData) (err error) {
@@ -1503,6 +1526,16 @@ func encode_GetResponseNormal(w io.Writer, dataAccessResult DlmsDataAccessResult
 	return nil
 }
 
+func encode_GetResponseNormalBlock(w io.Writer, data *DlmsData) (err error) {
+
+	err = encode_getResponseBlock(w, data)
+	if nil != err {
+		return err
+	}
+
+	return nil
+}
+
 func decode_GetResponseNormal(r io.Reader) (err error, dataAccessResult DlmsDataAccessResult, data *DlmsData) {
 
 	err, dataAccessResult, data = decode_getResponse(r)
@@ -1511,6 +1544,16 @@ func decode_GetResponseNormal(r io.Reader) (err error, dataAccessResult DlmsData
 	}
 
 	return nil, dataAccessResult, data
+}
+
+func decode_GetResponseNormalBlock(r io.Reader) (err error, data *DlmsData) {
+
+	err, data = decode_getResponseBlock(r)
+	if nil != err {
+		return err, data
+	}
+
+	return nil, data
 }
 
 func encode_GetRequestWithList(w io.Writer, classIds []DlmsClassId, instanceIds []*DlmsOid, attributeIds []DlmsAttributeId, accessSelectors []DlmsAccessSelector, accessParameters []*DlmsData) (err error) {
@@ -1698,7 +1741,7 @@ func decode_GetResponsewithDataBlock(r io.Reader) (err error, lastBlock bool, bl
 	err = binary.Read(r, binary.BigEndian, rawData)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", err)
-		return err, lastBlock, blockNumber, dataAccessResult, nil
+		return err, _lastBlock, _blockNumber, _dataAccessResult, nil
 	}
 
 	return nil, _lastBlock, _blockNumber, _dataAccessResult, rawData

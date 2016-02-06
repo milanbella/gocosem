@@ -219,6 +219,25 @@ func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse,
 	}
 }
 
+func (aconn *AppConn) processGetResponseNormalBlock(rips []*DlmsValueRequestResponse, r io.Reader, errr error) {
+
+	err, data := decode_GetResponseNormalBlock(r)
+
+	rips[0].Rep = new(DlmsValueResponse)
+	rips[0].Rep.DataAccessResult = dataAccessResult_success
+	rips[0].Rep.Data = data
+
+	if nil == err {
+		aconn.killRequest(rips[0].invokeId, nil)
+	} else {
+		if nil != errr {
+			aconn.killRequest(rips[0].invokeId, errr)
+		} else {
+			aconn.killRequest(rips[0].invokeId, err)
+		}
+	}
+}
+
 func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestResponse, r io.Reader, errr error) {
 	var (
 		FNAME string = "AppConn.processGetResponseWithList()"
@@ -259,7 +278,7 @@ func (aconn *AppConn) processBlockResponse(rips []*DlmsValueRequestResponse, r i
 
 	if 1 == len(rips) {
 		debugLog.Printf("%s: blocks received, processing ResponseNormal", FNAME)
-		aconn.processGetResponseNormal(rips, r, err)
+		aconn.processGetResponseNormalBlock(rips, r, err)
 	} else {
 		debugLog.Printf("%s: blocks received, processing ResponseWithList", FNAME)
 		aconn.processGetResponseWithList(rips, r, err)
@@ -336,7 +355,7 @@ func (aconn *AppConn) processReply(r io.Reader) {
 				rips[0].blockTimeoutAt = &blockTimeoutAt
 			}
 
-			debugLog.Printf("%s: requesting data block: %d", FNAME, blockNumber)
+			debugLog.Printf("%s: requesting next data block after block %d", FNAME, blockNumber)
 
 			var buf bytes.Buffer
 			invokeIdAndPriority := p[2]

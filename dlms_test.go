@@ -374,6 +374,25 @@ func TestX_encode_GetResponseNormal(t *testing.T) {
 	}
 }
 
+func TestX_encode_GetResponseNormalBlock(t *testing.T) {
+	b := []byte{
+		0x09, 0x06,
+		0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
+
+	data := new(DlmsData)
+	data.SetOctetString([]byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66})
+
+	var buf bytes.Buffer
+	err := encode_GetResponseNormalBlock(&buf, data)
+	if nil != err {
+		t.Fatalf("encode_GetRequestNormalBlock() failed, err: %v", err)
+	}
+
+	if !bytes.Equal(buf.Bytes(), b) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
 func TestX_decode_GetResponseNormal(t *testing.T) {
 	pdu := []byte{
 		0x00,
@@ -392,6 +411,31 @@ func TestX_decode_GetResponseNormal(t *testing.T) {
 	if 0 != dataAccessResult {
 		t.Fatalf("dataAccessResult wrong: %d", dataAccessResult)
 	}
+	if nil == data {
+		t.Fatalf("data is nil")
+	}
+	if 9 != tag {
+		t.Fatalf("data.tag wrong: %d", tag)
+	}
+	if !bytes.Equal(val, []byte{0x11, 0x22, 0x33, 0x44, 0x55, 0x66}) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestX_decode_GetResponseNormalBlock(t *testing.T) {
+	pdu := []byte{
+		0x09, 0x06,
+		0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
+	buf := bytes.NewBuffer(pdu)
+
+	err, data := decode_GetResponseNormalBlock(buf)
+	if nil != err {
+		t.Fatalf("decode_GetResponseNormalBlock() failed, err %v", err)
+	}
+
+	tag := data.GetType()
+	val := data.GetOctetString()
+
 	if nil == data {
 		t.Fatalf("data is nil")
 	}

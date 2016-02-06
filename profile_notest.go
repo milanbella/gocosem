@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-func noTestX__profileRead(t *testing.T) {
+func TestX__profileRead_captureObjects(t *testing.T) {
 
 	ch := make(DlmsChannel)
 	TcpConnect(ch, 10000, "172.16.123.182", 4059)
@@ -63,11 +63,36 @@ func noTestX__profileRead(t *testing.T) {
 		t.Logf("\tdata index: %02X", st.Arr[3].GetLongUnsigned())
 	}
 
+	aconn.Close()
+}
+
+func TestX__profileRead_profileEntriesInUse(t *testing.T) {
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "172.16.123.182", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("cannot connect tcp: %s", msg.Err)
+		return
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("cannot connect app: %s", msg.Err)
+		return
+	}
+	t.Logf("application connected")
+	defer dconn.Close()
+	aconn := msg.Data.(*AppConn)
+
 	// profile entries in use
 
 	t.Logf("read profile entries in use...")
-	vals = make([]*DlmsValueRequest, 1)
-	val = new(DlmsValueRequest)
+	vals := make([]*DlmsValueRequest, 1)
+	val := new(DlmsValueRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 7
@@ -79,12 +104,12 @@ func noTestX__profileRead(t *testing.T) {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep = msg.Data.(DlmsResponse)
-	dataAccessResult = rep.DataAccessResultAt(0)
+	rep := msg.Data.(DlmsResponse)
+	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
 	}
-	data = rep.DataAt(0)
+	data := rep.DataAt(0)
 	t.Logf("profile entries in use: %d", data.GetDoubleLongUnsigned())
 
 	aconn.Close()
