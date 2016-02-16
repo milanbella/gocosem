@@ -65,7 +65,7 @@ func TestX_meter182_get_time(t *testing.T) {
 	val.AttributeId = 0x02
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val
-	aconn.getRquest(ch, 10000, 0, true, vals)
+	aconn.GetRquest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))

@@ -36,7 +36,7 @@ func TestX__profileRead_captureObjects(t *testing.T) {
 	val.AttributeId = 3
 	vals[0] = val
 
-	aconn.getRquest(ch, 10000, 0, true, vals)
+	aconn.GetRquest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -98,7 +98,7 @@ func TestX__profileRead_profileEntriesInUse(t *testing.T) {
 	val.AttributeId = 7
 	vals[0] = val
 
-	aconn.getRquest(ch, 10000, 0, true, vals)
+	aconn.GetRquest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
