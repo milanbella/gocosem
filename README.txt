@@ -1,3 +1,9 @@
+Install:
+========
+
+https://github.com/vlm/asn1c
+
+
 To test run following commands in folder containing this file:
 ================================================================
 
