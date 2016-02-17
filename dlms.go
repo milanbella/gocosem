@@ -362,7 +362,7 @@ func (data *DlmsData) Encode(w io.Writer) (err error) {
 	case DATA_TYPE_NULL:
 		return data.encodeNULL(w)
 	case DATA_TYPE_ARRAY, DATA_TYPE_STRUCTURE:
-		err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_ARRAY})
+		err = binary.Write(w, binary.BigEndian, []byte{data.Typ})
 		if nil != err {
 			data.Err = err
 			errorLog.Printf("%s: binary.Write() failed: %v\n", FNAME, err)
@@ -512,6 +512,22 @@ func (data *DlmsData) Decode(r io.Reader) (err error) {
 
 func (data *DlmsData) GetType() uint8 {
 	return data.Typ
+}
+
+func (data *DlmsData) SetArray(length int) {
+	data.Typ = DATA_TYPE_ARRAY
+	data.Arr = make([]*DlmsData, length)
+	for i := 0; i < length; i++ {
+		data.Arr[i] = new(DlmsData)
+	}
+}
+
+func (data *DlmsData) SetStructure(length int) {
+	data.Typ = DATA_TYPE_STRUCTURE
+	data.Arr = make([]*DlmsData, length)
+	for i := 0; i < length; i++ {
+		data.Arr[i] = new(DlmsData)
+	}
 }
 
 func (data *DlmsData) SetNULL() {
