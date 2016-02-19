@@ -109,7 +109,7 @@ func DlmsDateFromBytes(b []byte) (date *DlmsDate) {
 	return date
 }
 
-func (date *DlmsDate) toBytes() []byte {
+func (date *DlmsDate) ToBytes() []byte {
 	b := make([]byte, 5)
 	b[0] = byte((date.Year & 0xFF00) >> 8)
 	b[1] = byte(date.Year & 0x00FF)
@@ -119,43 +119,78 @@ func (date *DlmsDate) toBytes() []byte {
 	return b
 }
 
-func (date *DlmsDate) setYearWildcard() {
+func (date *DlmsDate) PrintDate() string {
+	var (
+		year       string
+		month      string
+		dayOfMonth string
+		dayOfWeek  string
+	)
+
+	if date.IsYearWildcard() {
+		year = "   *"
+	} else {
+		year = fmt.Sprintf("%04d", date.Year)
+	}
+
+	if date.IsMonthWildcard() {
+		month = " *"
+	} else if date.IsDaylightSavingsBegin() {
+		month = "DB"
+	} else if date.IsDaylightSavingsEnd() {
+		month = "DE"
+	} else {
+		month = fmt.Sprintf("%02d", date.Month)
+	}
+
+	dayOfMonth = fmt.Sprintf("%02d", date.DayOfMonth)
+
+	if date.IsDayOfWeekWildcard() {
+		dayOfWeek = fmt.Sprintf(" * WD", date.DayOfWeek)
+	} else {
+		dayOfWeek = fmt.Sprintf("%02d WD", date.DayOfWeek)
+	}
+
+	return fmt.Sprintf("%s-%s-%s-%s", year, month, dayOfMonth, dayOfWeek)
+}
+
+func (date *DlmsDate) SetYearWildcard() {
 	date.Year = 0xFFFF
 }
 
-func (date *DlmsDate) isYearWildcard() bool {
+func (date *DlmsDate) IsYearWildcard() bool {
 	return date.Year == 0xFFFF
 }
 
-func (date *DlmsDate) setMonthWildcard() {
+func (date *DlmsDate) SetMonthWildcard() {
 	date.Month = 0xFF
 }
 
-func (date *DlmsDate) isMonthWildcard() bool {
+func (date *DlmsDate) IsMonthWildcard() bool {
 	return date.Month == 0xFF
 }
 
-func (date *DlmsDate) setDaylightSavingsEnd() {
+func (date *DlmsDate) SetDaylightSavingsEnd() {
 	date.Month = 0xFD
 }
 
-func (date *DlmsDate) isDaylightSavingsEnd() bool {
+func (date *DlmsDate) IsDaylightSavingsEnd() bool {
 	return date.Month == 0xFD
 }
 
-func (date *DlmsDate) setDaylightSavingsBegin() {
+func (date *DlmsDate) SetDaylightSavingsBegin() {
 	date.Month = 0xFE
 }
 
-func (date *DlmsDate) isDaylightSavingsBegin() bool {
+func (date *DlmsDate) IsDaylightSavingsBegin() bool {
 	return date.Month == 0xFE
 }
 
-func (date *DlmsDate) setDayOfWeekWildcard() {
+func (date *DlmsDate) SetDayOfWeekWildcard() {
 	date.DayOfWeek = 0xFF
 }
 
-func (date *DlmsDate) isDayOfWeekWildcard() bool {
+func (date *DlmsDate) IsDayOfWeekWildcard() bool {
 	return date.DayOfWeek == 0xFF
 }
 
@@ -168,7 +203,7 @@ func DlmsTimeFromBytes(b []byte) (tim *DlmsTime) {
 	return tim
 }
 
-func (tim *DlmsTime) toBytes() []byte {
+func (tim *DlmsTime) ToBytes() []byte {
 	b := make([]byte, 4)
 	b[0] = tim.Hour
 	b[1] = tim.Minute
@@ -177,35 +212,70 @@ func (tim *DlmsTime) toBytes() []byte {
 	return b
 }
 
-func (tim *DlmsTime) setHourWildcard() {
+func (tim *DlmsTime) PrintTime() string {
+	var (
+		hour       string
+		minute     string
+		second     string
+		hundredths string
+	)
+
+	if tim.IsHourWildcard() {
+		hour = fmt.Sprintf(" *")
+	} else {
+		hour = fmt.Sprintf("%02d", tim.Hour)
+	}
+
+	if tim.IsMinuteWildcard() {
+		minute = fmt.Sprintf(" *")
+	} else {
+		minute = fmt.Sprintf("%02d", tim.Minute)
+	}
+
+	if tim.IsSecondWildcard() {
+		second = fmt.Sprintf(" *")
+	} else {
+		second = fmt.Sprintf("%02d", tim.Second)
+	}
+
+	if tim.IsHundredthsWildcard() {
+		hundredths = fmt.Sprintf(" *")
+	} else {
+		hundredths = fmt.Sprintf("%02d", tim.Hundredths)
+	}
+
+	return fmt.Sprintf("%s-%s-%s-%s", hour, minute, second, hundredths)
+}
+
+func (tim *DlmsTime) SetHourWildcard() {
 	tim.Hour = 0xFF
 }
 
-func (tim *DlmsTime) isHourWildcard() bool {
+func (tim *DlmsTime) IsHourWildcard() bool {
 	return tim.Hour == 0xFF
 }
 
-func (tim *DlmsTime) setMinuteWildcard() {
+func (tim *DlmsTime) SetMinuteWildcard() {
 	tim.Minute = 0xFF
 }
 
-func (tim *DlmsTime) isMinuteWildcard() bool {
+func (tim *DlmsTime) IsMinuteWildcard() bool {
 	return tim.Minute == 0xFF
 }
 
-func (tim *DlmsTime) setSecondWildcard() {
+func (tim *DlmsTime) SetSecondWildcard() {
 	tim.Second = 0xFF
 }
 
-func (tim *DlmsTime) isSecondWildcard() bool {
+func (tim *DlmsTime) IsSecondWildcard() bool {
 	return tim.Second == 0xFF
 }
 
-func (tim *DlmsTime) setHundredthsWildcard() {
+func (tim *DlmsTime) SetHundredthsWildcard() {
 	tim.Hundredths = 0xFF
 }
 
-func (tim *DlmsTime) isHundredthsWildcard() bool {
+func (tim *DlmsTime) IsHundredthsWildcard() bool {
 	return tim.Hundredths == 0xFF
 }
 
@@ -230,7 +300,7 @@ func DlmsDateTimeFromBytes(b []byte) (dateTime *DlmsDateTime) {
 	return dateTime
 }
 
-func (dateTime *DlmsDateTime) toBytes() []byte {
+func (dateTime *DlmsDateTime) ToBytes() []byte {
 	b := make([]byte, 12)
 	b2 := (*[2]byte)(unsafe.Pointer(&dateTime.Year))
 	b[0] = b2[0]
@@ -249,22 +319,36 @@ func (dateTime *DlmsDateTime) toBytes() []byte {
 	return b
 }
 
-func (dateTime *DlmsDateTime) setDeviationWildcard() {
+func (dateTime *DlmsDateTime) Print() string {
+	/*
+		var (
+			date        string
+			time        string
+			deviation   string
+			clockStatus string
+		)
+	*/
+
+	//TODO:
+	return ""
+}
+
+func (dateTime *DlmsDateTime) SetDeviationWildcard() {
 	b := (*[2]byte)(unsafe.Pointer(&dateTime.Deviation))
 	b[0] = 0x80
 	b[1] = 0x00
 }
 
-func (dateTime *DlmsDateTime) isDeviationWildcard() bool {
+func (dateTime *DlmsDateTime) IsDeviationWildcard() bool {
 	b := (*[2]byte)(unsafe.Pointer(&dateTime.Deviation))
 	return (b[0] == 0x80) && (b[1] == 0x00)
 }
 
-func (dateTime *DlmsDateTime) setClockStatusInvalid() {
+func (dateTime *DlmsDateTime) SetClockStatusInvalid() {
 	dateTime.ClockStatus |= 0x01
 }
 
-func (dateTime *DlmsDateTime) isClockStatusInvalid() bool {
+func (dateTime *DlmsDateTime) IsClockStatusInvalid() bool {
 	return dateTime.ClockStatus&0x01 > 0
 }
 
@@ -1394,15 +1478,31 @@ func encode_getRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, at
 	}
 
 	if 0 != attributeId {
-		err = binary.Write(w, binary.BigEndian, accessSelector)
-		if nil != err {
-			errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
-			return err
-		}
-		if nil != accessParameters {
-			err = accessParameters.Encode(w)
+		if (0 == accessSelector) || (nil == accessParameters) {
+			// access selection is false
+			err = binary.Write(w, binary.BigEndian, uint8(0))
 			if nil != err {
+				errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
 				return err
+			}
+		} else {
+			// access selection is true
+			err = binary.Write(w, binary.BigEndian, uint8(1))
+			if nil != err {
+				errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+				return err
+			}
+
+			err = binary.Write(w, binary.BigEndian, accessSelector)
+			if nil != err {
+				errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+				return err
+			}
+			if nil != accessParameters {
+				err = accessParameters.Encode(w)
+				if nil != err {
+					return err
+				}
 			}
 		}
 	}
@@ -1432,21 +1532,35 @@ func decode_getRequest(r io.Reader) (err error, classId DlmsClassId, instanceId 
 		return err, _classId, _instanceId, 0, 0, nil
 	}
 
-	var _accessSelector DlmsAccessSelector
-	err = binary.Read(r, binary.BigEndian, &_accessSelector)
+	var accessSelection uint8
+	err = binary.Read(r, binary.BigEndian, &accessSelection)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, _classId, _instanceId, _attributeId, 0, nil
 	}
 
-	if accessSelector > 0 {
-		data := new(DlmsData)
-		err = data.Decode(r)
+	var _accessSelector DlmsAccessSelector = 0
+	var _accessParameters *DlmsData = nil
+
+	if 0 > accessSelection {
+		// access selection is true
+
+		err = binary.Read(r, binary.BigEndian, &_accessSelector)
 		if nil != err {
-			return err, _classId, _instanceId, _attributeId, _accessSelector, nil
+			errorLog.Println("%s: binary.Read() failed, err: %v", err)
+			return err, _classId, _instanceId, _attributeId, 0, nil
 		}
-		accessParameters = data
+
+		if _accessSelector > 0 {
+			data := new(DlmsData)
+			err = data.Decode(r)
+			if nil != err {
+				return err, _classId, _instanceId, _attributeId, _accessSelector, nil
+			}
+			_accessParameters = data
+		}
 	}
-	return nil, _classId, _instanceId, _attributeId, _accessSelector, accessParameters
+	return nil, _classId, _instanceId, _attributeId, _accessSelector, _accessParameters
 }
 
 func encode_getResponse(w io.Writer, dataAccessResult DlmsDataAccessResult, data *DlmsData) (err error) {

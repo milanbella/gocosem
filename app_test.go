@@ -552,7 +552,7 @@ func TestX_GetRequestNormal(t *testing.T) {
 	val.AttributeId = 0x02
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val
-	aconn.GetRquest(ch, 10000, 1000, true, vals)
+	aconn.GetRequest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -603,7 +603,7 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	val.AttributeId = 0x02
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val
-	aconn.GetRquest(ch, 10000, 1000, true, vals)
+	aconn.GetRequest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -679,7 +679,7 @@ func TestX_GetRequestNormal_blockTransfer_timeout(t *testing.T) {
 	vals := make([]*DlmsValueRequest, 1)
 	vals[0] = val
 
-	aconn.GetRquest(ch, 100000, 100, true, vals)
+	aconn.GetRequest(ch, 100000, 100, true, vals)
 	msg = <-ch
 	if ErrorBlockTimeout != msg.Err {
 		t.Fatalf("%v\n", msg.Err)
@@ -764,7 +764,7 @@ func TestX_GetRequestWithList(t *testing.T) {
 	val.AttributeId = 0x02
 	vals[1] = val
 
-	aconn.GetRquest(ch, 10000, 1000, true, vals)
+	aconn.GetRequest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -833,7 +833,7 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	val.AttributeId = 0x02
 	vals[1] = val
 
-	aconn.GetRquest(ch, 10000, 1000, true, vals)
+	aconn.GetRequest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -905,7 +905,7 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 
 	// expect request timeout
 
-	aconn.GetRquest(ch, 500, 10000, true, vals)
+	aconn.GetRequest(ch, 500, 10000, true, vals)
 	msg = <-ch
 	if ErrorRequestTimeout != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -914,7 +914,7 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	// timeouted request must not disable following requests
 
 	mockCosemServer.replyDelayMsec = 0
-	aconn.GetRquest(ch, 500, 100, true, vals)
+	aconn.GetRequest(ch, 500, 100, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -986,7 +986,7 @@ func TestX_GetRequestWithList_blockTransfer_blockTimeout(t *testing.T) {
 
 	// expect block request timeout
 
-	aconn.GetRquest(ch, 10000, 900, true, vals)
+	aconn.GetRequest(ch, 10000, 900, true, vals)
 	msg = <-ch
 	if ErrorBlockTimeout != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -994,7 +994,7 @@ func TestX_GetRequestWithList_blockTransfer_blockTimeout(t *testing.T) {
 
 	// timeouted request must not disable following requests
 
-	aconn.GetRquest(ch, 10000, 2000, true, vals)
+	aconn.GetRequest(ch, 10000, 2000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -1056,7 +1056,7 @@ func TestX_1000parallelRequests(t *testing.T) {
 
 	for i := 0; i < count; i += 1 {
 		go func() {
-			aconn.GetRquest(ch, 10000, 1000, true, vals)
+			aconn.GetRequest(ch, 10000, 1000, true, vals)
 			msg = <-ch
 			sink <- msg
 		}()

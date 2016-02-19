@@ -443,7 +443,7 @@ func (aconn *AppConn) getInvokeId(ch DlmsChannel, msecTimeout int64) {
 	}()
 }
 
-func (aconn *AppConn) GetRquest(ch DlmsChannel, msecTimeout int64, msecBlockTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
+func (aconn *AppConn) GetRequest(ch DlmsChannel, msecTimeout int64, msecBlockTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
 	go func() {
 		var (
 			FNAME string = "AppConn.getRquest()"

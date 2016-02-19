@@ -36,7 +36,7 @@ func TestX__profileRead_captureObjects(t *testing.T) {
 	val.AttributeId = 3
 	vals[0] = val
 
-	aconn.GetRquest(ch, 10000, 0, true, vals)
+	aconn.GetRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -98,7 +98,7 @@ func TestX__profileRead_profileEntriesInUse(t *testing.T) {
 	val.AttributeId = 7
 	vals[0] = val
 
-	aconn.GetRquest(ch, 10000, 0, true, vals)
+	aconn.GetRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -147,7 +147,7 @@ func TestX__profileRead_sortMethod(t *testing.T) {
 	val.AttributeId = 5
 	vals[0] = val
 
-	aconn.GetRquest(ch, 10000, 0, true, vals)
+	aconn.GetRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -196,7 +196,7 @@ func TestX__profileRead_sortObject(t *testing.T) {
 	val.AttributeId = 6
 	vals[0] = val
 
-	aconn.GetRquest(ch, 10000, 0, true, vals)
+	aconn.GetRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -253,7 +253,7 @@ func TestX__profileRead_capturePeriod(t *testing.T) {
 	val.AttributeId = 4
 	vals[0] = val
 
-	aconn.GetRquest(ch, 10000, 0, true, vals)
+	aconn.GetRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -268,6 +268,14 @@ func TestX__profileRead_capturePeriod(t *testing.T) {
 	t.Logf("capture period: %d seconds", data.GetDoubleLongUnsigned())
 
 	aconn.Close()
+}
+
+func printProfileLine(t *testing.T, data *DlmsData) {
+
+	if DATA_TYPE_ARRAY != data.GetType() {
+		t.Fatalf("wrong data type")
+	}
+	//TODO:
 }
 
 func TestX__profileRead_first_and_last_entries(t *testing.T) {
@@ -302,7 +310,7 @@ func TestX__profileRead_first_and_last_entries(t *testing.T) {
 	val.AttributeId = 4
 	vals[0] = val
 
-	aconn.GetRquest(ch, 10000, 0, true, vals)
+	aconn.GetRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -328,14 +336,14 @@ func TestX__profileRead_first_and_last_entries(t *testing.T) {
 	val.AccessSelector = 2
 	val.AccessParameter = new(DlmsData)
 	val.AccessParameter.SetStructure(4)
-	val.AccessParameter.Arr[0].SetDoubleLongUnsigned(0)  // from_entry
+	val.AccessParameter.Arr[0].SetDoubleLongUnsigned(1)  // from_entry
 	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(10) // to_entry
-	val.AccessParameter.Arr[2].SetLongUnsigned(0)        // from_selected_value
+	val.AccessParameter.Arr[2].SetLongUnsigned(1)        // from_selected_value
 	val.AccessParameter.Arr[3].SetLongUnsigned(0)        // to_selected_value
 
 	vals[0] = val
 
-	aconn.GetRquest(ch, 10000, 0, true, vals)
+	aconn.GetRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
