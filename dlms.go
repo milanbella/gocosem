@@ -99,10 +99,14 @@ var errorLog *log.Logger = getErrorLogger()
 var debugLog *log.Logger = getDebugLogger()
 
 func DlmsDateFromBytes(b []byte) (date *DlmsDate) {
+	FNAME := "DlmsDateFromBytes()"
 	date = new(DlmsDate)
-	by := (*[2]byte)(unsafe.Pointer(&date.Year))
-	by[0] = b[0]
-	by[1] = b[1]
+	err := binary.Read(bytes.NewBuffer(b[0:2]), binary.BigEndian, &date.Year)
+	if nil != err {
+		serr := fmt.Sprintf("%s: binary.Read() failed: %v", FNAME, err)
+		errorLog.Printf("%s", serr)
+		panic(serr)
+	}
 	date.Month = b[2]
 	date.DayOfMonth = b[3]
 	date.DayOfWeek = b[4]
@@ -128,17 +132,17 @@ func (date *DlmsDate) PrintDate() string {
 	)
 
 	if date.IsYearWildcard() {
-		year = "   *"
+		year = "*"
 	} else {
 		year = fmt.Sprintf("%04d", date.Year)
 	}
 
 	if date.IsMonthWildcard() {
-		month = " *"
+		month = "*"
 	} else if date.IsDaylightSavingsBegin() {
-		month = "DB"
+		month = "db"
 	} else if date.IsDaylightSavingsEnd() {
-		month = "DE"
+		month = "de"
 	} else {
 		month = fmt.Sprintf("%02d", date.Month)
 	}
@@ -146,9 +150,9 @@ func (date *DlmsDate) PrintDate() string {
 	dayOfMonth = fmt.Sprintf("%02d", date.DayOfMonth)
 
 	if date.IsDayOfWeekWildcard() {
-		dayOfWeek = fmt.Sprintf(" * WD", date.DayOfWeek)
+		dayOfWeek = fmt.Sprintf("*_wd", date.DayOfWeek)
 	} else {
-		dayOfWeek = fmt.Sprintf("%02d WD", date.DayOfWeek)
+		dayOfWeek = fmt.Sprintf("%02d_wd", date.DayOfWeek)
 	}
 
 	return fmt.Sprintf("%s-%s-%s-%s", year, month, dayOfMonth, dayOfWeek)
@@ -221,25 +225,25 @@ func (tim *DlmsTime) PrintTime() string {
 	)
 
 	if tim.IsHourWildcard() {
-		hour = fmt.Sprintf(" *")
+		hour = fmt.Sprintf("*")
 	} else {
 		hour = fmt.Sprintf("%02d", tim.Hour)
 	}
 
 	if tim.IsMinuteWildcard() {
-		minute = fmt.Sprintf(" *")
+		minute = fmt.Sprintf("*")
 	} else {
 		minute = fmt.Sprintf("%02d", tim.Minute)
 	}
 
 	if tim.IsSecondWildcard() {
-		second = fmt.Sprintf(" *")
+		second = fmt.Sprintf("*")
 	} else {
 		second = fmt.Sprintf("%02d", tim.Second)
 	}
 
 	if tim.IsHundredthsWildcard() {
-		hundredths = fmt.Sprintf(" *")
+		hundredths = fmt.Sprintf("*")
 	} else {
 		hundredths = fmt.Sprintf("%02d", tim.Hundredths)
 	}
@@ -280,11 +284,15 @@ func (tim *DlmsTime) IsHundredthsWildcard() bool {
 }
 
 func DlmsDateTimeFromBytes(b []byte) (dateTime *DlmsDateTime) {
+	FNAME := "DlmsDateTimeFromBytes():"
 
 	dateTime = new(DlmsDateTime)
-	b2 := (*[2]byte)(unsafe.Pointer(&dateTime.Year))
-	b2[0] = b[0]
-	b2[1] = b[1]
+	err := binary.Read(bytes.NewBuffer(b[0:2]), binary.BigEndian, &dateTime.Year)
+	if nil != err {
+		serr := fmt.Sprintf("%s: binary.Read() failed: %v", FNAME, err)
+		errorLog.Printf("%s", serr)
+		panic(serr)
+	}
 	dateTime.Month = b[2]
 	dateTime.DayOfMonth = b[3]
 	dateTime.DayOfWeek = b[4]
@@ -292,9 +300,12 @@ func DlmsDateTimeFromBytes(b []byte) (dateTime *DlmsDateTime) {
 	dateTime.Minute = b[6]
 	dateTime.Second = b[7]
 	dateTime.Hundredths = b[8]
-	b2 = (*[2]byte)(unsafe.Pointer(&dateTime.Deviation))
-	b2[0] = b[9]
-	b2[1] = b[10]
+	err = binary.Read(bytes.NewBuffer(b[9:11]), binary.BigEndian, &dateTime.Deviation)
+	if nil != err {
+		serr := fmt.Sprintf("%s: binary.Read() failed: %v", FNAME, err)
+		errorLog.Printf("%s", serr)
+		panic(serr)
+	}
 	dateTime.ClockStatus = b[11]
 
 	return dateTime
@@ -330,8 +341,12 @@ func (dateTime *DlmsDateTime) PrintDateTime() string {
 	time = dateTime.PrintTime()
 	date = dateTime.PrintDate()
 
-	deviation = fmt.Sprintf("dv %04d", dateTime.Deviation)
-	clockStatus = fmt.Sprint("st %02X", dateTime.ClockStatus)
+	if 0x8000 == uint16(dateTime.Deviation) {
+		deviation = "*_dv"
+	} else {
+		deviation = fmt.Sprintf("%04d_dv", dateTime.Deviation)
+	}
+	clockStatus = fmt.Sprintf("%02X_st", *(*[1]byte)(unsafe.Pointer(&dateTime.ClockStatus)))
 
 	return fmt.Sprintf("%s %s (%s, %s)", date, time, deviation, clockStatus)
 }
@@ -963,7 +978,7 @@ func (data *DlmsData) GetOctetString() []byte {
 }
 
 func (data *DlmsData) PrintOctetString() string {
-	return fmt.Sprintf("%02X (OctetString)", data.GetOctetString)
+	return fmt.Sprintf("%02X (OctetString)", data.GetOctetString())
 }
 
 func (data *DlmsData) encodeOctetString(w io.Writer) (err error) {
@@ -2295,7 +2310,7 @@ func ipTransportReceive(ch DlmsChannel, rwc io.ReadWriteCloser, srcWport *uint16
 			ch <- &DlmsChannelMessage{err, nil}
 			return
 		}
-		debugLog.Printf("%s: pdu: %02X\n", FNAME, pdu)
+		debugLog.Printf("%s: received pdu: %02X\n", FNAME, pdu)
 
 		// send reply
 		m := make(map[string]interface{})
