@@ -270,14 +270,6 @@ func TestX__profileRead_capturePeriod(t *testing.T) {
 	aconn.Close()
 }
 
-func printProfileLine(t *testing.T, data *DlmsData) {
-
-	if DATA_TYPE_ARRAY != data.GetType() {
-		t.Fatalf("wrong data type")
-	}
-	//TODO:
-}
-
 func TestX__profileRead_first_and_last_entries(t *testing.T) {
 
 	ch := make(DlmsChannel)
@@ -357,6 +349,12 @@ func TestX__profileRead_first_and_last_entries(t *testing.T) {
 	data = rep.DataAt(0)
 	if DATA_TYPE_ARRAY != data.GetType() {
 		t.Fatalf("wrong data type")
+	}
+	t.Logf("profile entries read:\n")
+	for i := 0; i < len(data.Arr); i++ {
+		d := data.Arr[i]
+		d0 := d.Arr[0]
+		t.Logf("\t%d: %s %s: ", i, DlmsTimeFromBytes(d0.GetOctetString()).PrintTime(), d.Print())
 	}
 
 	aconn.Close()

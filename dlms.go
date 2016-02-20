@@ -319,18 +319,21 @@ func (dateTime *DlmsDateTime) ToBytes() []byte {
 	return b
 }
 
-func (dateTime *DlmsDateTime) Print() string {
-	/*
-		var (
-			date        string
-			time        string
-			deviation   string
-			clockStatus string
-		)
-	*/
+func (dateTime *DlmsDateTime) PrintDateTime() string {
+	var (
+		date        string
+		time        string
+		deviation   string
+		clockStatus string
+	)
 
-	//TODO:
-	return ""
+	time = dateTime.PrintTime()
+	date = dateTime.PrintDate()
+
+	deviation = fmt.Sprintf("dv %04d", dateTime.Deviation)
+	clockStatus = fmt.Sprint("st %02X", dateTime.ClockStatus)
+
+	return fmt.Sprintf("%s %s (%s, %s)", date, time, deviation, clockStatus)
 }
 
 func (dateTime *DlmsDateTime) SetDeviationWildcard() {
@@ -594,6 +597,62 @@ func (data *DlmsData) Decode(r io.Reader) (err error) {
 	return nil
 }
 
+func (data *DlmsData) Print() string {
+
+	if nil != data.Err {
+		return "!! data error !!"
+	}
+
+	switch data.Typ {
+	case DATA_TYPE_NULL:
+		return data.PrintNULL()
+	case DATA_TYPE_ARRAY, DATA_TYPE_STRUCTURE:
+		return data.PrintArray()
+	case DATA_TYPE_BOOLEAN:
+		return data.PrintBoolean()
+	case DATA_TYPE_BIT_STRING:
+		return data.PrintBitString()
+	case DATA_TYPE_DOUBLE_LONG:
+		return data.PrintDoubleLong()
+	case DATA_TYPE_DOUBLE_LONG_UNSIGNED:
+		return data.PrintDoubleLongUnsigned()
+	case DATA_TYPE_FLOATING_POINT:
+		return data.PrintFloatingPoint()
+	case DATA_TYPE_OCTET_STRING:
+		return data.PrintOctetString()
+	case DATA_TYPE_VISIBLE_STRING:
+		return data.PrintVisibleString()
+	case DATA_TYPE_BCD:
+		return data.PrintBcd()
+	case DATA_TYPE_INTEGER:
+		return data.PrintInteger()
+	case DATA_TYPE_LONG:
+		return data.PrintLong()
+	case DATA_TYPE_UNSIGNED:
+		return data.PrintUnsigned()
+	case DATA_TYPE_LONG_UNSIGNED:
+		return data.PrintLongUnsigned()
+	case DATA_TYPE_LONG64:
+		return data.PrintLong64()
+	case DATA_TYPE_UNSIGNED_LONG64:
+		return data.PrintUnsignedLong64()
+	case DATA_TYPE_ENUM:
+		return data.PrintEnum()
+	case DATA_TYPE_REAL32:
+		return data.PrintReal32()
+	case DATA_TYPE_REAL64:
+		return data.PrintReal64()
+	case DATA_TYPE_DATETIME:
+		return data.PrintDateTime()
+	case DATA_TYPE_DATE:
+		return data.PrintDate()
+	case DATA_TYPE_TIME:
+		return data.PrintTime()
+	default:
+		return "!! data error !!"
+	}
+}
+
 func (data *DlmsData) GetType() uint8 {
 	return data.Typ
 }
@@ -606,6 +665,15 @@ func (data *DlmsData) SetArray(length int) {
 	}
 }
 
+func (data *DlmsData) PrintArray() string {
+	str := "a["
+	for i := 0; i < len(data.Arr)-1; i++ {
+		str += data.Arr[i].Print() + ", "
+	}
+	str += data.Arr[len(data.Arr)-1].Print() + "]"
+	return str
+}
+
 func (data *DlmsData) SetStructure(length int) {
 	data.Typ = DATA_TYPE_STRUCTURE
 	data.Arr = make([]*DlmsData, length)
@@ -614,8 +682,21 @@ func (data *DlmsData) SetStructure(length int) {
 	}
 }
 
+func (data *DlmsData) PrintStructure() string {
+	str := "s["
+	for i := 0; i < len(data.Arr)-1; i++ {
+		str += data.Arr[i].Print() + ", "
+	}
+	str += data.Arr[len(data.Arr)-1].Print() + "]"
+	return str
+}
+
 func (data *DlmsData) SetNULL() {
 	data.Typ = DATA_TYPE_NULL
+}
+
+func (data *DlmsData) PrintNULL() string {
+	return "null"
 }
 
 func (data *DlmsData) encodeNULL(w io.Writer) (err error) {
@@ -639,6 +720,10 @@ func (data *DlmsData) SetBoolean(b bool) {
 
 func (data *DlmsData) GetBoolean() bool {
 	return data.Val.(bool)
+}
+
+func (data *DlmsData) PrintBoolean() string {
+	return fmt.Sprintf("%t (boolean)", data.GetBoolean())
 }
 
 func (data *DlmsData) encodeBoolean(w io.Writer) (err error) {
@@ -687,6 +772,11 @@ func (data *DlmsData) SetBitString(b []byte, length uint16) {
 
 func (data *DlmsData) GetBitString() (b []byte, length uint16) {
 	return data.Val.([]byte), data.Len
+}
+
+func (data *DlmsData) PrintBitString() string {
+	b, _ := data.GetBitString()
+	return fmt.Sprintf("%X (BitString)", b)
 }
 
 func (data *DlmsData) encodeBitString(w io.Writer) (err error) {
@@ -743,6 +833,10 @@ func (data *DlmsData) GetDoubleLong() int32 {
 	return data.Val.(int32)
 }
 
+func (data *DlmsData) PrintDoubleLong() string {
+	return fmt.Sprintf("%d (DoubleLong)", data.GetDoubleLong())
+}
+
 func (data *DlmsData) encodeDoubleLong(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_DOUBLE_LONG})
 	if nil != err {
@@ -781,6 +875,10 @@ func (data *DlmsData) GetDoubleLongUnsigned() uint32 {
 	return data.Val.(uint32)
 }
 
+func (data *DlmsData) PrintDoubleLongUnsigned() string {
+	return fmt.Sprintf("%d (DoubleLongUnsigned)", data.GetDoubleLongUnsigned())
+}
+
 func (data *DlmsData) encodeDoubleLongUnsigned(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_DOUBLE_LONG_UNSIGNED})
 	if nil != err {
@@ -817,6 +915,10 @@ func (data *DlmsData) SetFloatingPoint(f float32) {
 
 func (data *DlmsData) GetFloatingPoint() float32 {
 	return data.Val.(float32)
+}
+
+func (data *DlmsData) PrintFloatingPoint() string {
+	return fmt.Sprintf("%f (FloatingPoint)", data.GetFloatingPoint())
 }
 
 func (data *DlmsData) encodeFloatingPoint(w io.Writer) (err error) {
@@ -858,6 +960,10 @@ func (data *DlmsData) SetOctetString(b []byte) {
 
 func (data *DlmsData) GetOctetString() []byte {
 	return data.Val.([]byte)
+}
+
+func (data *DlmsData) PrintOctetString() string {
+	return fmt.Sprintf("%02X (OctetString)", data.GetOctetString)
 }
 
 func (data *DlmsData) encodeOctetString(w io.Writer) (err error) {
@@ -913,6 +1019,10 @@ func (data *DlmsData) GetVisibleString() []byte {
 	return data.Val.([]byte)
 }
 
+func (data *DlmsData) PrintVisibleString() string {
+	return fmt.Sprintf("%02X (VisibleString)", data.GetVisibleString())
+}
+
 func (data *DlmsData) encodeVisibleString(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_VISIBLE_STRING})
 	if nil != err {
@@ -963,6 +1073,10 @@ func (data *DlmsData) GetBcd() int8 {
 	return data.Val.(int8)
 }
 
+func (data *DlmsData) PrintBcd() string {
+	return fmt.Sprintf("%d (Bcd)", data.GetBcd())
+}
+
 func (data *DlmsData) encodeBcd(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_BCD})
 	if nil != err {
@@ -999,6 +1113,10 @@ func (data *DlmsData) SetInteger(i int8) {
 
 func (data *DlmsData) GetInteger() int8 {
 	return data.Val.(int8)
+}
+
+func (data *DlmsData) PrintInteger() string {
+	return fmt.Sprintf("%d (Integer)", data.GetInteger())
 }
 
 func (data *DlmsData) encodeInteger(w io.Writer) (err error) {
@@ -1039,6 +1157,10 @@ func (data *DlmsData) GetLong() int16 {
 	return data.Val.(int16)
 }
 
+func (data *DlmsData) PrintLong() string {
+	return fmt.Sprintf("%d (Long)", data.GetLong())
+}
+
 func (data *DlmsData) encodeLong(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_LONG})
 	if nil != err {
@@ -1075,6 +1197,10 @@ func (data *DlmsData) SetUnsigned(i uint8) {
 
 func (data *DlmsData) GetUnsigned() uint8 {
 	return data.Val.(uint8)
+}
+
+func (data *DlmsData) PrintUnsigned() string {
+	return fmt.Sprintf("%d (Unsigned)", data.GetUnsigned())
 }
 
 func (data *DlmsData) encodeUnsigned(w io.Writer) (err error) {
@@ -1115,6 +1241,10 @@ func (data *DlmsData) GetLongUnsigned() uint16 {
 	return data.Val.(uint16)
 }
 
+func (data *DlmsData) PrintLongUnsigned() string {
+	return fmt.Sprintf("%d (LongUnsigned)", data.GetLongUnsigned())
+}
+
 func (data *DlmsData) encodeLongUnsigned(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_LONG_UNSIGNED})
 	if nil != err {
@@ -1151,6 +1281,10 @@ func (data *DlmsData) SetLong64(i int64) {
 
 func (data *DlmsData) GetLong64() int64 {
 	return data.Val.(int64)
+}
+
+func (data *DlmsData) PrintLong64() string {
+	return fmt.Sprintf("%d (Long64)", data.GetLong64())
 }
 
 func (data *DlmsData) encodeLong64(w io.Writer) (err error) {
@@ -1191,6 +1325,10 @@ func (data *DlmsData) GetUnsignedLong64() uint64 {
 	return data.Val.(uint64)
 }
 
+func (data *DlmsData) PrintUnsignedLong64() string {
+	return fmt.Sprintf("%d (UnsignedLong64)", data.GetUnsignedLong64())
+}
+
 func (data *DlmsData) encodeUnsignedLong64(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_UNSIGNED_LONG64})
 	if nil != err {
@@ -1227,6 +1365,10 @@ func (data *DlmsData) SetEnum(i uint8) {
 
 func (data *DlmsData) GetEnum() uint8 {
 	return data.Val.(uint8)
+}
+
+func (data *DlmsData) PrintEnum() string {
+	return fmt.Sprintf("%d (Enum)", data.GetEnum())
 }
 
 func (data *DlmsData) encodeEnum(w io.Writer) (err error) {
@@ -1267,6 +1409,10 @@ func (data *DlmsData) GetReal32() float32 {
 	return data.Val.(float32)
 }
 
+func (data *DlmsData) PrintReal32() string {
+	return fmt.Sprintf("%f (Real32)", data.GetReal32())
+}
+
 func (data *DlmsData) encodeReal32(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_REAL32})
 	if nil != err {
@@ -1303,6 +1449,10 @@ func (data *DlmsData) SetReal64(f float64) {
 
 func (data *DlmsData) GetReal64() float64 {
 	return data.Val.(float64)
+}
+
+func (data *DlmsData) PrintReal64() string {
+	return fmt.Sprintf("%f (Real64)", data.GetReal64())
 }
 
 func (data *DlmsData) encodeReal64(w io.Writer) (err error) {
@@ -1346,6 +1496,11 @@ func (data *DlmsData) GetDateTime() []byte {
 	return data.Val.([]byte)
 }
 
+func (data *DlmsData) PrintDateTime() string {
+	dateTime := DlmsDateTimeFromBytes(data.GetDateTime())
+	return dateTime.PrintDateTime()
+}
+
 func (data *DlmsData) encodeDateTime(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_DATETIME})
 	if nil != err {
@@ -1387,6 +1542,11 @@ func (data *DlmsData) GetDate() []byte {
 	return data.Val.([]byte)
 }
 
+func (data *DlmsData) PrintDate() string {
+	date := DlmsDateFromBytes(data.GetDate())
+	return date.PrintDate()
+}
+
 func (data *DlmsData) encodeDate(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, []byte{DATA_TYPE_DATE})
 	if nil != err {
@@ -1426,6 +1586,11 @@ func (data *DlmsData) SetTime(b []byte) {
 
 func (data *DlmsData) GetTime() []byte {
 	return data.Val.([]byte)
+}
+
+func (data *DlmsData) PrintTime() string {
+	time := DlmsTimeFromBytes(data.GetTime())
+	return time.PrintTime()
 }
 
 func (data *DlmsData) encodeTime(w io.Writer) (err error) {
