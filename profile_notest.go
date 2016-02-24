@@ -508,14 +508,12 @@ func TestX__profileRead_timeInterval(t *testing.T) {
 	if DATA_TYPE_ARRAY != data.GetType() {
 		t.Fatalf("wrong data type")
 	}
-	/*
-		t.Logf("profile entries read:\n")
-		for i := 0; i < len(data.Arr); i++ {
-			d := data.Arr[i]
-			d0 := d.Arr[0]
-			t.Logf("\t%d: %s %s: ", i, DlmsDateTimeFromBytes(d0.GetOctetString()).PrintDateTime(), d.Print())
-		}
-	*/
+	t.Logf("profile entries read:\n")
+	for i := 0; i < len(data.Arr); i++ {
+		d := data.Arr[i]
+		d0 := d.Arr[0]
+		t.Logf("\t%d: %s %s: ", i, DlmsDateTimeFromBytes(d0.GetOctetString()).PrintDateTime(), d.Print())
+	}
 
 	d1 := data.Arr[0]
 	if nil != d1.Err {
@@ -548,17 +546,43 @@ func TestX__profileRead_timeInterval(t *testing.T) {
 	restrictingObject.Arr[3].SetLongUnsigned(0)                                         // data_index
 
 	tim := DlmsDateTimeFromBytes(d1.Arr[0].GetOctetString())
-	tim.SetDayOfWeekWildcard()
-	tim.SetHundredthsWildcard()
-	tim.SetDeviationWildcard()
+	/*
+		tim := new(DlmsDateTime)
+
+		tim.Year = 2016
+		tim.Month = 2
+		tim.DayOfMonth = 22
+		tim.DayOfWeek = 1
+		tim.Hour = 4
+		tim.Minute = 16
+		tim.Second = 39
+		tim.Hundredths = 0
+		tim.Deviation = 0
+		tim.ClockStatus = 0
+	*/
+
+	t.Logf("time from: %s", tim.PrintDateTime())
 
 	fromValue := new(DlmsData)
 	fromValue.SetOctetString(tim.ToBytes())
 
 	tim = DlmsDateTimeFromBytes(d2.Arr[0].GetOctetString())
-	tim.SetDayOfWeekWildcard()
-	tim.SetHundredthsWildcard()
-	tim.SetDeviationWildcard()
+	/*
+		tim = new(DlmsDateTime)
+
+		tim.Year = 2016
+		tim.Month = 2
+		tim.DayOfMonth = 22
+		tim.DayOfWeek = 1
+		tim.Hour = 5
+		tim.Minute = 16
+		tim.Second = 39
+		tim.Hundredths = 0
+		tim.Deviation = 0
+		tim.ClockStatus = 0
+	*/
+
+	t.Logf("time to: %s", tim.PrintDateTime())
 
 	toValue := new(DlmsData)
 	toValue.SetOctetString(tim.ToBytes())

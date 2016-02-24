@@ -91,7 +91,7 @@ type DlmsTime struct {
 type DlmsDateTime struct {
 	DlmsDate
 	DlmsTime
-	Deviation   int16
+	Deviation   uint16
 	ClockStatus uint8
 }
 
@@ -114,13 +114,12 @@ func DlmsDateFromBytes(b []byte) (date *DlmsDate) {
 }
 
 func (date *DlmsDate) ToBytes() []byte {
-	b := make([]byte, 5)
-	b[0] = byte((date.Year & 0xFF00) >> 8)
-	b[1] = byte(date.Year & 0x00FF)
-	b[2] = date.Month
-	b[3] = date.DayOfMonth
-	b[4] = date.DayOfWeek
-	return b
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, date)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	return buf.Bytes()
 }
 
 func (date *DlmsDate) PrintDate() string {
@@ -150,7 +149,7 @@ func (date *DlmsDate) PrintDate() string {
 	dayOfMonth = fmt.Sprintf("%02d", date.DayOfMonth)
 
 	if date.IsDayOfWeekWildcard() {
-		dayOfWeek = fmt.Sprintf("*_wd", date.DayOfWeek)
+		dayOfWeek = fmt.Sprintf("*_wd")
 	} else {
 		dayOfWeek = fmt.Sprintf("%02d_wd", date.DayOfWeek)
 	}
@@ -208,12 +207,12 @@ func DlmsTimeFromBytes(b []byte) (tim *DlmsTime) {
 }
 
 func (tim *DlmsTime) ToBytes() []byte {
-	b := make([]byte, 4)
-	b[0] = tim.Hour
-	b[1] = tim.Minute
-	b[2] = tim.Second
-	b[3] = tim.Hundredths
-	return b
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, tim)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	return buf.Bytes()
 }
 
 func (tim *DlmsTime) PrintTime() string {
@@ -312,22 +311,12 @@ func DlmsDateTimeFromBytes(b []byte) (dateTime *DlmsDateTime) {
 }
 
 func (dateTime *DlmsDateTime) ToBytes() []byte {
-	b := make([]byte, 12)
-	b2 := (*[2]byte)(unsafe.Pointer(&dateTime.Year))
-	b[0] = b2[0]
-	b[1] = b2[1]
-	b[2] = dateTime.Month
-	b[3] = dateTime.DayOfMonth
-	b[4] = dateTime.DayOfWeek
-	b[5] = dateTime.Hour
-	b[6] = dateTime.Minute
-	b[7] = dateTime.Second
-	b[8] = dateTime.Hundredths
-	b2 = (*[2]byte)(unsafe.Pointer(&dateTime.Deviation))
-	b[9] = b[0]
-	b[10] = b[1]
-	b[11] = dateTime.ClockStatus
-	return b
+	var buf bytes.Buffer
+	err := binary.Write(&buf, binary.BigEndian, dateTime)
+	if nil != err {
+		panic(fmt.Sprintf("binary.Write() failed: %v", err))
+	}
+	return buf.Bytes()
 }
 
 func (dateTime *DlmsDateTime) PrintDateTime() string {
@@ -341,10 +330,10 @@ func (dateTime *DlmsDateTime) PrintDateTime() string {
 	time = dateTime.PrintTime()
 	date = dateTime.PrintDate()
 
-	if 0x8000 == uint16(dateTime.Deviation) {
+	if 0x8000 == dateTime.Deviation {
 		deviation = "*_dv"
 	} else {
-		deviation = fmt.Sprintf("%04d_dv", dateTime.Deviation)
+		deviation = fmt.Sprintf("%04d_dv", int16(dateTime.Deviation))
 	}
 	clockStatus = fmt.Sprintf("%02X_st", *(*[1]byte)(unsafe.Pointer(&dateTime.ClockStatus)))
 
@@ -352,14 +341,11 @@ func (dateTime *DlmsDateTime) PrintDateTime() string {
 }
 
 func (dateTime *DlmsDateTime) SetDeviationWildcard() {
-	b := (*[2]byte)(unsafe.Pointer(&dateTime.Deviation))
-	b[0] = 0x80
-	b[1] = 0x00
+	dateTime.Deviation = uint16(0x8000)
 }
 
 func (dateTime *DlmsDateTime) IsDeviationWildcard() bool {
-	b := (*[2]byte)(unsafe.Pointer(&dateTime.Deviation))
-	return (b[0] == 0x80) && (b[1] == 0x00)
+	return uint16(dateTime.Deviation) == uint16(0x8000)
 }
 
 func (dateTime *DlmsDateTime) SetClockStatusInvalid() {
@@ -621,8 +607,10 @@ func (data *DlmsData) Print() string {
 	switch data.Typ {
 	case DATA_TYPE_NULL:
 		return data.PrintNULL()
-	case DATA_TYPE_ARRAY, DATA_TYPE_STRUCTURE:
+	case DATA_TYPE_ARRAY:
 		return data.PrintArray()
+	case DATA_TYPE_STRUCTURE:
+		return data.PrintStructure()
 	case DATA_TYPE_BOOLEAN:
 		return data.PrintBoolean()
 	case DATA_TYPE_BIT_STRING:
@@ -685,7 +673,11 @@ func (data *DlmsData) PrintArray() string {
 	for i := 0; i < len(data.Arr)-1; i++ {
 		str += data.Arr[i].Print() + ", "
 	}
-	str += data.Arr[len(data.Arr)-1].Print() + "]"
+	if len(data.Arr) > 0 {
+		str += data.Arr[len(data.Arr)-1].Print() + "]"
+	} else {
+		str += "]"
+	}
 	return str
 }
 
