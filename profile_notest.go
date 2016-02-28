@@ -29,20 +29,20 @@ func TestX__profileRead_captureObjects(t *testing.T) {
 	// capture objects definitions
 
 	t.Logf("read objects captured by profile...")
-	vals := make([]*DlmsValueRequest, 1)
-	val := new(DlmsValueRequest)
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 3
 	vals[0] = val
 
-	aconn.GetRequest(ch, 10000, 0, true, vals)
+	aconn.SendRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -91,20 +91,20 @@ func TestX__profileRead_profileEntriesInUse(t *testing.T) {
 	// profile entries in use
 
 	t.Logf("read profile entries in use...")
-	vals := make([]*DlmsValueRequest, 1)
-	val := new(DlmsValueRequest)
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 7
 	vals[0] = val
 
-	aconn.GetRequest(ch, 10000, 0, true, vals)
+	aconn.SendRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -140,20 +140,20 @@ func TestX__profileRead_sortMethod(t *testing.T) {
 	// sort method
 
 	t.Logf("read sort method ...")
-	vals := make([]*DlmsValueRequest, 1)
-	val := new(DlmsValueRequest)
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 5
 	vals[0] = val
 
-	aconn.GetRequest(ch, 10000, 0, true, vals)
+	aconn.SendRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -189,20 +189,20 @@ func TestX__profileRead_sortObject(t *testing.T) {
 	// sort object
 
 	t.Logf("read sort object ...")
-	vals := make([]*DlmsValueRequest, 1)
-	val := new(DlmsValueRequest)
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 6
 	vals[0] = val
 
-	aconn.GetRequest(ch, 10000, 0, true, vals)
+	aconn.SendRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -246,20 +246,20 @@ func TestX__profileRead_capturePeriod(t *testing.T) {
 	// capture period
 
 	t.Logf("read capture period ...")
-	vals := make([]*DlmsValueRequest, 1)
-	val := new(DlmsValueRequest)
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 4
 	vals[0] = val
 
-	aconn.GetRequest(ch, 10000, 0, true, vals)
+	aconn.SendRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -294,9 +294,9 @@ func TestX__profileRead_first_entries(t *testing.T) {
 
 	// request first 10 entries
 
-	vals := make([]*DlmsValueRequest, 1)
+	vals := make([]*DlmsRequest, 1)
 
-	val := new(DlmsValueRequest)
+	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 2
@@ -310,13 +310,13 @@ func TestX__profileRead_first_entries(t *testing.T) {
 
 	vals[0] = val
 
-	aconn.GetRequest(ch, 10000, 0, true, vals)
+	aconn.SendRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -361,20 +361,20 @@ func TestX__profileRead_last_entries(t *testing.T) {
 	// profile entries in use
 
 	t.Logf("read profile entries ...")
-	vals := make([]*DlmsValueRequest, 1)
-	val := new(DlmsValueRequest)
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 4
 	vals[0] = val
 
-	aconn.GetRequest(ch, 10000, 0, true, vals)
+	aconn.SendRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -383,11 +383,11 @@ func TestX__profileRead_last_entries(t *testing.T) {
 	entriesInUse := data.GetDoubleLongUnsigned()
 	t.Logf("profile entries in use: %d", entriesInUse)
 
-	vals = make([]*DlmsValueRequest, 1)
+	vals = make([]*DlmsRequest, 1)
 
 	// read last 10 entries
 
-	val = new(DlmsValueRequest)
+	val = new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 2
@@ -401,13 +401,13 @@ func TestX__profileRead_last_entries(t *testing.T) {
 
 	vals[0] = val
 
-	aconn.GetRequest(ch, 10000, 0, true, vals)
+	aconn.SendRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep = msg.Data.(DlmsResponse)
+	rep = msg.Data.(DlmsResultResponse)
 	dataAccessResult = rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -452,20 +452,20 @@ func TestX__profileRead_timeInterval(t *testing.T) {
 	// profile entries in use
 
 	t.Logf("read profile entries ...")
-	vals := make([]*DlmsValueRequest, 1)
-	val := new(DlmsValueRequest)
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 4
 	vals[0] = val
 
-	aconn.GetRequest(ch, 10000, 0, true, vals)
+	aconn.SendRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -474,11 +474,11 @@ func TestX__profileRead_timeInterval(t *testing.T) {
 	entriesInUse := data.GetDoubleLongUnsigned()
 	t.Logf("profile entries in use: %d", entriesInUse)
 
-	vals = make([]*DlmsValueRequest, 1)
+	vals = make([]*DlmsRequest, 1)
 
 	// read last 10 entries
 
-	val = new(DlmsValueRequest)
+	val = new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 2
@@ -492,13 +492,13 @@ func TestX__profileRead_timeInterval(t *testing.T) {
 
 	vals[0] = val
 
-	aconn.GetRequest(ch, 10000, 0, true, vals)
+	aconn.SendRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep = msg.Data.(DlmsResponse)
+	rep = msg.Data.(DlmsResultResponse)
 	dataAccessResult = rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -526,9 +526,9 @@ func TestX__profileRead_timeInterval(t *testing.T) {
 
 	// read last 10 entries using time interval selection
 
-	vals = make([]*DlmsValueRequest, 1)
+	vals = make([]*DlmsRequest, 1)
 
-	val = new(DlmsValueRequest)
+	val = new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 2
@@ -597,13 +597,13 @@ func TestX__profileRead_timeInterval(t *testing.T) {
 
 	vals[0] = val
 
-	aconn.GetRequest(ch, 10000, 0, true, vals)
+	aconn.SendRequest(ch, 10000, 0, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
 		return
 	}
-	rep = msg.Data.(DlmsResponse)
+	rep = msg.Data.(DlmsResultResponse)
 	dataAccessResult = rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)

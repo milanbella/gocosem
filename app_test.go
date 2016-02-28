@@ -546,18 +546,18 @@ func TestX_GetRequestNormal(t *testing.T) {
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
 
-	val := new(DlmsValueRequest)
+	val := new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
-	vals := make([]*DlmsValueRequest, 1)
+	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
-	aconn.GetRequest(ch, 10000, 1000, true, vals)
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -597,18 +597,18 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
 
-	val := new(DlmsValueRequest)
+	val := new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
-	vals := make([]*DlmsValueRequest, 1)
+	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
-	aconn.GetRequest(ch, 10000, 1000, true, vals)
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -672,20 +672,20 @@ func TestX_GetRequestNormal_blockTransfer_timeout(t *testing.T) {
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
 
-	val := new(DlmsValueRequest)
+	val := new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
-	vals := make([]*DlmsValueRequest, 1)
+	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
 
-	aconn.GetRequest(ch, 100000, 100, true, vals)
+	aconn.SendRequest(ch, 100000, 100, true, vals)
 	msg = <-ch
 	if ErrorBlockTimeout != msg.Err {
 		t.Fatalf("%v\n", msg.Err)
 	}
 
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -750,26 +750,26 @@ func TestX_GetRequestWithList(t *testing.T) {
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
 
-	vals := make([]*DlmsValueRequest, 2)
+	vals := make([]*DlmsRequest, 2)
 
-	val := new(DlmsValueRequest)
+	val := new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
 	vals[0] = val
 
-	val = new(DlmsValueRequest)
+	val = new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
 	vals[1] = val
 
-	aconn.GetRequest(ch, 10000, 1000, true, vals)
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -819,26 +819,26 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
 
-	vals := make([]*DlmsValueRequest, 2)
+	vals := make([]*DlmsRequest, 2)
 
-	val := new(DlmsValueRequest)
+	val := new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
 	vals[0] = val
 
-	val = new(DlmsValueRequest)
+	val = new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
 	vals[1] = val
 
-	aconn.GetRequest(ch, 10000, 1000, true, vals)
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -889,15 +889,15 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
 
-	vals := make([]*DlmsValueRequest, 2)
+	vals := make([]*DlmsRequest, 2)
 
-	val := new(DlmsValueRequest)
+	val := new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
 	vals[0] = val
 
-	val = new(DlmsValueRequest)
+	val = new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
@@ -905,7 +905,7 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 
 	// expect request timeout
 
-	aconn.GetRequest(ch, 500, 10000, true, vals)
+	aconn.SendRequest(ch, 500, 10000, true, vals)
 	msg = <-ch
 	if ErrorRequestTimeout != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -914,12 +914,12 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	// timeouted request must not disable following requests
 
 	mockCosemServer.replyDelayMsec = 0
-	aconn.GetRequest(ch, 500, 100, true, vals)
+	aconn.SendRequest(ch, 500, 100, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -970,15 +970,15 @@ func TestX_GetRequestWithList_blockTransfer_blockTimeout(t *testing.T) {
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
 
-	vals := make([]*DlmsValueRequest, 2)
+	vals := make([]*DlmsRequest, 2)
 
-	val := new(DlmsValueRequest)
+	val := new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
 	vals[0] = val
 
-	val = new(DlmsValueRequest)
+	val = new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
@@ -986,7 +986,7 @@ func TestX_GetRequestWithList_blockTransfer_blockTimeout(t *testing.T) {
 
 	// expect block request timeout
 
-	aconn.GetRequest(ch, 10000, 900, true, vals)
+	aconn.SendRequest(ch, 10000, 900, true, vals)
 	msg = <-ch
 	if ErrorBlockTimeout != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -994,12 +994,12 @@ func TestX_GetRequestWithList_blockTransfer_blockTimeout(t *testing.T) {
 
 	// timeouted request must not disable following requests
 
-	aconn.GetRequest(ch, 10000, 2000, true, vals)
+	aconn.SendRequest(ch, 10000, 2000, true, vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.Data.(DlmsResponse)
+	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -1044,11 +1044,11 @@ func TestX_1000parallelRequests(t *testing.T) {
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
 
-	val := new(DlmsValueRequest)
+	val := new(DlmsRequest)
 	val.ClassId = 1
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
-	vals := make([]*DlmsValueRequest, 1)
+	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
 
 	sink := make(DlmsChannel)
@@ -1056,7 +1056,7 @@ func TestX_1000parallelRequests(t *testing.T) {
 
 	for i := 0; i < count; i += 1 {
 		go func() {
-			aconn.GetRequest(ch, 10000, 1000, true, vals)
+			aconn.SendRequest(ch, 10000, 1000, true, vals)
 			msg = <-ch
 			sink <- msg
 		}()
@@ -1069,7 +1069,7 @@ sinkLoop:
 		if nil != msg.Err {
 			t.Fatalf("%s\n", msg.Err)
 		}
-		rep := msg.Data.(DlmsResponse)
+		rep := msg.Data.(DlmsResultResponse)
 		t.Logf("response delivered: in %v", rep.DeliveredIn())
 		if 0 != rep.DataAccessResultAt(0) {
 			t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))

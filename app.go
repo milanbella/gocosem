@@ -12,7 +12,7 @@ import (
 var ErrorRequestTimeout = errors.New("request timeout")
 var ErrorBlockTimeout = errors.New("block receive timeout")
 
-type DlmsValueRequest struct {
+type DlmsRequest struct {
 	ClassId         DlmsClassId
 	InstanceId      *DlmsOid
 	AttributeId     DlmsAttributeId
@@ -20,14 +20,14 @@ type DlmsValueRequest struct {
 	AccessParameter *DlmsData
 }
 
-type DlmsValueResponse struct {
+type DlmsResponse struct {
 	DataAccessResult DlmsDataAccessResult
 	Data             *DlmsData
 }
 
-type DlmsValueRequestResponse struct {
-	Req *DlmsValueRequest
-	Rep *DlmsValueResponse
+type DlmsRequestResponse struct {
+	Req *DlmsRequest
+	Rep *DlmsResponse
 
 	invokeId           uint8
 	Dead               *string     // If non nil then this request is already dead from whatever reason (e.g. timeot) and MUST NOT be used anymore. String value indicates reason.
@@ -48,24 +48,24 @@ type AppConn struct {
 	logicalDevice     uint16
 	invokeIdsCh       chan uint8
 	finish            chan string
-	rips              map[uint8][]*DlmsValueRequestResponse // Requests in progress. Map key is invokeId. In case of GetRequestNormal value array will comtain just one item. In case of  GetRequestWithList array lengh will be equal to number of values requested.
+	rips              map[uint8][]*DlmsRequestResponse // Requests in progress. Map key is invokeId. In case of GetRequestNormal value array will comtain just one item. In case of  GetRequestWithList array lengh will be equal to number of values requested.
 }
 
-type DlmsResponse []*DlmsValueRequestResponse
+type DlmsResultResponse []*DlmsRequestResponse
 
-func (rep DlmsResponse) RequestAt(i int) (req *DlmsValueRequest) {
+func (rep DlmsResultResponse) RequestAt(i int) (req *DlmsRequest) {
 	return rep[i].Req
 }
 
-func (rep DlmsResponse) DataAt(i int) *DlmsData {
+func (rep DlmsResultResponse) DataAt(i int) *DlmsData {
 	return rep[i].Rep.Data
 }
 
-func (rep DlmsResponse) DataAccessResultAt(i int) DlmsDataAccessResult {
+func (rep DlmsResultResponse) DataAccessResultAt(i int) DlmsDataAccessResult {
 	return rep[i].Rep.DataAccessResult
 }
 
-func (rep DlmsResponse) DeliveredIn() time.Duration {
+func (rep DlmsResultResponse) DeliveredIn() time.Duration {
 	return rep[0].ReplyDeliveredAt.Sub(rep[0].RequestSubmittedAt)
 }
 
@@ -81,7 +81,7 @@ func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16)
 		aconn.invokeIdsCh <- uint8(i)
 	}
 
-	aconn.rips = make(map[uint8][]*DlmsValueRequestResponse)
+	aconn.rips = make(map[uint8][]*DlmsRequestResponse)
 
 	aconn.finish = make(chan string)
 
@@ -153,7 +153,7 @@ func (aconn *AppConn) killRequest(invokeId uint8, err error) {
 		serr = fmt.Sprintf("%s: request killed, invokeId: %d, reason: %s", FNAME, invokeId, *rips[0].Dead)
 		errorLog.Println(serr)
 	}
-	rips[0].Ch <- &DlmsChannelMessage{err, DlmsResponse(rips)}
+	rips[0].Ch <- &DlmsChannelMessage{err, DlmsResultResponse(rips)}
 	aconn.invokeIdsCh <- invokeId
 }
 
@@ -200,11 +200,11 @@ func (aconn *AppConn) deliverTimeouts() {
 	go deliver()
 }
 
-func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse, r io.Reader, errr error) {
+func (aconn *AppConn) processGetResponseNormal(rips []*DlmsRequestResponse, r io.Reader, errr error) {
 
 	err, dataAccessResult, data := decode_GetResponseNormal(r)
 
-	rips[0].Rep = new(DlmsValueResponse)
+	rips[0].Rep = new(DlmsResponse)
 	rips[0].Rep.DataAccessResult = dataAccessResult
 	rips[0].Rep.Data = data
 
@@ -219,11 +219,11 @@ func (aconn *AppConn) processGetResponseNormal(rips []*DlmsValueRequestResponse,
 	}
 }
 
-func (aconn *AppConn) processGetResponseNormalBlock(rips []*DlmsValueRequestResponse, r io.Reader, errr error) {
+func (aconn *AppConn) processGetResponseNormalBlock(rips []*DlmsRequestResponse, r io.Reader, errr error) {
 
 	err, data := decode_GetResponseNormalBlock(r)
 
-	rips[0].Rep = new(DlmsValueResponse)
+	rips[0].Rep = new(DlmsResponse)
 	rips[0].Rep.DataAccessResult = dataAccessResult_success
 	rips[0].Rep.Data = data
 
@@ -238,7 +238,7 @@ func (aconn *AppConn) processGetResponseNormalBlock(rips []*DlmsValueRequestResp
 	}
 }
 
-func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestResponse, r io.Reader, errr error) {
+func (aconn *AppConn) processGetResponseWithList(rips []*DlmsRequestResponse, r io.Reader, errr error) {
 	var (
 		FNAME string = "AppConn.processGetResponseWithList()"
 		serr  string
@@ -254,7 +254,7 @@ func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestRespons
 
 	for i := 0; i < len(dataAccessResults); i += 1 {
 		rip := rips[i]
-		rip.Rep = new(DlmsValueResponse)
+		rip.Rep = new(DlmsResponse)
 		rip.Rep.DataAccessResult = dataAccessResults[i]
 		rip.Rep.Data = datas[i]
 	}
@@ -271,7 +271,7 @@ func (aconn *AppConn) processGetResponseWithList(rips []*DlmsValueRequestRespons
 
 }
 
-func (aconn *AppConn) processBlockResponse(rips []*DlmsValueRequestResponse, r io.Reader, err error) {
+func (aconn *AppConn) processBlockResponse(rips []*DlmsRequestResponse, r io.Reader, err error) {
 	var (
 		FNAME string = "AppConn.processBlockResponse()"
 	)
@@ -443,7 +443,7 @@ func (aconn *AppConn) getInvokeId(ch DlmsChannel, msecTimeout int64) {
 	}()
 }
 
-func (aconn *AppConn) GetRequest(ch DlmsChannel, msecTimeout int64, msecBlockTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
+func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTimeout int64, highPriority bool, vals []*DlmsRequest) {
 	go func() {
 		var (
 			FNAME string = "AppConn.getRquest()"
@@ -481,9 +481,9 @@ func (aconn *AppConn) GetRequest(ch DlmsChannel, msecTimeout int64, msecBlockTim
 		}
 		debugLog.Printf("%s: invokeId %d\n", FNAME, invokeId)
 
-		rips := make([]*DlmsValueRequestResponse, len(vals))
+		rips := make([]*DlmsRequestResponse, len(vals))
 		for i := 0; i < len(vals); i += 1 {
-			rip := new(DlmsValueRequestResponse)
+			rip := new(DlmsRequestResponse)
 			rip.Req = vals[i]
 
 			rip.invokeId = invokeId
