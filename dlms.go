@@ -1799,11 +1799,9 @@ func decode_getResponseBlock(r io.Reader) (err error, data *DlmsData) {
 }
 
 func encode_GetRequestNormal(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData) (err error) {
-	var FNAME = "encode_GetRequestNormal()"
 
 	err = encode_getRequest(w, classId, instanceId, attributeId, accessSelector, accessParameters)
 	if nil != err {
-		errorLog.Printf("%s: encode_getRequest() failed, err: %v\n", FNAME, err)
 		return err
 	}
 
@@ -2075,7 +2073,7 @@ func decode_GetRequestForNextDataBlock(r io.Reader) (err error, blockNumber uint
 	return nil, _blockNumber
 }
 
-func encode_setRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData, data *DlmsData) (err error) {
+func encode_setRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData) (err error) {
 	var FNAME string = "encode_setRequest()"
 
 	err = binary.Write(w, binary.BigEndian, classId)
@@ -2125,8 +2123,12 @@ func encode_setRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, at
 			}
 		}
 	}
+	return nil
+}
+
+func encode_setRequestData(w io.Writer, data *DlmsData) (err error) {
 	if nil != data {
-		err = data.Encode(w)
+		err := data.Encode(w)
 		if nil != err {
 			return err
 		}
@@ -2134,40 +2136,39 @@ func encode_setRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, at
 	return nil
 }
 
-func decode_setRequest(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData, data *DlmsData) {
+func decode_setRequest(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData) {
 	var FNAME string = "decode_setRequest()"
 
 	var _classId DlmsClassId
 	err = binary.Read(r, binary.BigEndian, &_classId)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
-		return err, 0, nil, 0, 0, nil, nil
+		return err, 0, nil, 0, 0, nil
 	}
 
 	_instanceId := new(DlmsOid)
 	err = binary.Read(r, binary.BigEndian, _instanceId)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
-		return err, _classId, nil, 0, 0, nil, nil
+		return err, _classId, nil, 0, 0, nil
 	}
 
 	var _attributeId DlmsAttributeId
 	err = binary.Read(r, binary.BigEndian, &_attributeId)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
-		return err, _classId, _instanceId, 0, 0, nil, nil
+		return err, _classId, _instanceId, 0, 0, nil
 	}
 
 	var accessSelection uint8
 	err = binary.Read(r, binary.BigEndian, &accessSelection)
 	if nil != err {
 		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
-		return err, _classId, _instanceId, _attributeId, 0, nil, nil
+		return err, _classId, _instanceId, _attributeId, 0, nil
 	}
 
 	var _accessSelector DlmsAccessSelector = 0
 	var _accessParameters *DlmsData = nil
-	var _data *DlmsData
 
 	if 0 > accessSelection {
 		// access selection is true
@@ -2175,46 +2176,42 @@ func decode_setRequest(r io.Reader) (err error, classId DlmsClassId, instanceId 
 		err = binary.Read(r, binary.BigEndian, &_accessSelector)
 		if nil != err {
 			errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
-			return err, _classId, _instanceId, _attributeId, 0, nil, nil
+			return err, _classId, _instanceId, _attributeId, 0, nil
 		}
 
 		if _accessSelector > 0 {
 			data := new(DlmsData)
 			err = data.Decode(r)
 			if nil != err {
-				return err, _classId, _instanceId, _attributeId, _accessSelector, nil, nil
+				return err, _classId, _instanceId, _attributeId, _accessSelector, nil
 			}
 			_accessParameters = data
-			_data = new(DlmsData)
-			err = _data.Decode(r)
-			if nil != err {
-				return err, _classId, _instanceId, _attributeId, _accessSelector, _accessParameters, nil
-			}
-			return err, _classId, _instanceId, _attributeId, _accessSelector, _accessParameters, _data
+			return err, _classId, _instanceId, _attributeId, _accessSelector, _accessParameters
 		} else {
-			_data = new(DlmsData)
-			err = _data.Decode(r)
-			if nil != err {
-				return err, _classId, _instanceId, _attributeId, _accessSelector, nil, _data
-			}
-			return err, _classId, _instanceId, _attributeId, _accessSelector, _accessParameters, _data
+			return err, _classId, _instanceId, _attributeId, _accessSelector, nil
 		}
 	} else {
-		_data = new(DlmsData)
-		err = _data.Decode(r)
-		if nil != err {
-			return err, _classId, _instanceId, _attributeId, 0, nil, _data
-		}
-		return err, _classId, _instanceId, _attributeId, _accessSelector, _accessParameters, _data
+		return err, _classId, _instanceId, _attributeId, 0, nil
 	}
 }
 
-func encode_SetRequestNormal(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData, data *DlmsData) (err error) {
-	var FNAME = "encode_GetRequestNormal()"
-
-	err = encode_setRequest(w, classId, instanceId, attributeId, accessSelector, accessParameters, data)
+func decode_setRequestData(r io.Reader) (err error, data *DlmsData) {
+	data = new(DlmsData)
+	err = data.Decode(r)
 	if nil != err {
-		errorLog.Printf("%s: encode_getRequest() failed, err: %v\n", FNAME, err)
+		return err, nil
+	}
+	return nil, data
+}
+
+func encode_SetRequestNormal(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData, data *DlmsData) (err error) {
+
+	err = encode_setRequest(w, classId, instanceId, attributeId, accessSelector, accessParameters)
+	if nil != err {
+		return err
+	}
+	err = encode_setRequestData(w, data)
+	if nil != err {
 		return err
 	}
 
@@ -2223,11 +2220,95 @@ func encode_SetRequestNormal(w io.Writer, classId DlmsClassId, instanceId *DlmsO
 
 func decode_SetRequestNormal(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData, data *DlmsData) {
 
-	err, classId, instanceId, attributeId, accessSelector, accessParameters, data = decode_setRequest(r)
+	err, classId, instanceId, attributeId, accessSelector, accessParameters = decode_setRequest(r)
 	if nil != err {
 		return err, 0, nil, 0, 0, nil, nil
 	}
+	err, data = decode_setRequestData(r)
+	if nil != err {
+		return err, classId, instanceId, attributeId, accessSelector, accessParameters, nil
+	}
 	return nil, classId, instanceId, attributeId, accessSelector, accessParameters, data
+}
+
+func encode_SetRequestWithList(w io.Writer, classIds []DlmsClassId, instanceIds []*DlmsOid, attributeIds []DlmsAttributeId, accessSelectors []DlmsAccessSelector, accessParameters []*DlmsData, datas []*DlmsData) (err error) {
+	var FNAME = "encode_GetRequestWithList()"
+
+	count := uint8(len(classIds)) // count of get requests
+
+	err = binary.Write(w, binary.BigEndian, count)
+	if nil != err {
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err
+	}
+	for i := uint8(0); i < count; i += 1 {
+		err = encode_setRequest(w, classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
+		if nil != err {
+			return err
+		}
+	}
+
+	err = binary.Write(w, binary.BigEndian, count)
+	if nil != err {
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err
+	}
+	for i := uint8(0); i < count; i += 1 {
+		err = encode_setRequestData(w, datas[i])
+		if nil != err {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func decode_SetRequestWithList(r io.Reader) (err error, classIds []DlmsClassId, instanceIds []*DlmsOid, attributeIds []DlmsAttributeId, accessSelectors []DlmsAccessSelector, accessParameters []*DlmsData, datas []*DlmsData) {
+
+	var count uint8
+
+	err = binary.Read(r, binary.BigEndian, &count)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, nil, nil, nil, nil, nil, nil
+	}
+	classIds = make([]DlmsClassId, count)
+	instanceIds = make([]*DlmsOid, count)
+	attributeIds = make([]DlmsAttributeId, count)
+	accessSelectors = make([]DlmsAccessSelector, count)
+	accessParameters = make([]*DlmsData, count)
+
+	for i := uint8(0); i < count; i += 1 {
+		err, classId, instanceId, attributeId, accessSelector, accessParameter := decode_setRequest(r)
+		if nil != err {
+			return err, classIds[0:i], instanceIds[0:i], attributeIds[0:i], accessSelectors[0:i], accessParameters[0:i], nil
+		}
+		classIds[i] = classId
+		instanceIds[i] = instanceId
+		attributeIds[i] = attributeId
+		accessSelectors[i] = accessSelector
+		accessParameters[i] = accessParameter
+	}
+
+	err = binary.Read(r, binary.BigEndian, &count)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, nil
+	}
+	if int(count) < len(classIds) {
+		serr := fmt.Sprintf("%s: missing data")
+		return errors.New(serr), classIds, instanceIds, attributeIds, accessSelectors, accessParameters, nil
+	}
+	datas = make([]*DlmsData, count)
+	for i := uint8(0); i < count; i += 1 {
+		err, data := decode_setRequestData(r)
+		if nil != err {
+			return err, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, datas[0:i]
+		}
+		datas[i] = data
+	}
+
+	return nil, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, datas
 }
 
 const (

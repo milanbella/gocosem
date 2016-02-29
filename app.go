@@ -18,6 +18,7 @@ type DlmsRequest struct {
 	AttributeId     DlmsAttributeId
 	AccessSelector  DlmsAccessSelector
 	AccessParameter *DlmsData
+	data            *DlmsData // used only with SetRequest, nil if GetRequest
 }
 
 type DlmsResponse struct {
@@ -514,42 +515,86 @@ func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTi
 		)
 
 		if 1 == len(vals) {
-			_, err = buf.Write([]byte{0xC0, 0x01, byte(invokeIdAndPriority)})
-			if nil != err {
-				errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
-				aconn.killRequest(invokeId, err)
-				return
-			}
-			err = encode_GetRequestNormal(&buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
-			if nil != err {
-				aconn.killRequest(invokeId, err)
-				return
+			if nil == vals[0].data {
+				_, err = buf.Write([]byte{0xC0, 0x01, byte(invokeIdAndPriority)})
+				if nil != err {
+					errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
+					aconn.killRequest(invokeId, err)
+					return
+				}
+				err = encode_GetRequestNormal(&buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
+				if nil != err {
+					aconn.killRequest(invokeId, err)
+					return
+				}
+			} else {
+				_, err = buf.Write([]byte{0xC1, 0x01, byte(invokeIdAndPriority)})
+				if nil != err {
+					errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
+					aconn.killRequest(invokeId, err)
+					return
+				}
+				err = encode_SetRequestNormal(&buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter, vals[0].data)
+				if nil != err {
+					aconn.killRequest(invokeId, err)
+					return
+				}
 			}
 		} else {
-			_, err = buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
-			if nil != err {
-				errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
-				aconn.killRequest(invokeId, err)
-				return
-			}
-			var (
-				classIds         []DlmsClassId        = make([]DlmsClassId, len(vals))
-				instanceIds      []*DlmsOid           = make([]*DlmsOid, len(vals))
-				attributeIds     []DlmsAttributeId    = make([]DlmsAttributeId, len(vals))
-				accessSelectors  []DlmsAccessSelector = make([]DlmsAccessSelector, len(vals))
-				accessParameters []*DlmsData          = make([]*DlmsData, len(vals))
-			)
-			for i := 0; i < len(vals); i += 1 {
-				classIds[i] = vals[i].ClassId
-				instanceIds[i] = vals[i].InstanceId
-				attributeIds[i] = vals[i].AttributeId
-				accessSelectors[i] = vals[i].AccessSelector
-				accessParameters[i] = vals[i].AccessParameter
-			}
-			err = encode_GetRequestWithList(&buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters)
-			if nil != err {
-				aconn.killRequest(invokeId, err)
-				return
+			if nil == vals[0].data {
+				_, err = buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
+				if nil != err {
+					errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
+					aconn.killRequest(invokeId, err)
+					return
+				}
+				var (
+					classIds         []DlmsClassId        = make([]DlmsClassId, len(vals))
+					instanceIds      []*DlmsOid           = make([]*DlmsOid, len(vals))
+					attributeIds     []DlmsAttributeId    = make([]DlmsAttributeId, len(vals))
+					accessSelectors  []DlmsAccessSelector = make([]DlmsAccessSelector, len(vals))
+					accessParameters []*DlmsData          = make([]*DlmsData, len(vals))
+				)
+				for i := 0; i < len(vals); i += 1 {
+					classIds[i] = vals[i].ClassId
+					instanceIds[i] = vals[i].InstanceId
+					attributeIds[i] = vals[i].AttributeId
+					accessSelectors[i] = vals[i].AccessSelector
+					accessParameters[i] = vals[i].AccessParameter
+				}
+				err = encode_GetRequestWithList(&buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters)
+				if nil != err {
+					aconn.killRequest(invokeId, err)
+					return
+				}
+			} else {
+				_, err = buf.Write([]byte{0xC1, 0x04, byte(invokeIdAndPriority)})
+				if nil != err {
+					errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
+					aconn.killRequest(invokeId, err)
+					return
+				}
+				var (
+					classIds         []DlmsClassId        = make([]DlmsClassId, len(vals))
+					instanceIds      []*DlmsOid           = make([]*DlmsOid, len(vals))
+					attributeIds     []DlmsAttributeId    = make([]DlmsAttributeId, len(vals))
+					accessSelectors  []DlmsAccessSelector = make([]DlmsAccessSelector, len(vals))
+					accessParameters []*DlmsData          = make([]*DlmsData, len(vals))
+					datas            []*DlmsData          = make([]*DlmsData, len(vals))
+				)
+				for i := 0; i < len(vals); i += 1 {
+					classIds[i] = vals[i].ClassId
+					instanceIds[i] = vals[i].InstanceId
+					attributeIds[i] = vals[i].AttributeId
+					accessSelectors[i] = vals[i].AccessSelector
+					accessParameters[i] = vals[i].AccessParameter
+					datas[i] = vals[i].data
+				}
+				err = encode_SetRequestWithList(&buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, datas)
+				if nil != err {
+					aconn.killRequest(invokeId, err)
+					return
+				}
 			}
 		}
 
