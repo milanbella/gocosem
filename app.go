@@ -18,7 +18,8 @@ type DlmsRequest struct {
 	AttributeId     DlmsAttributeId
 	AccessSelector  DlmsAccessSelector
 	AccessParameter *DlmsData
-	data            *DlmsData // used only with SetRequest, nil if GetRequest
+	data            *DlmsData // Data to be sent with SetRequest. Must be nil if GetRequest.
+	dataBlockSize   int       // if > 0 then data sent with SetReuqest are sent in bolocks.
 }
 
 type DlmsResponse struct {

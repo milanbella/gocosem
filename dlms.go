@@ -2073,6 +2073,103 @@ func decode_GetRequestForNextDataBlock(r io.Reader) (err error, blockNumber uint
 	return nil, _blockNumber
 }
 
+func encode_setRequestData(w io.Writer, data *DlmsData) (err error) {
+	if nil != data {
+		err := data.Encode(w)
+		if nil != err {
+			return err
+		}
+	}
+	return nil
+}
+
+func decode_setRequestData(r io.Reader) (err error, data *DlmsData) {
+	data = new(DlmsData)
+	err = data.Decode(r)
+	if nil != err {
+		return err, nil
+	}
+	return nil, data
+}
+
+func encode_setRequestBlock(w io.Writer, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
+	var (
+		FNAME      string = "encode_setRequestBlock()"
+		_lastBlock uint8
+	)
+
+	if lastBlock {
+		_lastBlock = 1
+	} else {
+		_lastBlock = 0
+	}
+
+	err = binary.Write(w, binary.BigEndian, _lastBlock)
+	if nil != err {
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err
+	}
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err
+	}
+
+	err = encodeAxdrLength(w, uint16(len(rawData)))
+	if nil != err {
+		errorLog.Printf("%s: encodeAxdrLength() failed, err: %v\n", FNAME, err)
+		return err
+	}
+	_, err = w.Write(rawData)
+	if nil != err {
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
+		return err
+	}
+
+	return nil
+}
+
+func decode_setRequestBlock(r io.Reader) (err error, lastBlock bool, blockNumber uint32, rawData []byte) {
+	var (
+		FNAME string = "decode_setRequestBlock()"
+	)
+
+	var _lastBlock bool
+	var u8 uint8
+	err = binary.Read(r, binary.BigEndian, &u8)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, false, 0, nil
+	}
+	if 0 == u8 {
+		_lastBlock = false
+	} else {
+		_lastBlock = true
+	}
+
+	var _blockNumber uint32
+	err = binary.Read(r, binary.BigEndian, &_blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, _lastBlock, 0, nil
+	}
+
+	err, length := decodeAxdrLength(r)
+	if nil != err {
+		errorLog.Printf("%s: decodeAxdrLength() failed, err: %v\n", FNAME, err)
+		return err, _lastBlock, _blockNumber, nil
+	}
+
+	_rawData := make([]byte, length)
+	err = binary.Read(r, binary.BigEndian, _rawData)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, _lastBlock, _blockNumber, nil
+	}
+
+	return err, _lastBlock, _blockNumber, _rawData
+}
+
 func encode_setRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData) (err error) {
 	var FNAME string = "encode_setRequest()"
 
@@ -2121,16 +2218,6 @@ func encode_setRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, at
 					return err
 				}
 			}
-		}
-	}
-	return nil
-}
-
-func encode_setRequestData(w io.Writer, data *DlmsData) (err error) {
-	if nil != data {
-		err := data.Encode(w)
-		if nil != err {
-			return err
 		}
 	}
 	return nil
@@ -2195,15 +2282,6 @@ func decode_setRequest(r io.Reader) (err error, classId DlmsClassId, instanceId 
 	}
 }
 
-func decode_setRequestData(r io.Reader) (err error, data *DlmsData) {
-	data = new(DlmsData)
-	err = data.Decode(r)
-	if nil != err {
-		return err, nil
-	}
-	return nil, data
-}
-
 func encode_SetRequestNormal(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData, data *DlmsData) (err error) {
 
 	err = encode_setRequest(w, classId, instanceId, attributeId, accessSelector, accessParameters)
@@ -2229,6 +2307,33 @@ func decode_SetRequestNormal(r io.Reader) (err error, classId DlmsClassId, insta
 		return err, classId, instanceId, attributeId, accessSelector, accessParameters, nil
 	}
 	return nil, classId, instanceId, attributeId, accessSelector, accessParameters, data
+}
+
+func encode_SetRequestNormalBlock(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
+
+	err = encode_setRequest(w, classId, instanceId, attributeId, accessSelector, accessParameters)
+	if nil != err {
+		return err
+	}
+	err = encode_setRequestBlock(w, lastBlock, blockNumber, rawData)
+	if nil != err {
+		return err
+	}
+
+	return nil
+}
+
+func decode_SetRequestNormalBlock(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData, lastBlock bool, blockNumber uint32, rawData []byte) {
+
+	err, classId, instanceId, attributeId, accessSelector, accessParameters = decode_setRequest(r)
+	if nil != err {
+		return err, 0, nil, 0, 0, nil, false, 0, nil
+	}
+	err, lastBlock, blockNumber, rawData = decode_setRequestBlock(r)
+	if nil != err {
+		return err, classId, instanceId, attributeId, accessSelector, accessParameters, false, 0, nil
+	}
+	return nil, classId, instanceId, attributeId, accessSelector, accessParameters, lastBlock, blockNumber, rawData
 }
 
 func encode_SetRequestWithList(w io.Writer, classIds []DlmsClassId, instanceIds []*DlmsOid, attributeIds []DlmsAttributeId, accessSelectors []DlmsAccessSelector, accessParameters []*DlmsData, datas []*DlmsData) (err error) {
@@ -2552,7 +2657,7 @@ func ipTransportReceive(ch DlmsChannel, rwc io.ReadWriteCloser, srcWport *uint16
 	}()
 }
 
-// Never call this method directly or else you risk race condtitions on io.Writer() in case of paralell call.
+// Never call this method directly or else you risk race condtitions on io.Reader() in case of paralell call.
 // Use instead proxy variant 'transportReceive()' which queues this method call on sync channel.
 
 func (dconn *DlmsConn) doTransportReceive(ch DlmsChannel, srcWport uint16, dstWport uint16) {

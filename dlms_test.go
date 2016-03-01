@@ -860,3 +860,137 @@ func TestX_decode_SetRequestWithList(t *testing.T) {
 	}
 
 }
+
+func TestX_encode_SetRequestNormalBlock(t *testing.T) {
+	b := []byte{
+		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
+		0x00,
+		0x00, 0x00, 0x00, 0x01,
+		0x15,
+		0x09, 0x32, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14,
+		0x15, 0x16, 0x17, 0x18, 0x19}
+
+	rawData := []byte{0x09, 0x32, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14,
+		0x15, 0x16, 0x17, 0x18, 0x19}
+
+	var buf bytes.Buffer
+	err := encode_SetRequestNormalBlock(&buf, 1, &DlmsOid{0, 0, 128, 0, 0, 255}, 2, 0, nil, false, 1, rawData)
+	if nil != err {
+		t.Fatalf("encode_SetRequestNormalBlock() failed, err: %v", err)
+	}
+
+	db := buf.Bytes()
+	if !bytes.Equal(db, b) {
+		t.Fatalf("bytes don't match: %X", db)
+	}
+
+}
+
+func TestX_decode_SetRequestNormalBlock(t *testing.T) {
+	pdu := []byte{
+		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
+		0x00,
+		0x00, 0x00, 0x00, 0x01,
+		0x15,
+		0x09, 0x32, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14,
+		0x15, 0x16, 0x17, 0x18, 0x19}
+	buf := bytes.NewBuffer(pdu)
+
+	err, classId, instanceId, attributeId, accessSelector, accessParameters, lastBlock, blockNumber, rawData := decode_SetRequestNormalBlock(buf)
+	if nil != err {
+		t.Fatalf("decode_GetRequestNorma() failed, err %v", err)
+	}
+
+	if 1 != classId {
+		t.Fatalf("classId wrong:  %d", classId)
+	}
+	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
+		t.Fatalf("instanceId wrong:  %02X", *instanceId)
+	}
+	if 0x02 != attributeId {
+		t.Fatalf("attributeId wrong:  %d", attributeId)
+	}
+	if 0x00 != accessSelector {
+		t.Fatalf("accessSelector wrong:  %d", accessSelector)
+	}
+	if nil != accessParameters {
+		t.Fatalf("accessParameters wrong:  %p", accessParameters)
+	}
+	if false != lastBlock {
+		t.Fatalf("lastBlock wrong:  %v", lastBlock)
+	}
+	if 1 != blockNumber {
+		t.Fatalf("blockNumber wrong:  %d", blockNumber)
+	}
+	if !bytes.Equal(rawData, []byte{0x09, 0x32, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14,
+		0x15, 0x16, 0x17, 0x18, 0x19}) {
+		t.Fatalf("bytes don't match: %X", rawData)
+	}
+}
+
+func TestX_decode_SetRequestWithListBlock(t *testing.T) {
+	/*
+		pdu := []byte{
+			0x02,
+			0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
+			0x00, 0x01, 0x00, 0x00, 0x80, 0x01, 0x00, 0xFF, 0x02, 0x00,
+			0x00,
+			0x00, 0x00, 0x00, 0x01,
+			0x0A,
+			0x02, 0x09, 0x32, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07}
+		buf := bytes.NewBuffer(pdu)
+
+		err, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, datas := decode_SetRequestWithList(buf)
+		if nil != err {
+			t.Fatalf("decode_SetRequestWithList() failed, err %v", err)
+		}
+
+		if 1 != classIds[0] {
+			t.Fatalf("classId wrong:  %d", classIds[0])
+		}
+		if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceIds[0]) {
+			t.Fatalf("instanceId wrong:  %02X", *instanceIds[0])
+		}
+		if 0x02 != attributeIds[0] {
+			t.Fatalf("attributeId wrong:  %d", attributeIds[0])
+		}
+		if 0x00 != accessSelectors[0] {
+			t.Fatalf("accessSelector wrong:  %d", accessSelectors[0])
+		}
+		if nil != accessParameters[0] {
+			t.Fatalf("accessParameters wrong:  %p", accessParameters[0])
+		}
+		if DATA_TYPE_OCTET_STRING != datas[0].Typ {
+			t.Fatalf("data type wrong:  %d", datas[0].Typ)
+		}
+		if !bytes.Equal(datas[0].GetOctetString(), []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16,
+			0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30, 0x31, 0x32,
+			0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
+			0x49, 0x50}) {
+			t.Fatalf("data does nit match")
+		}
+
+		if 1 != classIds[1] {
+			t.Fatalf("classId wrong:  %d", classIds[1])
+		}
+		if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x01, 0x00, 0xFF}, instanceIds[1]) {
+			t.Fatalf("instanceId wrong:  %02X", *instanceIds[1])
+		}
+		if 0x02 != attributeIds[1] {
+			t.Fatalf("attributeId wrong:  %d", attributeIds[1])
+		}
+		if 0x00 != accessSelectors[1] {
+			t.Fatalf("accessSelector wrong:  %d", accessSelectors[1])
+		}
+		if nil != accessParameters[1] {
+			t.Fatalf("accessParameters wrong:  %p", accessParameters[1])
+		}
+		if DATA_TYPE_VISIBLE_STRING != datas[1].Typ {
+			t.Fatalf("data type wrong:  %d", datas[1].Typ)
+		}
+		if !bytes.Equal(datas[1].GetOctetString(), []byte{0x30, 0x30, 0x30}) {
+			t.Fatalf("data does nit match")
+		}
+	*/
+
+}
