@@ -2369,12 +2369,13 @@ func encode_SetRequestWithList(w io.Writer, classIds []DlmsClassId, instanceIds 
 }
 
 func decode_SetRequestWithList(r io.Reader) (err error, classIds []DlmsClassId, instanceIds []*DlmsOid, attributeIds []DlmsAttributeId, accessSelectors []DlmsAccessSelector, accessParameters []*DlmsData, datas []*DlmsData) {
+	var FNAME = "decode_SetRequestWithList()"
 
 	var count uint8
 
 	err = binary.Read(r, binary.BigEndian, &count)
 	if nil != err {
-		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
 		return err, nil, nil, nil, nil, nil, nil
 	}
 	classIds = make([]DlmsClassId, count)
@@ -2397,11 +2398,11 @@ func decode_SetRequestWithList(r io.Reader) (err error, classIds []DlmsClassId, 
 
 	err = binary.Read(r, binary.BigEndian, &count)
 	if nil != err {
-		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
 		return err, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, nil
 	}
 	if int(count) < len(classIds) {
-		serr := fmt.Sprintf("%s: missing data")
+		serr := fmt.Sprintf("%s: missing data", FNAME)
 		return errors.New(serr), classIds, instanceIds, attributeIds, accessSelectors, accessParameters, nil
 	}
 	datas = make([]*DlmsData, count)
@@ -2414,6 +2415,68 @@ func decode_SetRequestWithList(r io.Reader) (err error, classIds []DlmsClassId, 
 	}
 
 	return nil, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, datas
+}
+
+func encode_SetRequestWithListBlock(w io.Writer, classIds []DlmsClassId, instanceIds []*DlmsOid, attributeIds []DlmsAttributeId, accessSelectors []DlmsAccessSelector, accessParameters []*DlmsData, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
+	var FNAME = "encode_SetRequestWithListBlock()"
+
+	count := uint8(len(classIds)) // count of get requests
+
+	err = binary.Write(w, binary.BigEndian, count)
+	if nil != err {
+		errorLog.Printf(fmt.Sprintf("%s: binary.Write() failed, err: %s\n", FNAME, err))
+		return err
+	}
+	for i := uint8(0); i < count; i += 1 {
+		err = encode_setRequest(w, classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i])
+		if nil != err {
+			return err
+		}
+	}
+
+	err = encode_setRequestBlock(w, lastBlock, blockNumber, rawData)
+	if nil != err {
+		return err
+	}
+
+	return nil
+}
+
+func decode_SetRequestWithListBlock(r io.Reader) (err error, classIds []DlmsClassId, instanceIds []*DlmsOid, attributeIds []DlmsAttributeId, accessSelectors []DlmsAccessSelector, accessParameters []*DlmsData, lastBlock bool, blockNumber uint32, rawData []byte) {
+	var FNAME = "decode_SetRequestWithListBlock()"
+
+	var count uint8
+
+	err = binary.Read(r, binary.BigEndian, &count)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, nil, nil, nil, nil, nil, false, 0, nil
+	}
+	classIds = make([]DlmsClassId, count)
+	instanceIds = make([]*DlmsOid, count)
+	attributeIds = make([]DlmsAttributeId, count)
+	accessSelectors = make([]DlmsAccessSelector, count)
+	accessParameters = make([]*DlmsData, count)
+
+	for i := uint8(0); i < count; i += 1 {
+		err, classId, instanceId, attributeId, accessSelector, accessParameter := decode_setRequest(r)
+		if nil != err {
+			return err, classIds[0:i], instanceIds[0:i], attributeIds[0:i], accessSelectors[0:i], accessParameters[0:i], false, 0, nil
+		}
+		classIds[i] = classId
+		instanceIds[i] = instanceId
+		attributeIds[i] = attributeId
+		accessSelectors[i] = accessSelector
+		accessParameters[i] = accessParameter
+	}
+
+	err, lastBlock, blockNumber, rawData = decode_setRequestBlock(r)
+	if nil != err {
+		return err, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, false, 0, nil
+	}
+
+	return nil, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, lastBlock, blockNumber, rawData
+
 }
 
 const (
