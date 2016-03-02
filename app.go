@@ -18,8 +18,10 @@ type DlmsRequest struct {
 	AttributeId     DlmsAttributeId
 	AccessSelector  DlmsAccessSelector
 	AccessParameter *DlmsData
-	data            *DlmsData // Data to be sent with SetRequest. Must be nil if GetRequest.
-	dataBlockSize   int       // if > 0 then data sent with SetReuqest are sent in bolocks.
+	Data            *DlmsData // Data to be sent with SetRequest. Must be nil if GetRequest.
+	BlockSize       int       // If > 0 then data sent with SetReuqest are sent in bolocks.
+	rawData         []byte    // Remaining data to be sent using block transfer.
+	blockNumber     uint32    // Number of last block sent.
 }
 
 type DlmsResponse struct {
@@ -32,8 +34,8 @@ type DlmsRequestResponse struct {
 	Rep *DlmsResponse
 
 	invokeId           uint8
-	Dead               *string     // If non nil then this request is already dead from whatever reason (e.g. timeot) and MUST NOT be used anymore. String value indicates reason.
-	Ch                 DlmsChannel // channel to deliver reply
+	Dead               *string     // If non nil then this request is already dead from whatever reason (e.g. timeot) and MUST NOT be used anymore. Value indicates reason for being dead.
+	Ch                 DlmsChannel // Channel to deliver reply.
 	RequestSubmittedAt time.Time
 	ReplyDeliveredAt   time.Time
 	timeoutAt          *time.Time
@@ -516,7 +518,7 @@ func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTi
 		)
 
 		if 1 == len(vals) {
-			if nil == vals[0].data {
+			if nil == vals[0].Data {
 				_, err = buf.Write([]byte{0xC0, 0x01, byte(invokeIdAndPriority)})
 				if nil != err {
 					errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
@@ -529,20 +531,59 @@ func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTi
 					return
 				}
 			} else {
-				_, err = buf.Write([]byte{0xC1, 0x01, byte(invokeIdAndPriority)})
-				if nil != err {
-					errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
-					aconn.killRequest(invokeId, err)
-					return
-				}
-				err = encode_SetRequestNormal(&buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter, vals[0].data)
-				if nil != err {
-					aconn.killRequest(invokeId, err)
-					return
+				if 0 == vals[0].BlockSize {
+					_, err = buf.Write([]byte{0xC1, 0x01, byte(invokeIdAndPriority)})
+					if nil != err {
+						errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
+						aconn.killRequest(invokeId, err)
+						return
+					}
+
+					err = encode_SetRequestNormal(&buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter, vals[0].Data)
+					if nil != err {
+						aconn.killRequest(invokeId, err)
+						return
+					}
+				} else {
+					_, err = buf.Write([]byte{0xC1, 0x02, byte(invokeIdAndPriority)})
+					if nil != err {
+						errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
+						aconn.killRequest(invokeId, err)
+						return
+					}
+
+					var buf bytes.Buffer
+					err = vals[0].Data.Encode(&buf)
+					if nil != err {
+						aconn.killRequest(invokeId, err)
+						return
+					}
+					vals[0].rawData = buf.Bytes()
+
+					n := vals[0].BlockSize
+					if n > len(vals[0].rawData) {
+						n = len(vals[0].rawData)
+					}
+
+					rawData := vals[0].rawData[0:n]
+					vals[0].rawData = vals[0].rawData[n:]
+
+					lastBlock := false
+					if 0 == len(vals[0].rawData) {
+						lastBlock = true
+					}
+
+					err = encode_SetRequestNormalBlock(&buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter, lastBlock, vals[0].blockNumber+1, rawData)
+					if nil != err {
+						aconn.killRequest(invokeId, err)
+						return
+					} else {
+						vals[0].blockNumber += 1
+					}
 				}
 			}
 		} else {
-			if nil == vals[0].data {
+			if nil == vals[0].Data {
 				_, err = buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
 				if nil != err {
 					errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
@@ -569,12 +610,6 @@ func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTi
 					return
 				}
 			} else {
-				_, err = buf.Write([]byte{0xC1, 0x04, byte(invokeIdAndPriority)})
-				if nil != err {
-					errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
-					aconn.killRequest(invokeId, err)
-					return
-				}
 				var (
 					classIds         []DlmsClassId        = make([]DlmsClassId, len(vals))
 					instanceIds      []*DlmsOid           = make([]*DlmsOid, len(vals))
@@ -589,12 +624,65 @@ func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTi
 					attributeIds[i] = vals[i].AttributeId
 					accessSelectors[i] = vals[i].AccessSelector
 					accessParameters[i] = vals[i].AccessParameter
-					datas[i] = vals[i].data
+					datas[i] = vals[i].Data
 				}
-				err = encode_SetRequestWithList(&buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, datas)
-				if nil != err {
-					aconn.killRequest(invokeId, err)
-					return
+				if 0 == vals[0].BlockSize {
+					_, err = buf.Write([]byte{0xC1, 0x04, byte(invokeIdAndPriority)})
+					if nil != err {
+						errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
+						aconn.killRequest(invokeId, err)
+						return
+					}
+
+					err = encode_SetRequestWithList(&buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, datas)
+					if nil != err {
+						aconn.killRequest(invokeId, err)
+						return
+					}
+				} else {
+					_, err = buf.Write([]byte{0xC1, 0x05, byte(invokeIdAndPriority)})
+					if nil != err {
+						errorLog.Printf("%s: buf.Write() failed: %v\n", FNAME, err)
+						aconn.killRequest(invokeId, err)
+						return
+					}
+
+					var buf bytes.Buffer
+
+					count := uint8(len(classIds))
+					err = binary.Write(&buf, binary.BigEndian, count)
+					if nil != err {
+						panic(fmt.Sprintf("binary.Write() failed: %v", err))
+					}
+					for i := 0; i < int(count); i++ {
+						err = vals[0].Data.Encode(&buf)
+						if nil != err {
+							aconn.killRequest(invokeId, err)
+							return
+						}
+					}
+					vals[0].rawData = buf.Bytes()
+
+					n := vals[0].BlockSize
+					if n > len(vals[0].rawData) {
+						n = len(vals[0].rawData)
+					}
+
+					rawData := vals[0].rawData[0:n]
+					vals[0].rawData = vals[0].rawData[n:]
+
+					lastBlock := false
+					if 0 == len(vals[0].rawData) {
+						lastBlock = true
+					}
+
+					err = encode_SetRequestWithListBlock(&buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, lastBlock, vals[0].blockNumber+1, rawData)
+					if nil != err {
+						aconn.killRequest(invokeId, err)
+						return
+					} else {
+						vals[0].blockNumber += 1
+					}
 				}
 			}
 		}
