@@ -1029,3 +1029,213 @@ func TestX_decode_SetRequestWithListBlock(t *testing.T) {
 	}
 
 }
+
+func TestX_encode_SetResponseNormal(t *testing.T) {
+	b := []byte{0x01}
+
+	var buf bytes.Buffer
+	err := encode_SetResponseNormal(&buf, 1)
+	if nil != err {
+		t.Fatalf("encode_SetRequestNormal() failed, err: %v", err)
+	}
+
+	if !bytes.Equal(buf.Bytes(), b) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestX_decode_SetResponseNormal(t *testing.T) {
+	pdu := []byte{0x01}
+	buf := bytes.NewBuffer(pdu)
+
+	err, dataAccessResult := decode_SetResponseNormal(buf)
+	if nil != err {
+		t.Fatalf("decode_SetResponseNormal() failed, err %v", err)
+	}
+
+	if 1 != dataAccessResult {
+		t.Fatalf("dataAccessResult wrong:  %d", dataAccessResult)
+	}
+}
+
+func TestX_encode_SetResponseWithList(t *testing.T) {
+	b := []byte{0x02, 0x00, 0x01}
+
+	var buf bytes.Buffer
+	err := encode_SetResponseWithList(&buf, []DlmsDataAccessResult{0, 1})
+	if nil != err {
+		t.Fatalf("encode_SetResponseWithList() failed, err: %v", err)
+	}
+
+	if !bytes.Equal(buf.Bytes(), b) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestX_decode_SetResponseWithList(t *testing.T) {
+	pdu := []byte{0x02, 0x00, 0x01}
+	buf := bytes.NewBuffer(pdu)
+
+	err, dataAccessResults := decode_SetResponseWithList(buf)
+	if nil != err {
+		t.Fatalf("decode_SetResponseWithList() failed, err %v", err)
+	}
+
+	if 2 != len(dataAccessResults) {
+		t.Fatalf("dataAccessResults count wrong")
+	}
+	if 0 != dataAccessResults[0] {
+		t.Fatalf("dataAccessResult wrong")
+	}
+	if 1 != dataAccessResults[1] {
+		t.Fatalf("dataAccessResult wrong")
+	}
+}
+
+func TestX_encode_SetResponseForDataBlock(t *testing.T) {
+	b := []byte{0x00, 0x00, 0x00, 0x01}
+
+	var buf bytes.Buffer
+	err := encode_SetResponseForDataBlock(&buf, 1)
+	if nil != err {
+		t.Fatalf("encode_SetResponseForDataBlock() failed, err: %v", err)
+	}
+
+	if !bytes.Equal(buf.Bytes(), b) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestX_decode_SetResponseForDataBlock(t *testing.T) {
+	pdu := []byte{0x00, 0x00, 0x00, 0x01}
+	buf := bytes.NewBuffer(pdu)
+
+	err, blockNumber := decode_SetResponseForDataBlock(buf)
+	if nil != err {
+		t.Fatalf("decode_SetResponseForDataBlock() failed, err %v", err)
+	}
+
+	if 1 != blockNumber {
+		t.Fatalf("blockNumber wrong:  %d", blockNumber)
+	}
+}
+
+func TestX_encode_SetResponseForLastDataBlock(t *testing.T) {
+	b := []byte{0x00, 0x00, 0x00, 0x00, 0x02}
+
+	var buf bytes.Buffer
+	err := encode_SetResponseForLastDataBlock(&buf, 0, 2)
+	if nil != err {
+		t.Fatalf("failed: err: %v", err)
+	}
+
+	if !bytes.Equal(buf.Bytes(), b) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestX_decode_SetResponseForLastDataBlock(t *testing.T) {
+	pdu := []byte{0x00, 0x00, 0x00, 0x00, 0x01}
+	buf := bytes.NewBuffer(pdu)
+
+	err, dataAccessResult, blockNumber := decode_SetResponseForLastDataBlock(buf)
+	if nil != err {
+		t.Fatalf("failed: err: %v", err)
+	}
+
+	if 0 != dataAccessResult {
+		t.Fatalf("failed")
+	}
+	if 1 != blockNumber {
+		t.Fatalf("failed")
+	}
+}
+
+func TestX_encode_SetRequestWithDataBlock(t *testing.T) {
+	b := []byte{
+		0x01,
+		0x00, 0x00, 0x00, 0x02,
+		0x08,
+		0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27}
+
+	var buf bytes.Buffer
+	err := encode_SetRequestWithDataBlock(&buf, true, 2, []byte{0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27})
+	if nil != err {
+		t.Fatalf("failed: err: %v", err)
+	}
+
+	if !bytes.Equal(buf.Bytes(), b) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestX_decode_SetRequestWithDataBlock(t *testing.T) {
+	pdu := []byte{
+		0x01,
+		0x00, 0x00, 0x00, 0x02,
+		0x08,
+		0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27}
+
+	buf := bytes.NewBuffer(pdu)
+
+	err, lastBlock, blockNumber, rawData := decode_SetRequestWithDataBlock(buf)
+	if nil != err {
+		t.Fatalf("failed: err: %v", err)
+	}
+
+	if true != lastBlock {
+		t.Fatalf("failed")
+	}
+	if 2 != blockNumber {
+		t.Fatalf("failed")
+	}
+	if !bytes.Equal(rawData, []byte{0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27}) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestX_encode_SetResponseForLastDataBlockWithList(t *testing.T) {
+	b := []byte{
+		0x02,
+		0x00,
+		0x00,
+		0x00, 0x00, 0x00, 0x03}
+
+	var buf bytes.Buffer
+	err := encode_SetResponseForLastDataBlockWithList(&buf, []DlmsDataAccessResult{0x00, 0x00}, 3)
+	if nil != err {
+		t.Fatalf("failed: err: %v", err)
+	}
+
+	if !bytes.Equal(buf.Bytes(), b) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestX_decode_SetResponseForLastDataBlockWithList(t *testing.T) {
+	pdu := []byte{
+		0x02,
+		0x00,
+		0x00,
+		0x00, 0x00, 0x00, 0x03}
+
+	buf := bytes.NewBuffer(pdu)
+
+	err, dataAccessResults, blockNumber := decode_SetResponseForLastDataBlockWithList(buf)
+	if nil != err {
+		t.Fatalf("failed: err: %v", err)
+	}
+
+	if 2 != len(dataAccessResults) {
+		t.Fatalf("failed")
+	}
+	if 0 != dataAccessResults[0] {
+		t.Fatalf("failed")
+	}
+	if 0 != dataAccessResults[1] {
+		t.Fatalf("failed")
+	}
+	if 3 != blockNumber {
+		t.Fatalf("failed")
+	}
+}

@@ -20,8 +20,9 @@ type DlmsRequest struct {
 	AccessParameter *DlmsData
 	Data            *DlmsData // Data to be sent with SetRequest. Must be nil if GetRequest.
 	BlockSize       int       // If > 0 then data sent with SetReuqest are sent in bolocks.
-	rawData         []byte    // Remaining data to be sent using block transfer.
-	blockNumber     uint32    // Number of last block sent.
+
+	rawData     []byte // Remaining data to be sent using block transfer.
+	blockNumber uint32 // Number of last block sent.
 }
 
 type DlmsResponse struct {
@@ -289,6 +290,55 @@ func (aconn *AppConn) processBlockResponse(rips []*DlmsRequestResponse, r io.Rea
 	}
 }
 
+func (aconn *AppConn) processSetResponseNormal(rips []*DlmsRequestResponse, r io.Reader, errr error) {
+
+	err, dataAccessResult := decode_SetResponseNormal(r)
+
+	rips[0].Rep = new(DlmsResponse)
+	rips[0].Rep.DataAccessResult = dataAccessResult
+
+	if nil == err {
+		aconn.killRequest(rips[0].invokeId, nil)
+	} else {
+		if nil != errr {
+			aconn.killRequest(rips[0].invokeId, errr)
+		} else {
+			aconn.killRequest(rips[0].invokeId, err)
+		}
+	}
+}
+
+func (aconn *AppConn) processSetResponseWithList(rips []*DlmsRequestResponse, r io.Reader, errr error) {
+	var (
+		FNAME string = "AppConn.processSetResponseWithList()"
+		serr  string
+	)
+
+	err, dataAccessResults := decode_SetResponseWithList(r)
+
+	if len(dataAccessResults) != len(rips) {
+		serr = fmt.Sprintf("%s: unexpected count of received list entries", FNAME)
+		errorLog.Print(serr)
+		err = errors.New(serr)
+	}
+
+	for i := 0; i < len(dataAccessResults); i += 1 {
+		rip := rips[i]
+		rip.Rep = new(DlmsResponse)
+		rip.Rep.DataAccessResult = dataAccessResults[i]
+	}
+
+	if nil == err {
+		aconn.killRequest(rips[0].invokeId, nil)
+	} else {
+		if nil != errr {
+			aconn.killRequest(rips[0].invokeId, errr)
+		} else {
+			aconn.killRequest(rips[0].invokeId, err)
+		}
+	}
+}
+
 func (aconn *AppConn) processReply(r io.Reader) {
 	var (
 		FNAME string = "processReply()"
@@ -316,18 +366,18 @@ func (aconn *AppConn) processReply(r io.Reader) {
 	}
 
 	if (0xC4 == p[0]) && (0x01 == p[1]) {
-		debugLog.Printf("%s: processing ResponseNormal", FNAME)
+		debugLog.Printf("%s: processing GetResponseNormal", FNAME)
 
 		aconn.processGetResponseNormal(rips, r, nil)
 
 	} else if (0xC4 == p[0]) && (0x03 == p[1]) {
-		debugLog.Printf("%s: processing ResponseWithList", FNAME)
+		debugLog.Printf("%s: processing GetResponseWithList", FNAME)
 
 		aconn.processGetResponseWithList(rips, r, nil)
 
 	} else if (0xC4 == p[0]) && (0x02 == p[1]) {
 		// data blocks response
-		debugLog.Printf("%s: processing ResponsewithDataBlock", FNAME)
+		debugLog.Printf("%s: processing GetResponsewithDataBlock", FNAME)
 
 		err, lastBlock, blockNumber, dataAccessResult, rawData := decode_GetResponsewithDataBlock(r)
 		if nil != err {
@@ -377,6 +427,120 @@ func (aconn *AppConn) processReply(r io.Reader) {
 
 			aconn.transportSend(rips[0].invokeId, buf.Bytes())
 		}
+
+	} else if (0xC5 == p[0]) && (0x01 == p[1]) {
+		debugLog.Printf("%s: processing SetResponseNormal", FNAME)
+
+		aconn.processSetResponseNormal(rips, r, nil)
+
+	} else if (0xC5 == p[0]) && (0x05 == p[1]) {
+		debugLog.Printf("%s: processing SetResponseWithList", FNAME)
+
+		aconn.processSetResponseWithList(rips, r, nil)
+
+	} else if (0xC5 == p[0]) && (0x02 == p[1]) {
+		debugLog.Printf("%s: processing SetResponseForDataBlock", FNAME)
+
+		req := rips[0].Req
+
+		err, blockNumber := decode_SetResponseForDataBlock(r)
+		if nil != err {
+			aconn.killRequest(rips[0].invokeId, err)
+			return
+		}
+		if req.blockNumber != blockNumber {
+			serr = fmt.Sprintf("%s: error occured receiving response block: received unexpected blockNumber: %d, invokeId: %d ", FNAME, blockNumber, invokeId)
+			errorLog.Println(serr)
+			aconn.killRequest(rips[0].invokeId, errors.New(serr))
+			return
+		}
+
+		// set next block
+
+		n := req.BlockSize
+		if n > len(req.rawData) {
+			n = len(req.rawData)
+		}
+
+		rawData := req.rawData[0:n]
+		req.rawData = req.rawData[n:]
+
+		lastBlock := false
+		if 0 == len(req.rawData) {
+			lastBlock = true
+		}
+
+		debugLog.Printf("%s: setting next data block after block %d", FNAME, blockNumber)
+
+		var buf bytes.Buffer
+		invokeIdAndPriority := p[2]
+		_, err = buf.Write([]byte{0xC1, 0x03, byte(invokeIdAndPriority)})
+		if nil != err {
+			aconn.killRequest(rips[0].invokeId, err)
+			return
+		}
+
+		err = encode_SetRequestWithDataBlock(&buf, lastBlock, blockNumber+1, rawData)
+		if nil != err {
+			aconn.killRequest(rips[0].invokeId, err)
+			return
+		}
+		req.blockNumber += 1
+
+		aconn.transportSend(rips[0].invokeId, buf.Bytes())
+
+	} else if (0xC5 == p[0]) && (0x03 == p[1]) {
+		debugLog.Printf("%s: processing SetResponseForLastDataBlock", FNAME)
+
+		req := rips[0].Req
+
+		err, dataAccessResult, blockNumber := decode_SetResponseForLastDataBlock(r)
+		if nil != err {
+			aconn.killRequest(rips[0].invokeId, err)
+			return
+		}
+		if req.blockNumber != blockNumber {
+			serr = fmt.Sprintf("%s: error occured receiving response block: received unexpected blockNumber: %d, invokeId: %d ", FNAME, blockNumber, invokeId)
+			errorLog.Println(serr)
+			aconn.killRequest(rips[0].invokeId, errors.New(serr))
+			return
+		}
+
+		rips[0].Rep = new(DlmsResponse)
+		rips[0].Rep.DataAccessResult = dataAccessResult
+
+		aconn.killRequest(rips[0].invokeId, nil)
+
+	} else if (0xC5 == p[0]) && (0x04 == p[1]) {
+		debugLog.Printf("%s: processing SetResponseForLastDataBlockWithList", FNAME)
+
+		req := rips[0].Req
+
+		err, dataAccessResults, blockNumber := decode_SetResponseForLastDataBlockWithList(r)
+		if nil != err {
+			aconn.killRequest(rips[0].invokeId, err)
+			return
+		}
+		if req.blockNumber != blockNumber {
+			serr = fmt.Sprintf("%s: error occured receiving response block: received unexpected blockNumber: %d, invokeId: %d ", FNAME, blockNumber, invokeId)
+			errorLog.Println(serr)
+			aconn.killRequest(rips[0].invokeId, errors.New(serr))
+			return
+		}
+
+		if len(rips) != len(dataAccessResults) {
+			serr = fmt.Sprintf("%s: error occured receiving response block: received unexpected number of results: %d, expected: %d, invokeId: %d ", FNAME, len(dataAccessResults), len(rips), invokeId)
+			errorLog.Println(serr)
+			aconn.killRequest(rips[0].invokeId, errors.New(serr))
+			return
+		}
+
+		for i := 0; i < len(rips); i++ {
+			rips[i].Rep = new(DlmsResponse)
+			rips[i].Rep.DataAccessResult = dataAccessResults[i]
+		}
+
+		aconn.killRequest(rips[0].invokeId, nil)
 
 	} else {
 		serr = fmt.Sprintf("%s: received pdu discarded due to unknown tag: %02X %02X", FNAME, p[0], p[1])

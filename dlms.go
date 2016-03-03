@@ -2479,6 +2479,259 @@ func decode_SetRequestWithListBlock(r io.Reader) (err error, classIds []DlmsClas
 
 }
 
+func encode_SetResponseNormal(w io.Writer, dataAccessResult DlmsDataAccessResult) (err error) {
+	var FNAME = "encode_SetResponseNormal()"
+
+	err = binary.Write(w, binary.BigEndian, dataAccessResult)
+	if nil != err {
+		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+		return err
+	}
+
+	return nil
+}
+
+func decode_SetResponseNormal(r io.Reader) (err error, dataAccessResult DlmsDataAccessResult) {
+	var FNAME = "decode_SetResponseNormal()"
+
+	err = binary.Read(r, binary.BigEndian, &dataAccessResult)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, 0
+	}
+
+	return nil, dataAccessResult
+}
+
+func encode_SetResponseWithList(w io.Writer, dataAccessResults []DlmsDataAccessResult) (err error) {
+	var FNAME = "encode_SetResponseWithList()"
+
+	count := uint8(len(dataAccessResults))
+	err = binary.Write(w, binary.BigEndian, count)
+	if nil != err {
+		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+		return err
+	}
+
+	for i := uint8(0); i < count; i++ {
+		err = binary.Write(w, binary.BigEndian, dataAccessResults[i])
+		if nil != err {
+			errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+			return err
+		}
+	}
+
+	return nil
+}
+
+func decode_SetResponseWithList(r io.Reader) (err error, dataAccessResults []DlmsDataAccessResult) {
+	var FNAME = "decode_SetResponseWithList()"
+
+	var count uint8
+	err = binary.Read(r, binary.BigEndian, &count)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, nil
+	}
+
+	dataAccessResults = make([]DlmsDataAccessResult, count)
+	for i := uint8(0); i < count; i++ {
+		err = binary.Read(r, binary.BigEndian, &dataAccessResults[i])
+		if nil != err {
+			errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+			return err, dataAccessResults[0:i]
+		}
+	}
+
+	return nil, dataAccessResults
+}
+
+func encode_SetResponseForDataBlock(w io.Writer, blockNumber uint32) (err error) {
+	var FNAME = "encode_SetResponseForDataBlock()"
+
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+		return err
+	}
+
+	return nil
+}
+
+func decode_SetResponseForDataBlock(r io.Reader) (err error, blockNumber uint32) {
+	var FNAME = "decode_SetResponseForDataBlock()"
+
+	err = binary.Read(r, binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, 0
+	}
+
+	return nil, blockNumber
+}
+
+func encode_SetResponseForLastDataBlock(w io.Writer, dataAccessResult DlmsDataAccessResult, blockNumber uint32) (err error) {
+	var FNAME = "encode_SetResponseForDataBlock()"
+
+	err = binary.Write(w, binary.BigEndian, dataAccessResult)
+	if nil != err {
+		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+		return err
+	}
+
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+		return err
+	}
+
+	return nil
+}
+
+func decode_SetResponseForLastDataBlock(r io.Reader) (err error, dataAccessResult DlmsDataAccessResult, blockNumber uint32) {
+	var FNAME = "decode_SetResponseForDataBlock()"
+
+	err = binary.Read(r, binary.BigEndian, &dataAccessResult)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, 0, 0
+	}
+
+	err = binary.Read(r, binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, 0, 0
+	}
+
+	return nil, dataAccessResult, blockNumber
+}
+
+func encode_SetResponseForLastDataBlockWithList(w io.Writer, dataAccessResults []DlmsDataAccessResult, blockNumber uint32) (err error) {
+	var FNAME = "encode_SetResponseForLastDataBlockWithList()"
+
+	count := uint8(len(dataAccessResults))
+	err = binary.Write(w, binary.BigEndian, count)
+	if nil != err {
+		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+		return err
+	}
+
+	for i := uint8(0); i < count; i++ {
+		err = binary.Write(w, binary.BigEndian, dataAccessResults[i])
+		if nil != err {
+			errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+			return err
+		}
+	}
+
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+		return err
+	}
+
+	return nil
+}
+
+func decode_SetResponseForLastDataBlockWithList(r io.Reader) (err error, dataAccessResults []DlmsDataAccessResult, blockNumber uint32) {
+	var FNAME = "decode_SetResponseForLastDataBlockWithList()"
+
+	var count uint8
+	err = binary.Read(r, binary.BigEndian, &count)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, nil, 0
+	}
+
+	dataAccessResults = make([]DlmsDataAccessResult, count)
+	for i := uint8(0); i < count; i++ {
+		err = binary.Read(r, binary.BigEndian, &dataAccessResults[i])
+		if nil != err {
+			errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+			return err, nil, 0
+		}
+	}
+
+	err = binary.Read(r, binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, nil, 0
+	}
+
+	return nil, dataAccessResults, blockNumber
+}
+
+func encode_SetRequestWithDataBlock(w io.Writer, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
+	var FNAME = "encode_SetRequestWithDataBlock()"
+
+	var _lastBlock uint8 = 0
+	if lastBlock {
+		_lastBlock = 1
+	}
+
+	err = binary.Write(w, binary.BigEndian, _lastBlock)
+	if nil != err {
+		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+		return err
+	}
+
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+		return err
+	}
+
+	err = encodeAxdrLength(w, uint16(len(rawData)))
+	if nil != err {
+		errorLog.Printf("%s: encodeAxdrLength() failed, err: %v\n", FNAME, err)
+		return err
+	}
+	_, err = w.Write(rawData)
+	if nil != err {
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
+		return err
+	}
+
+	return nil
+}
+
+func decode_SetRequestWithDataBlock(r io.Reader) (err error, lastBlock bool, blockNumber uint32, rawData []byte) {
+	var FNAME = "decode_SetRequestWithDataBlock()"
+
+	var _lastBlock uint8
+	err = binary.Read(r, binary.BigEndian, &_lastBlock)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, false, 0, nil
+	}
+	if _lastBlock > 0 {
+		lastBlock = true
+	} else {
+		lastBlock = false
+	}
+
+	err = binary.Read(r, binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, lastBlock, 0, nil
+	}
+
+	err, length := decodeAxdrLength(r)
+	if nil != err {
+		errorLog.Printf("%s: decodeAxdrLength() failed, err: %v\n", FNAME, err)
+		return err, lastBlock, blockNumber, nil
+	}
+
+	rawData = make([]byte, length)
+	err = binary.Read(r, binary.BigEndian, rawData)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, lastBlock, blockNumber, nil
+	}
+
+	return err, lastBlock, blockNumber, rawData
+}
+
 const (
 	COSEM_lowest_level_security_mechanism_name           = uint(0)
 	COSEM_low_level_security_mechanism_name              = uint(1)
