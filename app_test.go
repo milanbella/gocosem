@@ -33,7 +33,13 @@ type tMockCosemServerConnection struct {
 	rwc               io.ReadWriteCloser
 	logicalDevice     uint16
 	applicationClient uint16
-	blocks            map[uint8][][]byte // invoke id bolocks to be sent in case of block transfer
+	blocks            map[uint8][][]byte             // blocks to be sent in case of outbound block transfer (key is invokeId)
+	rawData           map[uint8]*bytes.Buffer        // raw data received so far in case of inbound block transfer (key is invokeId)
+	classIds          map[uint8][]DlmsClassId        // key is invokeId
+	instanceIds       map[uint8][]*DlmsOid           // key is invokeId
+	attributeIds      map[uint8][]DlmsAttributeId    // key is invokeId
+	accessSelectors   map[uint8][]DlmsAccessSelector // key is invokeId
+	accessParameters  map[uint8][]*DlmsData          // key is invokeId
 }
 
 func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, b1 byte, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResult DlmsDataAccessResult, reply []byte) (err error) {
@@ -44,7 +50,7 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 	invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
 	l := conn.srv.blockLength // block length
 	//if len(reply) > l {
-	if 0x02 == b1 {
+	if (0xC0 == b0) && (0x02 == b1) {
 		// use block transfer
 		t.Logf("%s: using block transfer", FNAME)
 
@@ -66,7 +72,6 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 			}
 		*/
 
-		//buf.Write([]byte{0xC4, 0x02, byte(invokeIdAndPriority)})
 		_, err := buf.Write([]byte{b0, b1, byte(invokeIdAndPriority)})
 		if nil != err {
 			errorLog.Printf("%s: %v\n", FNAME, err)
@@ -93,7 +98,7 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 			errorLog.Printf("%s: %v\n", FNAME, err)
 			return err
 		}
-		if 0x03 != b1 {
+		if (0xC4 == b0) && (0x03 != b1) {
 			_, err := buf.Write([]byte{byte(dataAccessResult)})
 			if nil != err {
 				errorLog.Printf("%s: %v\n", FNAME, err)
@@ -263,6 +268,182 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 			return err
 		}
 		return nil
+	} else if bytes.Equal(p[0:2], []byte{0xC1, 0x01}) {
+		t.Logf("%s: SetRequestNormal", FNAME)
+
+		err, classId, instanceId, attributeId, accessSelector, accessParameters, data := decode_SetRequestNormal(r)
+		if nil != err {
+			errorLog.Printf("%s: %v\n", FNAME, err)
+			return err
+		}
+
+		dataAccessResult := conn.srv.setData(t, classId, instanceId, attributeId, accessSelector, accessParameters, data)
+		t.Logf("%s: dataAccessResult: %d", FNAME, dataAccessResult)
+
+		var buf bytes.Buffer
+
+		err = encode_SetResponseNormal(&buf, dataAccessResult)
+		if nil != err {
+			errorLog.Printf("%s: %v\n", FNAME, err)
+			return err
+		}
+		err = conn.sendEncodedReply(t, 0xC5, 0x01, invokeIdAndPriority, 0, buf.Bytes())
+		if nil != err {
+			return err
+		}
+	} else if bytes.Equal(p[0:2], []byte{0xC1, 0x04}) {
+		t.Logf("%s: SetRequestNormalWithList", FNAME)
+
+		err, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, datas := decode_SetRequestWithList(r)
+		if nil != err {
+			errorLog.Printf("%s: %v\n", FNAME, err)
+			return err
+		}
+
+		count := len(classIds)
+		dataAccessResults := make([]dataAccessResult, count)
+
+		for i := 0; i < count; i++ {
+			dataAccessResults[i] = conn.srv.setData(t, classIds[i], instanceIds[i], attributeIds[i], accessSelectors[i], accessParameters[i], datas[i])
+			t.Logf("%s: dataAccessResult[%d]: %d", FNAME, i, dataAccessResults[i])
+		}
+
+		var buf bytes.Buffer
+
+		err = encode_SetResponseWithList(&buf, dataAccessResults)
+		if nil != err {
+			errorLog.Printf("%s: %v\n", FNAME, err)
+			return err
+		}
+		err = conn.sendEncodedReply(t, 0xC5, 0x05, invokeIdAndPriority, 0, buf.Bytes())
+		if nil != err {
+			return err
+		}
+
+	} else if bytes.Equal(p[0:2], []byte{0xC1, 0x02}) {
+		t.Logf("%s: SetRequestNormalBlock", FNAME)
+
+		err, classId, instanceId, attributeId, accessSelector, accessParameters, lastBlock, blockNumber, rawData := decode_SetRequestNormalBlock(r)
+		if nil != err {
+			errorLog.Printf("%s: %v\n", FNAME, err)
+			return err
+		}
+
+		conn.rawData[invokeId] = new(bytes.Buffer)
+
+		conn.classIds[invokeId] = make([]DlmsClassId, 1)
+		conn.instanceIds[invokeId] = make([]*DlmsOid, 1)
+		conn.attributeIds[invokeId] = make([]DlmsAttributeId, 1)
+		conn.accessSelectors[invokeId] = make([]DlmsAccessSelector, 1)
+		conn.accessParameters[invokeId] = make([]*DlmsData, 1)
+
+		_, err := conn.rawData[invokeId].Write(rawData)
+		if nil != err {
+			return err
+		}
+		conn.classIds[invokeId][0] = classId
+		conn.instanceIds[invokeId][0] = instanceId
+		conn.attributeIds[invokeId][0] = attributeId
+		conn.accessSelectors[invokeId][0] = accessSelector
+		conn.accessParameters[invokeId][0] = accessParameters
+
+		if lastBlock {
+
+			data = new(DlmsData)
+			err := data.Decode(conn.rawData[invokeId])
+			if nil != err {
+				return err
+			}
+
+			dataAccessResult := conn.srv.setData(t, conn.classIds[invokeId][0], conn.instanceIds[invokeId][0], conn.attributeIds[invokeId][0], conn.accessSelectors[invokeId][0], conn.accessParameters[invokeId][0], data)
+			t.Logf("%s: dataAccessResult: %d", FNAME, dataAccessResult)
+
+			var buf bytes.Buffer
+
+			err = encode_SetResponseForLastDataBlock(&buf, dataAccessResult, blockNumber)
+			if nil != err {
+				errorLog.Printf("%s: %v\n", FNAME, err)
+				return err
+			}
+			err = conn.sendEncodedReply(t, 0xC5, 0x03, invokeIdAndPriority, 0, buf.Bytes())
+			if nil != err {
+				return err
+			}
+		} else {
+			var buf bytes.Buffer
+
+			err = encode_SetResponseForDataBlock(&buf, blockNumber)
+			if nil != err {
+				errorLog.Printf("%s: %v\n", FNAME, err)
+				return err
+			}
+			err = conn.sendEncodedReply(t, 0xC5, 0x02, invokeIdAndPriority, 0, buf.Bytes())
+			if nil != err {
+				return err
+			}
+		}
+
+	} else if bytes.Equal(p[0:2], []byte{0xC1, 0x05}) {
+		t.Logf("%s: SetRequestWithListBlock", FNAME)
+
+		err, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, lastBlock, blockNumber, rawData := decode_SetRequestWithListBlock(r)
+		if nil != err {
+			errorLog.Printf("%s: %v\n", FNAME, err)
+			return err
+		}
+
+		conn.rawData[invokeId] = new(bytes.Buffer)
+
+		conn.classIds[invokeId] = classIds
+		conn.instanceIds[invokeId] = instanceIds
+		conn.attributeIds[invokeId] = attributeIds
+		conn.accessSelectors[invokeId] = accessSelectors
+		conn.accessParameters[invokeId] = accessParameters
+
+		_, err := conn.rawData[invokeId].Write(rawData)
+		if nil != err {
+			return err
+		}
+
+		count := len(conn.classIds[invokeId])
+
+		if lastBlock {
+			buf := conn.rawData[invokeId]
+
+			var count uint8
+			err = binary.Read(buf, binary.BigEndian, &count)
+			if nil != err {
+				errorLog.Println("%s: binary.Read() failed, err: %v", err)
+				return err
+			}
+
+			dataAccessResults = make([]DlmsDataAccessResult, count)
+
+			for i := 0; i < int(count); i++ {
+				data := new(DlmsData)
+				err := data.Decode(buf)
+				if nil != err {
+					return err
+				}
+
+				dataAccessResults[i] = conn.srv.setData(t, conn.classIds[invokeId][i], conn.instanceIds[invokeId][i], conn.attributeIds[invokeId][i], conn.accessSelectors[invokeId][i], conn.accessParameters[invokeId][i], data)
+				t.Logf("%s: dataAccessResults[i]: %d", FNAME, dataAccessResults[i])
+			}
+
+			buf = new(bytes.Buffer)
+
+			err = encode_SetResponseForLastDataBlockWithList(&buf, dataAccessResults, blockNumber)
+			if nil != err {
+				errorLog.Printf("%s: %v\n", FNAME, err)
+				return err
+			}
+			err = conn.sendEncodedReply(t, 0xC5, 0x04, invokeIdAndPriority, 0, buf.Bytes())
+			if nil != err {
+				return err
+			}
+		} else {
+		}
+
 	} else {
 		panic("assertion failed")
 	}
@@ -339,6 +520,31 @@ func (srv *tMockCosemServer) getData(t *testing.T, classId DlmsClassId, instance
 	}
 }
 
+func (srv *tMockCosemServer) setData(t *testing.T, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData, data *DlmsData) (dataAccessResult DlmsDataAccessResult) {
+	if nil == instanceId {
+		panic("assertion failed")
+	}
+	key := srv.objectKey(instanceId)
+	obj, ok := srv.objects[key]
+	if !ok {
+		t.Logf("no such instance id: setting dataAccessResult to 1")
+		return 1, nil
+	} else {
+		if obj.classId == classId {
+			_, ok = obj.attributes[attributeId]
+			if !ok {
+				t.Logf("no such instance attribute: setting dataAccessResult to 1")
+				return 1, nil
+			}
+			obj.attributes[attributeId] = data
+			return 0
+		} else {
+			t.Logf("instance class mismatch: setting dataAccessResult to 1")
+			return 1, nil
+		}
+	}
+}
+
 func (srv *tMockCosemServer) setAttribute(instanceId *DlmsOid, classId DlmsClassId, attributeId DlmsAttributeId, data *DlmsData) {
 
 	key := srv.objectKey(instanceId)
@@ -391,7 +597,16 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	conn.rwc = rwc
 	conn.logicalDevice = logicalDevice
 	conn.applicationClient = applicationClient
+
 	conn.blocks = make(map[uint8][][]byte)
+
+	conn.rawData = make(map[uint8]*bytes.Buffer)
+	conn.classIds = make(map[uint8][]DlmsClassId)
+	conn.instanceIds = make(map[uint8][]*DlmsOi)
+	conn.attributeIds = make(map[uint8][]DlmsAttributeId)
+	conn.accessSelectors = make(map[uint8][]DlmsAccessSelector)
+	conn.accessParameters = make(map[uint8][]*DlmsData)
+
 	srv.connections.PushBack(conn)
 
 	go conn.receiveAndReply(t)

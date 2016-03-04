@@ -2479,6 +2479,77 @@ func decode_SetRequestWithListBlock(r io.Reader) (err error, classIds []DlmsClas
 
 }
 
+func encode_SetRequestWithDataBlock(w io.Writer, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
+	var FNAME = "encode_SetRequestWithDataBlock()"
+
+	var _lastBlock uint8 = 0
+	if lastBlock {
+		_lastBlock = 1
+	}
+
+	err = binary.Write(w, binary.BigEndian, _lastBlock)
+	if nil != err {
+		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+		return err
+	}
+
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
+		return err
+	}
+
+	err = encodeAxdrLength(w, uint16(len(rawData)))
+	if nil != err {
+		errorLog.Printf("%s: encodeAxdrLength() failed, err: %v\n", FNAME, err)
+		return err
+	}
+	_, err = w.Write(rawData)
+	if nil != err {
+		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
+		return err
+	}
+
+	return nil
+}
+
+func decode_SetRequestWithDataBlock(r io.Reader) (err error, lastBlock bool, blockNumber uint32, rawData []byte) {
+	var FNAME = "decode_SetRequestWithDataBlock()"
+
+	var _lastBlock uint8
+	err = binary.Read(r, binary.BigEndian, &_lastBlock)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, false, 0, nil
+	}
+	if _lastBlock > 0 {
+		lastBlock = true
+	} else {
+		lastBlock = false
+	}
+
+	err = binary.Read(r, binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
+		return err, lastBlock, 0, nil
+	}
+
+	err, length := decodeAxdrLength(r)
+	if nil != err {
+		errorLog.Printf("%s: decodeAxdrLength() failed, err: %v\n", FNAME, err)
+		return err, lastBlock, blockNumber, nil
+	}
+
+	rawData = make([]byte, length)
+	err = binary.Read(r, binary.BigEndian, rawData)
+	if nil != err {
+		errorLog.Println("%s: binary.Read() failed, err: %v", err)
+		return err, lastBlock, blockNumber, nil
+	}
+
+	return err, lastBlock, blockNumber, rawData
+}
+
 func encode_SetResponseNormal(w io.Writer, dataAccessResult DlmsDataAccessResult) (err error) {
 	var FNAME = "encode_SetResponseNormal()"
 
@@ -2659,77 +2730,6 @@ func decode_SetResponseForLastDataBlockWithList(r io.Reader) (err error, dataAcc
 	}
 
 	return nil, dataAccessResults, blockNumber
-}
-
-func encode_SetRequestWithDataBlock(w io.Writer, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
-	var FNAME = "encode_SetRequestWithDataBlock()"
-
-	var _lastBlock uint8 = 0
-	if lastBlock {
-		_lastBlock = 1
-	}
-
-	err = binary.Write(w, binary.BigEndian, _lastBlock)
-	if nil != err {
-		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
-		return err
-	}
-
-	err = binary.Write(w, binary.BigEndian, blockNumber)
-	if nil != err {
-		errorLog.Println("%s: binary.Write() failed, err: %v", FNAME, err)
-		return err
-	}
-
-	err = encodeAxdrLength(w, uint16(len(rawData)))
-	if nil != err {
-		errorLog.Printf("%s: encodeAxdrLength() failed, err: %v\n", FNAME, err)
-		return err
-	}
-	_, err = w.Write(rawData)
-	if nil != err {
-		errorLog.Printf("%s: w.Wite() failed, err: %v\n", FNAME, err)
-		return err
-	}
-
-	return nil
-}
-
-func decode_SetRequestWithDataBlock(r io.Reader) (err error, lastBlock bool, blockNumber uint32, rawData []byte) {
-	var FNAME = "decode_SetRequestWithDataBlock()"
-
-	var _lastBlock uint8
-	err = binary.Read(r, binary.BigEndian, &_lastBlock)
-	if nil != err {
-		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
-		return err, false, 0, nil
-	}
-	if _lastBlock > 0 {
-		lastBlock = true
-	} else {
-		lastBlock = false
-	}
-
-	err = binary.Read(r, binary.BigEndian, &blockNumber)
-	if nil != err {
-		errorLog.Println("%s: binary.Read() failed, err: %v", FNAME, err)
-		return err, lastBlock, 0, nil
-	}
-
-	err, length := decodeAxdrLength(r)
-	if nil != err {
-		errorLog.Printf("%s: decodeAxdrLength() failed, err: %v\n", FNAME, err)
-		return err, lastBlock, blockNumber, nil
-	}
-
-	rawData = make([]byte, length)
-	err = binary.Read(r, binary.BigEndian, rawData)
-	if nil != err {
-		errorLog.Println("%s: binary.Read() failed, err: %v", err)
-		return err, lastBlock, blockNumber, nil
-	}
-
-	return err, lastBlock, blockNumber, rawData
 }
 
 const (
