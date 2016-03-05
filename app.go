@@ -255,6 +255,10 @@ func (aconn *AppConn) processGetResponseWithList(rips []*DlmsRequestResponse, r 
 		serr = fmt.Sprintf("%s: unexpected count of received list entries", FNAME)
 		errorLog.Print(serr)
 		err = errors.New(serr)
+
+		if len(dataAccessResults) > len(rips) {
+			dataAccessResults = dataAccessResults[0:len(rips)]
+		}
 	}
 
 	for i := 0; i < len(dataAccessResults); i += 1 {
@@ -320,6 +324,10 @@ func (aconn *AppConn) processSetResponseWithList(rips []*DlmsRequestResponse, r 
 		serr = fmt.Sprintf("%s: unexpected count of received list entries", FNAME)
 		errorLog.Print(serr)
 		err = errors.New(serr)
+
+		if len(dataAccessResults) > len(rips) {
+			dataAccessResults = dataAccessResults[0:len(rips)]
+		}
 	}
 
 	for i := 0; i < len(dataAccessResults); i += 1 {
@@ -470,7 +478,7 @@ func (aconn *AppConn) processReply(r io.Reader) {
 			lastBlock = true
 		}
 
-		debugLog.Printf("%s: setting next data block after block %d", FNAME, blockNumber)
+		debugLog.Printf("%s: setting next data block (current block is %d)", FNAME, blockNumber)
 
 		var buf bytes.Buffer
 		invokeIdAndPriority := p[2]
@@ -716,13 +724,13 @@ func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTi
 						return
 					}
 
-					var buf bytes.Buffer
-					err = vals[0].Data.Encode(&buf)
+					var _buf bytes.Buffer
+					err = vals[0].Data.Encode(&_buf)
 					if nil != err {
 						aconn.killRequest(invokeId, err)
 						return
 					}
-					vals[0].rawData = buf.Bytes()
+					vals[0].rawData = _buf.Bytes()
 
 					n := vals[0].BlockSize
 					if n > len(vals[0].rawData) {
@@ -746,7 +754,7 @@ func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTi
 					}
 				}
 			}
-		} else {
+		} else if len(vals) > 1 {
 			if nil == vals[0].Data {
 				_, err = buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
 				if nil != err {
@@ -811,21 +819,21 @@ func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTi
 						return
 					}
 
-					var buf bytes.Buffer
+					var _buf bytes.Buffer
 
 					count := uint8(len(classIds))
-					err = binary.Write(&buf, binary.BigEndian, count)
+					err = binary.Write(&_buf, binary.BigEndian, count)
 					if nil != err {
 						panic(fmt.Sprintf("binary.Write() failed: %v", err))
 					}
 					for i := 0; i < int(count); i++ {
-						err = vals[0].Data.Encode(&buf)
+						err = vals[0].Data.Encode(&_buf)
 						if nil != err {
 							aconn.killRequest(invokeId, err)
 							return
 						}
 					}
-					vals[0].rawData = buf.Bytes()
+					vals[0].rawData = _buf.Bytes()
 
 					n := vals[0].BlockSize
 					if n > len(vals[0].rawData) {
@@ -849,6 +857,8 @@ func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTi
 					}
 				}
 			}
+		} else {
+			panic("assertion failed")
 		}
 
 		aconn.transportSend(invokeId, buf.Bytes())
