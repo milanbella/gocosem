@@ -50,9 +50,9 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 	invokeId := uint8((invokeIdAndPriority & 0xF0) >> 4)
 	l := conn.srv.blockLength // block length
 	//if len(reply) > l {
-	if (0xC0 == b0) && (0x02 == b1) {
+	if (0xC4 == b0) && (0x02 == b1) {
 		// use block transfer
-		t.Logf("%s: using block transfer", FNAME)
+		t.Logf("%s: outbound block transfer", FNAME)
 
 		blocks := make([][]byte, len(reply)/l+1)
 		b := reply[0:]
@@ -91,14 +91,15 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 		}
 
 	} else {
-		t.Logf("%s: using normal transfer", FNAME)
+		t.Logf("%s: outbound normal transfer", FNAME)
 		ch := make(DlmsChannel)
 		_, err := buf.Write([]byte{b0, b1, byte(invokeIdAndPriority)})
 		if nil != err {
 			errorLog.Printf("%s: %v\n", FNAME, err)
 			return err
 		}
-		if (0xC4 == b0) && (0x03 != b1) {
+
+		if (0xC4 == b0) && (0x03 != b1) { // only  Get responses except to Get response with list
 			_, err := buf.Write([]byte{byte(dataAccessResult)})
 			if nil != err {
 				errorLog.Printf("%s: %v\n", FNAME, err)
