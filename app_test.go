@@ -1382,3 +1382,101 @@ sinkLoop:
 	aconn.Close()
 	mockCosemServer.Close()
 }
+
+func TestX_SetRequestNormal(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+
+	data := (new(DlmsData))
+	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("application connected")
+	aconn := msg.Data.(*AppConn)
+
+	// read value
+
+	val := new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals := make([]*DlmsRequest, 1)
+	vals[0] = val
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep := msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+
+	// set value
+
+	data = (new(DlmsData))
+	data.SetOctetString([]byte{0x06, 0x07, 0x08, 0x09, 0x0A})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data // new value to set
+	vals = make([]*DlmsRequest, 1)
+	vals[0] = val
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep = msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+
+	// verify if value was really set
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals = make([]*DlmsRequest, 1)
+	vals[0] = val
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep = msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+
+	aconn.Close()
+
+	mockCosemServer.Close()
+}
