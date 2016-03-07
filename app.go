@@ -827,7 +827,7 @@ func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTi
 						panic(fmt.Sprintf("binary.Write() failed: %v", err))
 					}
 					for i := 0; i < int(count); i++ {
-						err = vals[0].Data.Encode(&_buf)
+						err = vals[i].Data.Encode(&_buf)
 						if nil != err {
 							aconn.killRequest(invokeId, err)
 							return

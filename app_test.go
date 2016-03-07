@@ -1089,7 +1089,7 @@ func TestX_GetRequestWithList(t *testing.T) {
 func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
-	mockCosemServer.blockLength = 10
+	mockCosemServer.blockLength = 5
 
 	data1 := (new(DlmsData))
 	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
@@ -1158,7 +1158,7 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
-	mockCosemServer.blockLength = 10
+	mockCosemServer.blockLength = 5
 	mockCosemServer.replyDelayMsec = 1000
 
 	data1 := (new(DlmsData))
@@ -1239,7 +1239,7 @@ func TestX_GetRequestWithList_blockTransfer_timeout(t *testing.T) {
 func TestX_GetRequestWithList_blockTransfer_blockTimeout(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
-	mockCosemServer.blockLength = 10
+	mockCosemServer.blockLength = 5
 	mockCosemServer.blockDelayMsec = 1000
 
 	data1 := (new(DlmsData))
@@ -1480,6 +1480,110 @@ func TestX_SetRequestNormal(t *testing.T) {
 	mockCosemServer.Close()
 }
 
+func TestX_SetRequestNormal_blockTransfer(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+	mockCosemServer.blockLength = 3
+
+	data := (new(DlmsData))
+	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("application connected")
+	aconn := msg.Data.(*AppConn)
+
+	// read value
+
+	vals := make([]*DlmsRequest, 1)
+
+	val := new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[0] = val
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep := msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+
+	// set value using the block transfer
+
+	data = (new(DlmsData))
+	data.SetOctetString([]byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17})
+
+	vals = make([]*DlmsRequest, 1)
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data
+	vals[0] = val
+
+	vals[0].BlockSize = 5 // setting BlockSize at vals[0] will force the block transfer
+
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep = msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+
+	// read value again to verify that it was set correctly
+
+	vals = make([]*DlmsRequest, 1)
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[0] = val
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep = msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+
+	aconn.Close()
+
+	mockCosemServer.Close()
+}
+
 func TestX_SetRequestWithList(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
@@ -1617,6 +1721,157 @@ func TestX_SetRequestWithList(t *testing.T) {
 	}
 	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
 		t.Fatalf("value differs")
+	}
+
+	aconn.Close()
+
+	mockCosemServer.Close()
+}
+
+func TestX_SetRequestWithList_blockTransfer(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+	mockCosemServer.blockLength = 5
+
+	data1 := (new(DlmsData))
+	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
+
+	data2 := (new(DlmsData))
+	data2.SetOctetString([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("application connected")
+	aconn := msg.Data.(*AppConn)
+
+	// read values
+
+	vals := make([]*DlmsRequest, 2)
+
+	val := new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[0] = val
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[1] = val
+
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep := msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data1.GetOctetString(), rep.DataAt(0).GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+	}
+	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+
+	// set values (using block transfer)
+
+	data1 = (new(DlmsData))
+	data1.SetOctetString([]byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18})
+
+	data2 = (new(DlmsData))
+	data2.SetOctetString([]byte{0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28})
+
+	vals = make([]*DlmsRequest, 2)
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data1
+	vals[0] = val
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data2
+	vals[1] = val
+
+	vals[0].BlockSize = 5 // setting BlockSize at vals[0] will force the block transfer
+
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep = msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+	}
+
+	// read same values again to verify that values were set correctly
+
+	vals = make([]*DlmsRequest, 2)
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[0] = val
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[1] = val
+
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep = msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data1.GetOctetString(), rep.DataAt(0).GetOctetString()) {
+		t.Logf("%X", data1.GetOctetString())
+		t.Logf("%X", rep.DataAt(0).GetOctetString())
+		t.Fatalf("value differs: %X", rep.DataAt(0).GetOctetString())
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+	}
+	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
+		t.Logf("%X", data2.GetOctetString())
+		t.Logf("%X", rep.DataAt(1).GetOctetString())
+		t.Fatalf("value differs: %X", rep.DataAt(1).GetOctetString())
 	}
 
 	aconn.Close()
