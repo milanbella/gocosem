@@ -928,6 +928,50 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 func TestX_GetRequestNormal_blockTransfer_timeout(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
+	mockCosemServer.blockLength = 3
+	mockCosemServer.blockDelayMsec = 300
+
+	data := (new(DlmsData))
+	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("application connected")
+	aconn := msg.Data.(*AppConn)
+
+	val := new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals := make([]*DlmsRequest, 1)
+	vals[0] = val
+	aconn.SendRequest(ch, 10000, 100, true, vals)
+	msg = <-ch
+	if ErrorBlockTimeout != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+
+	aconn.Close()
+
+	mockCosemServer.Close()
+}
+
+func TestX_GetRequestNormal_blockTransfer_blockTimeout(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
 	mockCosemServer.blockLength = 5
 	mockCosemServer.blockDelayMsec = 200
 	mockCosemServer.blockDelayLastBlock = true
