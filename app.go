@@ -412,7 +412,6 @@ func (aconn *AppConn) processReply(r io.Reader) {
 			// requests next data block
 
 			blockTimeoutAt := time.Now().Add(time.Millisecond * time.Duration(rips[0].msecBlockTimeout))
-
 			if 0 != rips[0].msecBlockTimeout {
 				rips[0].blockTimeoutAt = &blockTimeoutAt
 			}
@@ -479,6 +478,11 @@ func (aconn *AppConn) processReply(r io.Reader) {
 		}
 
 		debugLog.Printf("%s: setting next data block (current block is %d)", FNAME, blockNumber)
+
+		blockTimeoutAt := time.Now().Add(time.Millisecond * time.Duration(rips[0].msecBlockTimeout))
+		if 0 != rips[0].msecBlockTimeout {
+			rips[0].blockTimeoutAt = &blockTimeoutAt
+		}
 
 		var buf bytes.Buffer
 		invokeIdAndPriority := p[2]

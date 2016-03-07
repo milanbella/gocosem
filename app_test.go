@@ -510,6 +510,12 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 			return err
 		}
 
+		if conn.srv.blockDelayMsec > 0 {
+			if !conn.srv.blockDelayLastBlock || (conn.srv.blockDelayLastBlock && lastBlock) {
+				<-time.After(time.Millisecond * time.Duration(conn.srv.blockDelayMsec))
+			}
+		}
+
 		isList := len(conn.classIds[invokeId]) > 1
 
 		if isList {
@@ -1316,7 +1322,8 @@ func TestX_GetRequestWithList_blockTransfer_blockTimeout(t *testing.T) {
 	mockCosemServer.Close()
 }
 
-//TODO: test is failing on concurrent map access and writing on close channel
+//TODO: Test is failing due to concurrency bugs on client side  (concurrent map access and writing on close channel).
+// We need to change the way the invokeId is parallely handled. Perhaps we should have one go routine per invokeId one main routine receiving packets and disttributing requests accoriding invokeId.
 func noTestX_1000parallelRequests(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
@@ -1873,6 +1880,175 @@ func TestX_SetRequestWithList_blockTransfer(t *testing.T) {
 		t.Logf("%X", data2.GetOctetString())
 		t.Logf("%X", rep.DataAt(1).GetOctetString())
 		t.Fatalf("value differs: %X", rep.DataAt(1).GetOctetString())
+	}
+
+	aconn.Close()
+
+	mockCosemServer.Close()
+}
+
+func TestX_SetRequestWithList_blockTransfer_timeout(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+	mockCosemServer.blockLength = 4
+	mockCosemServer.replyDelayMsec = 1000
+
+	data1 := (new(DlmsData))
+	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
+
+	data2 := (new(DlmsData))
+	data2.SetOctetString([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("application connected")
+	aconn := msg.Data.(*AppConn)
+
+	// try to set values
+	data1 = (new(DlmsData))
+	data1.SetOctetString([]byte{0x11, 0x12, 0x13, 0x14, 0x15})
+
+	data2 = (new(DlmsData))
+	data2.SetOctetString([]byte{0x16, 0x17, 0x18, 0x18, 0x1A})
+
+	vals := make([]*DlmsRequest, 2)
+
+	val := new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data1
+	vals[0] = val
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data2
+	vals[1] = val
+
+	// expect request timeout
+
+	aconn.SendRequest(ch, 500, 10000, true, vals)
+	msg = <-ch
+	if ErrorRequestTimeout != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+
+	// timeouted request must not disable following requests
+
+	mockCosemServer.replyDelayMsec = 0
+	aconn.SendRequest(ch, 500, 100, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep := msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+	}
+
+	aconn.Close()
+
+	mockCosemServer.Close()
+}
+
+func TestX_SetRequestWithList_blockTransfer_blockTimeout(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+	mockCosemServer.blockDelayMsec = 1000
+
+	data1 := (new(DlmsData))
+	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
+
+	data2 := (new(DlmsData))
+	data2.SetOctetString([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, "localhost", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("application connected")
+	aconn := msg.Data.(*AppConn)
+
+	// try to set values
+
+	data1 = (new(DlmsData))
+	data1.SetOctetString([]byte{0x11, 0x12, 0x13, 0x14, 0x15})
+
+	data2 = (new(DlmsData))
+	data2.SetOctetString([]byte{0x16, 0x17, 0x18, 0x18, 0x1A})
+
+	vals := make([]*DlmsRequest, 2)
+
+	val := new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data1
+	vals[0] = val
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data2
+	vals[1] = val
+
+	vals[0].BlockSize = 5 // setting BlockSize at vals[0] will force the block transfer
+
+	// expect block request timeout
+
+	aconn.SendRequest(ch, 10000, 900, true, vals)
+	msg = <-ch
+	if ErrorBlockTimeout != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+
+	// timeouted request must not disable following requests
+
+	aconn.SendRequest(ch, 10000, 2000, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep := msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
 	}
 
 	aconn.Close()
