@@ -1,13 +1,159 @@
 package gocosem
 
 import (
+	"flag"
+	"fmt"
 	"testing"
 )
 
-func TestX__profileRead_captureObjects(t *testing.T) {
+var (
+	realMeter bool
+	meterIp   string
+)
+
+func init() {
+	flag.BoolVar(&realMeter, "real", false, "test against real meter")
+	flag.StringVar(&meterIp, "ip", "172.16.123.182", "meter ip address")
+	flag.Parse()
+}
+
+func TestMeter_TcpConnect(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
 
 	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, "172.16.123.182", 4059)
+	TcpConnect(ch, 10000, meterIp, 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatal(msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+	dconn.Close()
+}
+
+func TestMeter_AppConnect(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, meterIp, 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatal(msg.Err)
+	}
+	t.Logf("transport connected")
+
+	dconn := msg.Data.(*DlmsConn)
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatal(msg.Err)
+	}
+	t.Logf("application connected")
+	//aconn := msg.Data.(*AppConn)
+	//aconn.Close()
+}
+
+func TestMeter_GetTime(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, meterIp, 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+	}
+	t.Logf("transport connected")
+
+	dconn := msg.Data.(*DlmsConn)
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+	}
+	t.Logf("application connected")
+	aconn := msg.Data.(*AppConn)
+
+	//func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
+	val := new(DlmsRequest)
+	val.ClassId = 8
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x01, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals := make([]*DlmsRequest, 1)
+	vals[0] = val
+	aconn.SendRequest(ch, 10000, 0, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+	}
+	rep := msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	data := rep.DataAt(0)
+	t.Logf("value read %#v", data.Val)
+	aconn.Close()
+}
+
+func TestMeter_SetTime(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, meterIp, 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("cannot connect tcp: %s", msg.Err)
+	}
+	t.Logf("transport connected")
+
+	dconn := msg.Data.(*DlmsConn)
+	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("application connected")
+	defer dconn.Close()
+	aconn := msg.Data.(*AppConn)
+
+	data := new(DlmsData)
+	data.SetOctetString([]byte{0x7, 0xe0, 0x2, 0x1d, 0x1, 0xd, 0x8, 0xc, 0xff, 0x80, 0x0, 0x0})
+
+	val := new(DlmsRequest)
+	val.ClassId = 8
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x01, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data
+	vals := make([]*DlmsRequest, 1)
+	vals[0] = val
+	aconn.SendRequest(ch, 10000, 1000, true, vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep := msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	aconn.Close()
+}
+
+func TestMeter_ProfileCaptureObjects(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
+
+	ch := make(DlmsChannel)
+	TcpConnect(ch, 10000, meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -66,10 +212,13 @@ func TestX__profileRead_captureObjects(t *testing.T) {
 	aconn.Close()
 }
 
-func TestX__profileRead_profileEntriesInUse(t *testing.T) {
+func TestMeter_ProfileEntriesInUse(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
 
 	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, "172.16.123.182", 4059)
+	TcpConnect(ch, 10000, meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -115,10 +264,13 @@ func TestX__profileRead_profileEntriesInUse(t *testing.T) {
 	aconn.Close()
 }
 
-func TestX__profileRead_sortMethod(t *testing.T) {
+func TestMeter_ProfileSortMethod(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
 
 	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, "172.16.123.182", 4059)
+	TcpConnect(ch, 10000, meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -164,10 +316,13 @@ func TestX__profileRead_sortMethod(t *testing.T) {
 	aconn.Close()
 }
 
-func TestX__profileRead_sortObject(t *testing.T) {
+func TestMeter_ProfileSortObject(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
 
 	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, "172.16.123.182", 4059)
+	TcpConnect(ch, 10000, meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -221,10 +376,13 @@ func TestX__profileRead_sortObject(t *testing.T) {
 	aconn.Close()
 }
 
-func TestX__profileRead_capturePeriod(t *testing.T) {
+func TestMeter_ProfileCapturePeriod(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
 
 	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, "172.16.123.182", 4059)
+	TcpConnect(ch, 10000, meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -270,10 +428,13 @@ func TestX__profileRead_capturePeriod(t *testing.T) {
 	aconn.Close()
 }
 
-func TestX__profileRead_first_entries(t *testing.T) {
+func TestMeter_ProfileFirstEntries(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
 
 	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, "172.16.123.182", 4059)
+	TcpConnect(ch, 10000, meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -336,10 +497,13 @@ func TestX__profileRead_first_entries(t *testing.T) {
 	aconn.Close()
 }
 
-func TestX__profileRead_last_entries(t *testing.T) {
+func TestMeter_ProfileLastEntries(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
 
 	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, "172.16.123.182", 4059)
+	TcpConnect(ch, 10000, meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -427,10 +591,13 @@ func TestX__profileRead_last_entries(t *testing.T) {
 	aconn.Close()
 }
 
-func TestX__profileRead_timeInterval(t *testing.T) {
+func TestMeter_ProfileTimeRange(t *testing.T) {
+	if !realMeter {
+		t.SkipNow()
+	}
 
 	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, "172.16.123.182", 4059)
+	TcpConnect(ch, 10000, meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
