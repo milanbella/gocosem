@@ -46,9 +46,18 @@ type DlmsRequestResponse struct {
 	rawData            []byte
 }
 
+type DlmsAppLevelSendRequest struct {
+	ch  DlmsChannel // reply channel
+	pdu []byte
+}
+type DlmsAppLevelReceiveRequest struct {
+	ch DlmsChannel // reply channel
+}
+
 type AppConn struct {
 	closed            bool
 	dconn             *DlmsConn
+	ch                DlmsChannel // channel to handle application level requests/replies
 	applicationClient uint16
 	logicalDevice     uint16
 	invokeIdsCh       chan uint8
@@ -90,7 +99,7 @@ func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16)
 
 	aconn.finish = make(chan string)
 
-	aconn.receiveReplies()
+	aconn.handleAppLevelRequests()
 	aconn.deliverTimeouts()
 
 	return aconn
@@ -117,17 +126,63 @@ func (aconn *AppConn) transportSend(invokeId uint8, pdu []byte) {
 			FNAME string = "AppConn.transportSend()"
 		)
 		ch := make(DlmsChannel)
-		aconn.dconn.transportSend(ch, aconn.applicationClient, aconn.logicalDevice, pdu)
+
+		omsg := new(DlmsChannelMessage)
+		omsg.Data = &DlmsAppLevelSendRequest{ch, pdu}
+		aconn.ch <- omsg
+
 		select {
-		case msg := <-ch:
-			if nil != msg.Err {
-				aconn.killRequest(invokeId, msg.Err)
-				errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, msg.Err)
+		case imsg := <-ch:
+			if nil != imsg.Err {
+				errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, imsg.Err)
 				aconn.Close()
 				return
 			}
 		}
 	}()
+}
+
+func (aconn *AppConn) transportReceive() {
+	go func() {
+		var (
+			FNAME string = "AppConn.transportReceive()"
+			serr  string
+		)
+		ch := make(DlmsChannel)
+
+		omsg := new(DlmsChannelMessage)
+		omsg.Data = &DlmsAppLevelReceiveRequest{ch}
+		aconn.ch <- omsg
+
+		select {
+		case imsg := <-ch:
+			if nil != imsg.Err {
+				errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, imsg.Err)
+				aconn.Close()
+				return
+			}
+			m := imsg.Data.(map[string]interface{})
+			if m["srcWport"] != aconn.logicalDevice {
+				serr = fmt.Sprintf("%s: incorret srcWport in received pdu: ", FNAME, m["srcWport"])
+				errorLog.Println(serr)
+				aconn.Close()
+				return
+			}
+			if m["dstWport"] != aconn.applicationClient {
+				serr = fmt.Sprintf("%s: incorret dstWport in received pdu: ", FNAME, m["dstWport"])
+				errorLog.Println(serr)
+				aconn.Close()
+				return
+			}
+			pdu := m["pdu"].([]byte)
+			go aconn.processReply(bytes.NewBuffer(pdu))
+		}
+	}()
+}
+
+func (aconn *AppConn) transportSubmit(invokeId uint8, pdu []byte) {
+	aconn.transportSend(invokeId, pdu)
+	aconn.transportReceive()
 }
 
 func (aconn *AppConn) killRequest(invokeId uint8, err error) {
@@ -432,7 +487,7 @@ func (aconn *AppConn) processReply(r io.Reader) {
 				return
 			}
 
-			aconn.transportSend(rips[0].invokeId, buf.Bytes())
+			aconn.transportSubmit(rips[0].invokeId, buf.Bytes())
 		}
 
 	} else if (0xC5 == p[0]) && (0x01 == p[1]) {
@@ -499,7 +554,7 @@ func (aconn *AppConn) processReply(r io.Reader) {
 		}
 		req.blockNumber += 1
 
-		aconn.transportSend(rips[0].invokeId, buf.Bytes())
+		aconn.transportSubmit(rips[0].invokeId, buf.Bytes())
 
 	} else if (0xC5 == p[0]) && (0x03 == p[1]) {
 		debugLog.Printf("%s: processing SetResponseForLastDataBlock", FNAME)
@@ -561,40 +616,24 @@ func (aconn *AppConn) processReply(r io.Reader) {
 	}
 }
 
-func (aconn *AppConn) receiveReplies() {
+func (aconn *AppConn) handleAppLevelRequests() {
 	go func() {
 		var (
 			FNAME string = "AppConn.receiveReplies()"
-			serr  string
 		)
 
-		for {
-			if aconn.closed {
-				break
+		debugLog.Printf("%s: start\n", FNAME)
+		for msg := range aconn.ch {
+			switch v := msg.Data.(type) {
+			case *DlmsAppLevelSendRequest:
+				debugLog.Printf("%s: send request\n", FNAME)
+				aconn.dconn.transportSend(v.ch, aconn.applicationClient, aconn.logicalDevice, v.pdu)
+			case *DlmsAppLevelReceiveRequest:
+				debugLog.Printf("%s: receive request\n", FNAME)
+				aconn.dconn.transportReceive(v.ch, aconn.logicalDevice, aconn.applicationClient)
+			default:
+				panic(fmt.Sprintf("unknown request type: %T", v))
 			}
-			ch := make(DlmsChannel)
-			aconn.dconn.transportReceive(ch, aconn.logicalDevice, aconn.applicationClient)
-			msg := <-ch
-			if nil != msg.Err {
-				errorLog.Printf("%s: closing app connection due to transport error: %v\n", FNAME, msg.Err)
-				aconn.Close()
-				return
-			}
-			m := msg.Data.(map[string]interface{})
-			if m["srcWport"] != aconn.logicalDevice {
-				serr = fmt.Sprintf("%s: incorret srcWport in received pdu: ", FNAME, m["srcWport"])
-				errorLog.Println(serr)
-				aconn.Close()
-				return
-			}
-			if m["dstWport"] != aconn.applicationClient {
-				serr = fmt.Sprintf("%s: incorret dstWport in received pdu: ", FNAME, m["dstWport"])
-				errorLog.Println(serr)
-				aconn.Close()
-				return
-			}
-			pdu := m["pdu"].([]byte)
-			go aconn.processReply(bytes.NewBuffer(pdu))
 		}
 	}()
 }
@@ -865,6 +904,6 @@ func (aconn *AppConn) SendRequest(ch DlmsChannel, msecTimeout int64, msecBlockTi
 			panic("assertion failed")
 		}
 
-		aconn.transportSend(invokeId, buf.Bytes())
+		aconn.transportSubmit(invokeId, buf.Bytes())
 	}()
 }

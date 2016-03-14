@@ -2780,7 +2780,7 @@ type DlmsConn struct {
 	closed        bool
 	rwc           io.ReadWriteCloser
 	transportType int
-	ch            DlmsChannel // channel used to serialize inbound requests
+	ch            DlmsChannel // channel to handle transport level requests/replies
 }
 
 type DlmsTransportSendRequest struct {
@@ -2867,6 +2867,7 @@ func (dconn *DlmsConn) doTransportSend(ch DlmsChannel, srcWport uint16, dstWport
 }
 
 func (dconn *DlmsConn) transportSend(ch DlmsChannel, srcWport uint16, dstWport uint16, pdu []byte) {
+	// enqueue send request
 	go func() {
 		msg := new(DlmsChannelMessage)
 
@@ -2879,7 +2880,6 @@ func (dconn *DlmsConn) transportSend(ch DlmsChannel, srcWport uint16, dstWport u
 		msg.Data = data
 
 		dconn.ch <- msg
-
 	}()
 }
 
@@ -2977,28 +2977,27 @@ func ipTransportReceive(ch DlmsChannel, rwc io.ReadWriteCloser, srcWport *uint16
 // Use instead proxy variant 'transportReceive()' which queues this method call on sync channel.
 
 func (dconn *DlmsConn) doTransportReceive(ch DlmsChannel, srcWport uint16, dstWport uint16) {
-	go func() {
-		var (
-			FNAME string = "doTransportReceive()"
-			serr  string
-		)
+	var (
+		FNAME string = "doTransportReceive()"
+		serr  string
+	)
 
-		debugLog.Printf("%s: trnascport type: %d\n", FNAME, dconn.transportType)
+	debugLog.Printf("%s: trnascport type: %d\n", FNAME, dconn.transportType)
 
-		if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
+	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 
-			ipTransportReceiveForApp(ch, dconn.rwc, srcWport, srcWport)
+		ipTransportReceiveForApp(ch, dconn.rwc, srcWport, srcWport)
 
-		} else {
-			serr = fmt.Sprintf("%s: unsupported transport type: %d", FNAME, dconn.transportType)
-			errorLog.Println(serr)
-			ch <- &DlmsChannelMessage{errors.New(serr), nil}
-			return
-		}
-	}()
+	} else {
+		serr = fmt.Sprintf("%s: unsupported transport type: %d", FNAME, dconn.transportType)
+		errorLog.Println(serr)
+		ch <- &DlmsChannelMessage{errors.New(serr), nil}
+		return
+	}
 }
 
 func (dconn *DlmsConn) transportReceive(ch DlmsChannel, srcWport uint16, dstWport uint16) {
+	// enqueue receive request
 	go func() {
 		data := new(DlmsTransportReceiveRequest)
 		data.ch = ch
@@ -3019,7 +3018,6 @@ func (dconn *DlmsConn) handleTransportRequests() {
 
 		debugLog.Printf("%s: start\n", FNAME)
 		for msg := range dconn.ch {
-			debugLog.Printf("%s: message\n", FNAME)
 			switch v := msg.Data.(type) {
 			case *DlmsTransportSendRequest:
 				debugLog.Printf("%s: send request\n", FNAME)
