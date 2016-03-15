@@ -709,7 +709,7 @@ func (srv *tMockCosemServer) accept(t *testing.T, ch DlmsChannel, tcpAddr string
 	ln, err := net.Listen("tcp", tcpAddr)
 	if err != nil {
 		errorLog.Printf("%s: %v\n", FNAME, err)
-		msg := new(DlmsChannelMessage)
+		msg := new(DlmsMessage)
 		msg.Err = err
 		ch <- msg
 		return
@@ -717,7 +717,7 @@ func (srv *tMockCosemServer) accept(t *testing.T, ch DlmsChannel, tcpAddr string
 	srv.ln = ln
 
 	t.Logf("%s: mock server bound to %s", FNAME, tcpAddr)
-	msg := new(DlmsChannelMessage)
+	msg := new(DlmsMessage)
 	msg.Err = nil
 	ch <- msg
 

@@ -22,8 +22,7 @@ func TestMeter_TcpConnect(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatal(msg.Err)
@@ -38,8 +37,7 @@ func TestMeter_AppConnect(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatal(msg.Err)
@@ -47,14 +45,15 @@ func TestMeter_AppConnect(t *testing.T) {
 	t.Logf("transport connected")
 
 	dconn := msg.Data.(*DlmsConn)
-	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatal(msg.Err)
 	}
 	t.Logf("application connected")
-	//aconn := msg.Data.(*AppConn)
-	//aconn.Close()
+	aconn := msg.Data.(*AppConn)
+	dconn.Close()
+	aconn.Close()
 }
 
 func TestMeter_GetTime(t *testing.T) {
@@ -62,8 +61,7 @@ func TestMeter_GetTime(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch = TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
@@ -71,7 +69,7 @@ func TestMeter_GetTime(t *testing.T) {
 	t.Logf("transport connected")
 
 	dconn := msg.Data.(*DlmsConn)
-	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
@@ -86,7 +84,7 @@ func TestMeter_GetTime(t *testing.T) {
 	val.AttributeId = 0x02
 	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
@@ -98,6 +96,7 @@ func TestMeter_GetTime(t *testing.T) {
 	}
 	data := rep.DataAt(0)
 	t.Logf("value read %#v", data.Val)
+	dconn.Close()
 	aconn.Close()
 }
 
@@ -106,8 +105,7 @@ func TestMeter_SetTime(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch = TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -115,7 +113,7 @@ func TestMeter_SetTime(t *testing.T) {
 	t.Logf("transport connected")
 
 	dconn := msg.Data.(*DlmsConn)
-	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -134,7 +132,7 @@ func TestMeter_SetTime(t *testing.T) {
 	val.Data = data
 	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
-	aconn.SendRequest(ch, 10000, 1000, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
@@ -144,6 +142,7 @@ func TestMeter_SetTime(t *testing.T) {
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
 	}
+	dconn.Close()
 	aconn.Close()
 }
 
@@ -152,8 +151,7 @@ func TestMeter_ProfileCaptureObjects(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -162,7 +160,7 @@ func TestMeter_ProfileCaptureObjects(t *testing.T) {
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
 
-	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect app: %s", msg.Err)
@@ -182,7 +180,7 @@ func TestMeter_ProfileCaptureObjects(t *testing.T) {
 	val.AttributeId = 3
 	vals[0] = val
 
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -217,8 +215,7 @@ func TestMeter_ProfileEntriesInUse(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -227,7 +224,7 @@ func TestMeter_ProfileEntriesInUse(t *testing.T) {
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
 
-	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect app: %s", msg.Err)
@@ -247,7 +244,7 @@ func TestMeter_ProfileEntriesInUse(t *testing.T) {
 	val.AttributeId = 7
 	vals[0] = val
 
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -269,8 +266,7 @@ func TestMeter_ProfileSortMethod(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch = TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -279,7 +275,7 @@ func TestMeter_ProfileSortMethod(t *testing.T) {
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
 
-	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect app: %s", msg.Err)
@@ -299,7 +295,7 @@ func TestMeter_ProfileSortMethod(t *testing.T) {
 	val.AttributeId = 5
 	vals[0] = val
 
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -321,8 +317,7 @@ func TestMeter_ProfileSortObject(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -331,7 +326,7 @@ func TestMeter_ProfileSortObject(t *testing.T) {
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
 
-	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect app: %s", msg.Err)
@@ -351,7 +346,7 @@ func TestMeter_ProfileSortObject(t *testing.T) {
 	val.AttributeId = 6
 	vals[0] = val
 
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -381,8 +376,7 @@ func TestMeter_ProfileCapturePeriod(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -391,7 +385,7 @@ func TestMeter_ProfileCapturePeriod(t *testing.T) {
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
 
-	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect app: %s", msg.Err)
@@ -411,7 +405,7 @@ func TestMeter_ProfileCapturePeriod(t *testing.T) {
 	val.AttributeId = 4
 	vals[0] = val
 
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -433,8 +427,7 @@ func TestMeter_ProfileFirstEntries(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -443,7 +436,7 @@ func TestMeter_ProfileFirstEntries(t *testing.T) {
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
 
-	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect app: %s", msg.Err)
@@ -471,7 +464,7 @@ func TestMeter_ProfileFirstEntries(t *testing.T) {
 
 	vals[0] = val
 
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -502,8 +495,7 @@ func TestMeter_ProfileLastEntries(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -512,7 +504,7 @@ func TestMeter_ProfileLastEntries(t *testing.T) {
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
 
-	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect app: %s", msg.Err)
@@ -532,7 +524,7 @@ func TestMeter_ProfileLastEntries(t *testing.T) {
 	val.AttributeId = 4
 	vals[0] = val
 
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -565,7 +557,7 @@ func TestMeter_ProfileLastEntries(t *testing.T) {
 
 	vals[0] = val
 
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -596,8 +588,7 @@ func TestMeter_ProfileTimeRange(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch := make(DlmsChannel)
-	TcpConnect(ch, 10000, meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -606,7 +597,7 @@ func TestMeter_ProfileTimeRange(t *testing.T) {
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
 
-	dconn.AppConnectWithPassword(ch, 10000, 01, 01, "12345678")
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect app: %s", msg.Err)
@@ -626,7 +617,7 @@ func TestMeter_ProfileTimeRange(t *testing.T) {
 	val.AttributeId = 4
 	vals[0] = val
 
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -659,7 +650,7 @@ func TestMeter_ProfileTimeRange(t *testing.T) {
 
 	vals[0] = val
 
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
@@ -764,7 +755,7 @@ func TestMeter_ProfileTimeRange(t *testing.T) {
 
 	vals[0] = val
 
-	aconn.SendRequest(ch, 10000, 0, true, vals)
+	ch = aconn.SendRequest(vals)
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("read failed: %s", msg.Err)
