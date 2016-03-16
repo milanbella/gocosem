@@ -52,6 +52,7 @@ func TestX_AppConnect(t *testing.T) {
 func TestX_GetRequestNormal(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
+	defer mockCosemServer.Close()
 
 	data := (new(DlmsData))
 	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
@@ -64,6 +65,7 @@ func TestX_GetRequestNormal(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -72,6 +74,7 @@ func TestX_GetRequestNormal(t *testing.T) {
 	}
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	val := new(DlmsRequest)
 	val.ClassId = 1
@@ -92,16 +95,12 @@ func TestX_GetRequestNormal(t *testing.T) {
 	if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
-
-	dconn.Close()
-	aconn.Close()
-
-	mockCosemServer.Close()
 }
 
 func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
+	defer mockCosemServer.Close()
 	mockCosemServer.blockLength = 3
 
 	data := (new(DlmsData))
@@ -115,6 +114,7 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -123,6 +123,7 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 	}
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	val := new(DlmsRequest)
 	val.ClassId = 1
@@ -144,14 +145,11 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 		t.Fatalf("value differs")
 	}
 
-	dconn.Close()
-	aconn.Close()
-
-	mockCosemServer.Close()
 }
 
 func TestX_GetRequestWithList(t *testing.T) {
 	ensureMockCosemServer(t)
+	defer mockCosemServer.Close()
 	mockCosemServer.Init()
 
 	data1 := (new(DlmsData))
@@ -169,6 +167,7 @@ func TestX_GetRequestWithList(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -177,6 +176,7 @@ func TestX_GetRequestWithList(t *testing.T) {
 	}
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	vals := make([]*DlmsRequest, 2)
 
@@ -211,15 +211,11 @@ func TestX_GetRequestWithList(t *testing.T) {
 	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
-
-	dconn.Close()
-	aconn.Close()
-
-	mockCosemServer.Close()
 }
 
 func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	ensureMockCosemServer(t)
+	defer mockCosemServer.Close()
 	mockCosemServer.Init()
 	mockCosemServer.blockLength = 5
 
@@ -238,6 +234,7 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -246,6 +243,7 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	}
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	vals := make([]*DlmsRequest, 2)
 
@@ -280,84 +278,11 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
-
-	dconn.Close()
-	aconn.Close()
-
-	mockCosemServer.Close()
-}
-
-//TODO: Test is failing due to concurrency bugs on client side  (concurrent map access and writing on close channel).
-// We need to change the way the invokeId is parallely handled. Perhaps we should have one go routine per invokeId one main routine receiving packets and disttributing requests accoriding invokeId.
-func noTestX_1000parallelRequests(t *testing.T) {
-	ensureMockCosemServer(t)
-	mockCosemServer.Init()
-
-	data := (new(DlmsData))
-	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
-	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
-
-	ch := TcpConnect("localhost", 4059)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatalf("%s\n", msg.Err)
-	}
-	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-
-	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("%s\n", msg.Err)
-	}
-	t.Logf("application connected")
-	aconn := msg.Data.(*AppConn)
-
-	val := new(DlmsRequest)
-	val.ClassId = 1
-	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
-	val.AttributeId = 0x02
-	vals := make([]*DlmsRequest, 1)
-	vals[0] = val
-
-	sink := make(chan *DlmsMessage)
-	count := int(1000)
-
-	for i := 0; i < count; i += 1 {
-		go func() {
-			ch := aconn.SendRequest(vals)
-			msg = <-ch
-			sink <- msg
-		}()
-	}
-
-sinkLoop:
-	for {
-		msg := <-sink
-		count -= 1
-		if nil != msg.Err {
-			t.Fatalf("%s\n", msg.Err)
-		}
-		rep := msg.Data.(DlmsResultResponse)
-		t.Logf("response delivered: in %v", rep.DeliveredIn())
-		if 0 != rep.DataAccessResultAt(0) {
-			t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
-		}
-		if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
-			t.Fatalf("value differs")
-		}
-		if 0 == count {
-			break sinkLoop
-		}
-	}
-
-	dconn.Close()
-	aconn.Close()
-	mockCosemServer.Close()
 }
 
 func TestX_SetRequestNormal(t *testing.T) {
 	ensureMockCosemServer(t)
+	defer mockCosemServer.Close()
 	mockCosemServer.Init()
 
 	data := (new(DlmsData))
@@ -371,6 +296,7 @@ func TestX_SetRequestNormal(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -379,6 +305,7 @@ func TestX_SetRequestNormal(t *testing.T) {
 	}
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	// read value
 
@@ -446,15 +373,11 @@ func TestX_SetRequestNormal(t *testing.T) {
 	if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
-
-	dconn.Close()
-	aconn.Close()
-
-	mockCosemServer.Close()
 }
 
 func TestX_SetRequestNormal_blockTransfer(t *testing.T) {
 	ensureMockCosemServer(t)
+	defer mockCosemServer.Close()
 	mockCosemServer.Init()
 	mockCosemServer.blockLength = 3
 
@@ -469,6 +392,7 @@ func TestX_SetRequestNormal_blockTransfer(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -477,6 +401,7 @@ func TestX_SetRequestNormal_blockTransfer(t *testing.T) {
 	}
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	// read value
 
@@ -550,15 +475,11 @@ func TestX_SetRequestNormal_blockTransfer(t *testing.T) {
 	if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
-
-	dconn.Close()
-	aconn.Close()
-
-	mockCosemServer.Close()
 }
 
 func TestX_SetRequestWithList(t *testing.T) {
 	ensureMockCosemServer(t)
+	defer mockCosemServer.Close()
 	mockCosemServer.Init()
 
 	data1 := (new(DlmsData))
@@ -576,6 +497,7 @@ func TestX_SetRequestWithList(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -584,6 +506,7 @@ func TestX_SetRequestWithList(t *testing.T) {
 	}
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	// read values
 
@@ -694,9 +617,227 @@ func TestX_SetRequestWithList(t *testing.T) {
 	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
 		t.Fatalf("value differs")
 	}
+}
 
-	dconn.Close()
-	aconn.Close()
+func TestX_SetRequestWithList_blockTransfer(t *testing.T) {
+	ensureMockCosemServer(t)
+	defer mockCosemServer.Close()
+	mockCosemServer.Init()
+	mockCosemServer.blockLength = 5
 
-	mockCosemServer.Close()
+	data1 := (new(DlmsData))
+	data1.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data1)
+
+	data2 := (new(DlmsData))
+	data2.SetOctetString([]byte{0x06, 0x07, 0x08, 0x08, 0x0A})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}, 1, 0x02, data2)
+
+	ch := TcpConnect("localhost", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
+
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("application connected")
+	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
+
+	// read values
+
+	vals := make([]*DlmsRequest, 2)
+
+	val := new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[0] = val
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[1] = val
+
+	ch = aconn.SendRequest(vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep := msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data1.GetOctetString(), rep.DataAt(0).GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+	}
+	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
+		t.Fatalf("value differs")
+	}
+
+	// set values (using block transfer)
+
+	data1 = (new(DlmsData))
+	data1.SetOctetString([]byte{0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18})
+
+	data2 = (new(DlmsData))
+	data2.SetOctetString([]byte{0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28})
+
+	vals = make([]*DlmsRequest, 2)
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data1
+	vals[0] = val
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data2
+	vals[1] = val
+
+	vals[0].BlockSize = 5 // setting BlockSize at vals[0] will force the block transfer
+
+	ch = aconn.SendRequest(vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep = msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+	}
+
+	// read same values again to verify that values were set correctly
+
+	vals = make([]*DlmsRequest, 2)
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[0] = val
+
+	val = new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals[1] = val
+
+	ch = aconn.SendRequest(vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep = msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	if !bytes.Equal(data1.GetOctetString(), rep.DataAt(0).GetOctetString()) {
+		t.Logf("%X", data1.GetOctetString())
+		t.Logf("%X", rep.DataAt(0).GetOctetString())
+		t.Fatalf("value differs: %X", rep.DataAt(0).GetOctetString())
+	}
+	if 0 != rep.DataAccessResultAt(1) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+	}
+	if !bytes.Equal(data2.GetOctetString(), rep.DataAt(1).GetOctetString()) {
+		t.Logf("%X", data2.GetOctetString())
+		t.Logf("%X", rep.DataAt(1).GetOctetString())
+		t.Fatalf("value differs: %X", rep.DataAt(1).GetOctetString())
+	}
+}
+
+//TODO: Test is failing due to concurrency bugs on client side  (concurrent map access and writing on close channel).
+// We need to change the way the invokeId is parallely handled. Perhaps we should have one go routine per invokeId one main routine receiving packets and disttributing requests accoriding invokeId.
+func TestX_1000parallelRequests(t *testing.T) {
+	ensureMockCosemServer(t)
+	defer mockCosemServer.Close()
+	mockCosemServer.Init()
+
+	data := (new(DlmsData))
+	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
+	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
+
+	ch := TcpConnect("localhost", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
+
+	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("application connected")
+	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
+
+	val := new(DlmsRequest)
+	val.ClassId = 1
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals := make([]*DlmsRequest, 1)
+	vals[0] = val
+
+	sink := make(chan *DlmsMessage)
+	count := int(1000)
+
+	n1 := count
+	countSent := 0
+	for i := 0; i < count; i += 1 {
+		go func() {
+			ch := aconn.SendRequest(vals)
+			msg = <-ch
+			sink <- msg
+			countSent++
+			if countSent == n1 {
+				close(sink)
+			}
+		}()
+	}
+
+	n2 := 0
+	for msg := range sink {
+		n2++
+		if nil != msg.Err {
+			t.Fatalf("%s\n", msg.Err)
+		}
+		rep := msg.Data.(DlmsResultResponse)
+		t.Logf("response delivered: in %v", rep.DeliveredIn())
+		if 0 != rep.DataAccessResultAt(0) {
+			t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+		}
+		if !bytes.Equal(data.GetOctetString(), rep.DataAt(0).GetOctetString()) {
+			t.Fatalf("value differs")
+		}
+	}
+	if n2 != count {
+		t.Fatalf("wrong reamining count")
+	}
+
 }
