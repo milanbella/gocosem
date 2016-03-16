@@ -8,6 +8,7 @@ import (
 func TestX__TcpConnect(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
+	defer mockCosemServer.Close()
 
 	ch := TcpConnect("localhost", 4059)
 	msg := <-ch
@@ -16,14 +17,14 @@ func TestX__TcpConnect(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
-	dconn.Close()
+	defer dconn.Close()
 
-	mockCosemServer.Close()
 }
 
 func TestX_AppConnect(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
+	defer mockCosemServer.Close()
 
 	ch := TcpConnect("localhost", 4059)
 	msg := <-ch
@@ -32,16 +33,20 @@ func TestX_AppConnect(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("application connected")
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
 	aconn := msg.Data.(*AppConn)
-	aconn.Close()
+	defer aconn.Close()
 
-	mockCosemServer.Close()
 }
 
 func TestX_GetRequestNormal(t *testing.T) {

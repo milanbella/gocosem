@@ -61,7 +61,7 @@ func TestMeter_GetTime(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch = TcpConnect(meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
@@ -105,7 +105,7 @@ func TestMeter_SetTime(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch = TcpConnect(meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -266,7 +266,7 @@ func TestMeter_ProfileSortMethod(t *testing.T) {
 		t.SkipNow()
 	}
 
-	ch = TcpConnect(meterIp, 4059)
+	ch := TcpConnect(meterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)

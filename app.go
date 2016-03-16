@@ -39,7 +39,6 @@ type DlmsRequestResponse struct {
 	Ch                 chan *DlmsMessage // Channel to deliver reply.
 	RequestSubmittedAt time.Time
 	ReplyDeliveredAt   time.Time
-	msecBlockTimeout   int64
 	highPriority       bool
 	rawData            []byte
 }
@@ -55,8 +54,8 @@ type DlmsAppLevelReceiveRequest struct {
 }
 
 type AppConn struct {
-	closed            bool
 	dconn             *DlmsConn
+	closed            bool
 	ch                chan *DlmsMessage // channel to handle application level requests/replies
 	applicationClient uint16
 	logicalDevice     uint16
@@ -85,10 +84,12 @@ func (rep DlmsResultResponse) DeliveredIn() time.Duration {
 
 func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16) (aconn *AppConn) {
 	aconn = new(AppConn)
-	aconn.closed = false
 	aconn.dconn = dconn
+	aconn.closed = false
 	aconn.applicationClient = applicationClient
 	aconn.logicalDevice = logicalDevice
+
+	aconn.ch = make(chan *DlmsMessage)
 
 	aconn.invokeIdsCh = make(chan uint8, 0x0F+1)
 	for i := 0; i <= 0x0F; i += 1 {
@@ -119,6 +120,10 @@ func (aconn *AppConn) Close() {
 }
 
 func (aconn *AppConn) transportSend(invokeId uint8, rips []*DlmsRequestResponse, pdu []byte) {
+	var (
+		FNAME string = "AppConn.transportSend()"
+	)
+	debugLog.Printf("%s", FNAME)
 
 	ch := make(chan *DlmsMessage)
 	msg := new(DlmsMessage)
@@ -127,21 +132,33 @@ func (aconn *AppConn) transportSend(invokeId uint8, rips []*DlmsRequestResponse,
 }
 
 func (aconn *AppConn) transportReceive() {
+	var (
+		FNAME string = "AppConn.transportReceive()"
+	)
+	debugLog.Printf("%s", FNAME)
+
 	ch := make(chan *DlmsMessage)
 	msg := new(DlmsMessage)
 	msg.Data = &DlmsAppLevelReceiveRequest{ch}
 	aconn.ch <- msg
 }
 
-func (aconn *AppConn) transportSubmit(invokeId uint8, rips []*DlmsRequestResponse, pdu []byte) {
+func (aconn *AppConn) _transportSubmit(invokeId uint8, rips []*DlmsRequestResponse, pdu []byte) {
+	aconn.transportSend(invokeId, rips, pdu)
+	aconn.transportReceive()
+}
 
-	go aconn.transportSend(invokeId, rips, pdu)
-	go aconn.transportReceive()
+func (aconn *AppConn) transportSubmit(invokeId uint8, rips []*DlmsRequestResponse, pdu []byte) {
+	var (
+		FNAME string = "AppConn.transportSubmit()"
+	)
+	debugLog.Printf("%s", FNAME)
+	go aconn._transportSubmit(invokeId, rips, pdu)
 }
 
 func (aconn *AppConn) handleAppLevelRequests() {
 	var (
-		FNAME string = "AppConn.receiveReplies()"
+		FNAME string = "AppConn.handleAppLevelRequests()"
 		serr  string
 	)
 
@@ -580,29 +597,30 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 	}
 }
 
-func (aconn *AppConn) getInvokeId(ch chan *DlmsMessage) {
+func (aconn *AppConn) getInvokeId() (err error, invokeId uint8) {
 	var (
 		FNAME string = "AppConn.getInvokeId()"
 		serr  string
 	)
 
+	debugLog.Printf("%s: waiting for free invokeId ...", FNAME)
 	select {
-	case invokeId := <-aconn.invokeIdsCh:
-		ch <- &DlmsMessage{nil, invokeId}
+	case _invokeId := <-aconn.invokeIdsCh:
+		debugLog.Printf("%s: invokeId: %d", FNAME, _invokeId)
+		return nil, _invokeId
 	case <-aconn.finish:
 		serr = fmt.Sprintf("%s: aborted, reason: app connection closed", FNAME)
 		errorLog.Println(serr)
-		ch <- &DlmsMessage{errors.New(serr), nil}
+		return errors.New(serr), 0
 	}
 }
 
 func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
-	highPriority := true
-	defer close(ch)
-
 	var (
-		FNAME string = "AppConn.getRquest()"
+		FNAME string = "AppConn.sendRequest()"
 	)
+	debugLog.Printf("%s", FNAME)
+	highPriority := true
 
 	if 0 == len(vals) {
 		ch <- &DlmsMessage{nil, nil}
@@ -616,16 +634,10 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 		return
 	}
 
-	var invokeId uint8
-	_ch := make(chan *DlmsMessage)
-	aconn.getInvokeId(_ch)
-	select {
-	case msg := <-_ch:
-		if nil != msg.Err {
-			ch <- &DlmsMessage{msg.Err, nil}
-			return
-		}
-		invokeId = msg.Data.(uint8)
+	err, invokeId := aconn.getInvokeId()
+	if nil != err {
+		ch <- &DlmsMessage{err, nil}
+		return
 	}
 	debugLog.Printf("%s: invokeId %d\n", FNAME, invokeId)
 
@@ -651,10 +663,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 		invokeIdAndPriority = tDlmsInvokeIdAndPriority(invokeId << 4)
 	}
 
-	var (
-		err error
-		buf bytes.Buffer
-	)
+	var buf bytes.Buffer
 
 	if 1 == len(vals) {
 		if nil == vals[0].Data {

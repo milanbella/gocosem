@@ -3116,11 +3116,9 @@ func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalD
 			ch <- &DlmsMessage{errors.New(serr), nil}
 			return
 		} else {
-			ch <- &DlmsMessage{nil, nil}
+			aconn := NewAppConn(dconn, applicationClient, logicalDevice)
+			ch <- &DlmsMessage{msg.Err, aconn}
 		}
-
-		aconn := NewAppConn(dconn, applicationClient, logicalDevice)
-		ch <- &DlmsMessage{msg.Err, aconn}
 
 	}()
 	return ch
