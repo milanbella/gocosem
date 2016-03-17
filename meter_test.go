@@ -29,7 +29,7 @@ func TestMeter_TcpConnect(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
-	dconn.Close()
+	defer dconn.Close()
 }
 
 func TestMeter_AppConnect(t *testing.T) {
@@ -43,8 +43,9 @@ func TestMeter_AppConnect(t *testing.T) {
 		t.Fatal(msg.Err)
 	}
 	t.Logf("transport connected")
-
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
+
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
@@ -52,8 +53,7 @@ func TestMeter_AppConnect(t *testing.T) {
 	}
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
-	dconn.Close()
-	aconn.Close()
+	defer aconn.Close()
 }
 
 func TestMeter_GetTime(t *testing.T) {
@@ -67,8 +67,9 @@ func TestMeter_GetTime(t *testing.T) {
 		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
 	}
 	t.Logf("transport connected")
-
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
+
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
@@ -76,8 +77,8 @@ func TestMeter_GetTime(t *testing.T) {
 	}
 	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
-	//func (aconn *AppConn) getRquest(ch DlmsChannel, msecTimeout int64, highPriority bool, vals []*DlmsValueRequest) {
 	val := new(DlmsRequest)
 	val.ClassId = 8
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x01, 0x00, 0x00, 0xFF}
@@ -96,8 +97,7 @@ func TestMeter_GetTime(t *testing.T) {
 	}
 	data := rep.DataAt(0)
 	t.Logf("value read %#v", data.Val)
-	dconn.Close()
-	aconn.Close()
+	t.Logf("datetime: %s", DlmsDateTimeFromBytes(data.GetOctetString()).PrintDateTime())
 }
 
 func TestMeter_SetTime(t *testing.T) {
@@ -111,25 +111,27 @@ func TestMeter_SetTime(t *testing.T) {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
 	}
 	t.Logf("transport connected")
-
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
+
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("application connected")
-	defer dconn.Close()
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
-	data := new(DlmsData)
-	data.SetOctetString([]byte{0x7, 0xe0, 0x2, 0x1d, 0x1, 0xd, 0x8, 0xc, 0xff, 0x80, 0x0, 0x0})
+	//data := new(DlmsData)
+	//data.SetOctetString([]byte{0x7, 0xe0, 0x2, 0x1d, 0x1, 0xd, 0x8, 0xc, 0xff, 0x80, 0x0, 0x0})
+
+	// read time
 
 	val := new(DlmsRequest)
 	val.ClassId = 8
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x01, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
-	val.Data = data
 	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
 	ch = aconn.SendRequest(vals)
@@ -142,8 +144,52 @@ func TestMeter_SetTime(t *testing.T) {
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
 	}
-	dconn.Close()
-	aconn.Close()
+	data := rep.DataAt(0)
+	t.Logf("value read %#v", data.Val)
+	t.Logf("datetime: %s", DlmsDateTimeFromBytes(data.GetOctetString()).PrintDateTime())
+
+	// set time
+
+	val = new(DlmsRequest)
+	val.ClassId = 8
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x01, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data
+	vals = make([]*DlmsRequest, 1)
+	vals[0] = val
+	ch = aconn.SendRequest(vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep = msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	t.Logf("time set successfully")
+
+	// read time again
+
+	val = new(DlmsRequest)
+	val.ClassId = 8
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x01, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals = make([]*DlmsRequest, 1)
+	vals[0] = val
+	ch = aconn.SendRequest(vals)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	rep = msg.Data.(DlmsResultResponse)
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	data = rep.DataAt(0)
+	t.Logf("value read %#v", data.Val)
+	t.Logf("datetime: %s", DlmsDateTimeFromBytes(data.GetOctetString()).PrintDateTime())
 }
 
 func TestMeter_ProfileCaptureObjects(t *testing.T) {
@@ -159,6 +205,7 @@ func TestMeter_ProfileCaptureObjects(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -169,6 +216,7 @@ func TestMeter_ProfileCaptureObjects(t *testing.T) {
 	t.Logf("application connected")
 	defer dconn.Close()
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	// capture objects definitions
 
@@ -206,8 +254,6 @@ func TestMeter_ProfileCaptureObjects(t *testing.T) {
 		t.Logf("\tattribute index: %d", st.Arr[2].GetInteger())
 		t.Logf("\tdata index: %02X", st.Arr[3].GetLongUnsigned())
 	}
-
-	aconn.Close()
 }
 
 func TestMeter_ProfileEntriesInUse(t *testing.T) {
@@ -223,6 +269,7 @@ func TestMeter_ProfileEntriesInUse(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -233,6 +280,7 @@ func TestMeter_ProfileEntriesInUse(t *testing.T) {
 	t.Logf("application connected")
 	defer dconn.Close()
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	// profile entries in use
 
@@ -257,8 +305,6 @@ func TestMeter_ProfileEntriesInUse(t *testing.T) {
 	}
 	data := rep.DataAt(0)
 	t.Logf("profile entries in use: %d", data.GetDoubleLongUnsigned())
-
-	aconn.Close()
 }
 
 func TestMeter_ProfileSortMethod(t *testing.T) {
@@ -274,6 +320,7 @@ func TestMeter_ProfileSortMethod(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -282,8 +329,8 @@ func TestMeter_ProfileSortMethod(t *testing.T) {
 		return
 	}
 	t.Logf("application connected")
-	defer dconn.Close()
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	// sort method
 
@@ -308,8 +355,6 @@ func TestMeter_ProfileSortMethod(t *testing.T) {
 	}
 	data := rep.DataAt(0)
 	t.Logf("sort method: %d", data.GetEnum())
-
-	aconn.Close()
 }
 
 func TestMeter_ProfileSortObject(t *testing.T) {
@@ -325,6 +370,7 @@ func TestMeter_ProfileSortObject(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -333,8 +379,8 @@ func TestMeter_ProfileSortObject(t *testing.T) {
 		return
 	}
 	t.Logf("application connected")
-	defer dconn.Close()
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	// sort object
 
@@ -367,8 +413,6 @@ func TestMeter_ProfileSortObject(t *testing.T) {
 	t.Logf("\tlogical name: %02X", data.Arr[1].GetOctetString())
 	t.Logf("\tattribute index: %d", data.Arr[2].GetInteger())
 	t.Logf("\tdata index: %02X", data.Arr[3].GetLongUnsigned())
-
-	aconn.Close()
 }
 
 func TestMeter_ProfileCapturePeriod(t *testing.T) {
@@ -384,6 +428,7 @@ func TestMeter_ProfileCapturePeriod(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -392,8 +437,8 @@ func TestMeter_ProfileCapturePeriod(t *testing.T) {
 		return
 	}
 	t.Logf("application connected")
-	defer dconn.Close()
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	// capture period
 
@@ -418,8 +463,6 @@ func TestMeter_ProfileCapturePeriod(t *testing.T) {
 	}
 	data := rep.DataAt(0)
 	t.Logf("capture period: %d seconds", data.GetDoubleLongUnsigned())
-
-	aconn.Close()
 }
 
 func TestMeter_ProfileFirstEntries(t *testing.T) {
@@ -435,6 +478,7 @@ func TestMeter_ProfileFirstEntries(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -443,8 +487,8 @@ func TestMeter_ProfileFirstEntries(t *testing.T) {
 		return
 	}
 	t.Logf("application connected")
-	defer dconn.Close()
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	// request first 10 entries
 
@@ -486,8 +530,6 @@ func TestMeter_ProfileFirstEntries(t *testing.T) {
 		d0 := d.Arr[0]
 		t.Logf("\t%d: %s %s: ", i, DlmsDateTimeFromBytes(d0.GetOctetString()).PrintDateTime(), d.Print())
 	}
-
-	aconn.Close()
 }
 
 func TestMeter_ProfileLastEntries(t *testing.T) {
@@ -503,6 +545,7 @@ func TestMeter_ProfileLastEntries(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -511,8 +554,8 @@ func TestMeter_ProfileLastEntries(t *testing.T) {
 		return
 	}
 	t.Logf("application connected")
-	defer dconn.Close()
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	// profile entries in use
 
@@ -579,8 +622,6 @@ func TestMeter_ProfileLastEntries(t *testing.T) {
 		d0 := d.Arr[0]
 		t.Logf("\t%d: %s %s: ", i, DlmsDateTimeFromBytes(d0.GetOctetString()).PrintDateTime(), d.Print())
 	}
-
-	aconn.Close()
 }
 
 func TestMeter_ProfileTimeRange(t *testing.T) {
@@ -596,6 +637,7 @@ func TestMeter_ProfileTimeRange(t *testing.T) {
 	}
 	t.Logf("transport connected")
 	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
 	msg = <-ch
@@ -606,6 +648,7 @@ func TestMeter_ProfileTimeRange(t *testing.T) {
 	t.Logf("application connected")
 	defer dconn.Close()
 	aconn := msg.Data.(*AppConn)
+	defer aconn.Close()
 
 	// profile entries in use
 
@@ -777,6 +820,4 @@ func TestMeter_ProfileTimeRange(t *testing.T) {
 		d0 := d.Arr[0]
 		t.Logf("\t%d: %s %s: ", i, DlmsDateTimeFromBytes(d0.GetOctetString()).PrintDateTime(), d.Print())
 	}
-
-	aconn.Close()
 }

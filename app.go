@@ -652,7 +652,6 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 		rip.highPriority = highPriority
 		rips[i] = rip
 	}
-	aconn.rips[invokeId] = rips
 
 	// build and forward pdu to transport
 

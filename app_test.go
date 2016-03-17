@@ -768,9 +768,7 @@ func TestX_SetRequestWithList_blockTransfer(t *testing.T) {
 	}
 }
 
-//TODO: Test is failing due to concurrency bugs on client side  (concurrent map access and writing on close channel).
-// We need to change the way the invokeId is parallely handled. Perhaps we should have one go routine per invokeId one main routine receiving packets and disttributing requests accoriding invokeId.
-func TestX_1000parallelRequests(t *testing.T) {
+func TestX_10000parallelRequests(t *testing.T) {
 	ensureMockCosemServer(t)
 	defer mockCosemServer.Close()
 	mockCosemServer.Init()
@@ -805,7 +803,7 @@ func TestX_1000parallelRequests(t *testing.T) {
 	vals[0] = val
 
 	sink := make(chan *DlmsMessage)
-	count := int(1000)
+	count := int(10000)
 
 	n1 := count
 	countSent := 0
