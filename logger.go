@@ -1,26 +1,39 @@
 package gocosem
 
 import (
-	"io"
+	"fmt"
 	"log"
 	"os"
+	"path/filepath"
+	"regexp"
+	"runtime"
 )
 
-var errorLogWriter io.Writer = os.Stderr
-var debugLogWriter io.Writer = os.Stderr
+var (
+	DebugEnabled = false
+	Log          = log.New(os.Stderr, "[gocosem] ", log.Lmicroseconds)
+)
 
-func getErrorLogger() *log.Logger {
-	return log.New(errorLogWriter, "ERROR ", log.Ldate|log.Ltime|log.Lshortfile)
+func logf(f string, a ...interface{}) {
+	if DebugEnabled {
+		Log.Printf("%s: %s", funcInfo(), fmt.Sprintf(f, a...))
+	}
 }
 
-func getDebugLogger() *log.Logger {
-	return log.New(debugLogWriter, "DEBUG ", log.Ldate|log.Ltime|log.Lshortfile)
+func errlogf(f string, a ...interface{}) {
+	if DebugEnabled {
+		Log.Printf("ERROR: %s: %s", funcInfo(), fmt.Sprintf(f, a...))
+	}
 }
 
-func SetErrorLogger(out io.Writer) {
-	errorLogWriter = out
-}
+var stripFnPreamble = regexp.MustCompile(`^.*\.(.*)$`)
 
-func SetDebugLogger(out io.Writer) {
-	debugLogWriter = out
+func funcInfo() string {
+	name := "<unknown>"
+	pc, file, line, ok := runtime.Caller(2)
+	if ok {
+		name = stripFnPreamble.ReplaceAllString(runtime.FuncForPC(pc).Name(), "$1")
+	}
+	file = filepath.Base(file)
+	return fmt.Sprintf("%s:%d: %s()", file, line, name)
 }

@@ -18,7 +18,6 @@ import "C"
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"time"
 	"unsafe"
@@ -238,8 +237,8 @@ type AAREapdu struct {
 func consumeBytes(_buf unsafe.Pointer, _bufLen C.int, ctx unsafe.Pointer) C.int {
 
 	buf := (*bytes.Buffer)(ctx)
-	bytes := C.GoBytes(_buf, _bufLen)
-	(*buf).Write(bytes)
+	b := C.GoBytes(_buf, _bufLen)
+	(*buf).Write(b)
 	return 0
 }
 
@@ -862,7 +861,6 @@ func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 	var pdu *C.AARQ_apdu_t
 	var buf bytes.Buffer
 	var cb []C.uint8_t
-	var serr string
 
 	pdu = C.hlp__calloc_AARQ_apdu_t()
 
@@ -983,9 +981,9 @@ func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 			C.hlp__fill_OCTET_STRING_t((*C.OCTET_STRING_t)(unsafe.Pointer(&(*av).choice[0])), &cb[0], C.int(len(cb)))
 
 		default:
-			serr = fmt.Sprintf("encode_AARQapdu() failed, unknown callingAuthenticationValue tag %v", _pdu.callingAuthenticationValue.getTag())
-			errorLog.Println(serr)
-			return errors.New(serr), nil
+			err = fmt.Errorf("encode_AARQapdu() failed, unknown callingAuthenticationValue tag %v", _pdu.callingAuthenticationValue.getTag())
+			errlogf("%s", err)
+			return err, nil
 		}
 	}
 
@@ -1003,9 +1001,9 @@ func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 	if -1 == ret.encoded {
 		C.hlp__free_AARQ_apdu_t(pdu)
 		s := C.GoString(ret.failed_type.name)
-		serr = fmt.Sprintf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno)
-		errorLog.Println(serr)
-		return errors.New(serr), nil
+		err = fmt.Errorf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno)
+		errlogf("%s", err)
+		return err, nil
 	}
 	C.hlp__free_AARQ_apdu_t(pdu)
 	return nil, buf.Bytes()
@@ -1014,7 +1012,6 @@ func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 
 	var cpdu *C.AARE_apdu_t
-	var serr string
 
 	pdu = new(AAREapdu)
 
@@ -1022,9 +1019,9 @@ func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 	ret, errno := C.ber_decode((*C.struct_asn_codec_ctx_s)(unsafe.Pointer(nil)), &C.asn_DEF_AARE_apdu, (*unsafe.Pointer)(unsafe.Pointer(&cpdu)), unsafe.Pointer(&cb[0]), C.size_t(len(cb)))
 	C.hlp__free(unsafe.Pointer(&cb[0]))
 	if C.RC_OK != ret.code {
-		serr = fmt.Sprintf("C.ber_decode() failed, code: %v, consumed: , errno %v", ret.code, ret.consumed, errno)
-		errorLog.Println(serr)
-		return errors.New(serr), nil
+		err = fmt.Errorf("C.ber_decode() failed, code: %v, consumed: %v, errno %v", ret.code, ret.consumed, errno)
+		errlogf("%s", err)
+		return err, nil
 	}
 
 	//-- [APPLICATION 1] == [ 61H ] = [ 97 ]
@@ -1051,9 +1048,9 @@ func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 	case C.Associate_source_diagnostic_PR_acse_service_provider:
 		pdu.resultSourceDiagnostic.setVal(int(C.Associate_source_diagnostic_PR_acse_service_provider), int(*(*C.long)(unsafe.Pointer(&b[0]))))
 	default:
-		serr = fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.result_source_diagnostic.present))
-		errorLog.Println(serr)
-		return errors.New(serr), nil
+		err = fmt.Errorf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.result_source_diagnostic.present))
+		errlogf("%s", err)
+		return err, nil
 	}
 
 	//responding-AP-title [4] AP-title OPTIONAL,
@@ -1104,9 +1101,9 @@ func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 			other.otherMechanismValue = *goAsn1Any(&_other.other_mechanism_value)
 			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_other), &other)
 		default:
-			serr = fmt.Sprintf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.responding_authentication_value.present))
-			errorLog.Println(serr)
-			return errors.New(serr), nil
+			err = fmt.Errorf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.responding_authentication_value.present))
+			errlogf("%s", err)
+			return err, nil
 		}
 	}
 
