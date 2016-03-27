@@ -1,3 +1,5 @@
+// +build ignore
+
 package gocosem
 
 // #cgo LDFLAGS: -L${SRCDIR}/c/asn1 -L/usr/local/lib -lCosemPdu

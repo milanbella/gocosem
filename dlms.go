@@ -2645,26 +2645,6 @@ func decode_SetResponseForLastDataBlockWithList(r io.Reader) (err error, dataAcc
 }
 
 const (
-	COSEM_lowest_level_security_mechanism_name           = uint(0)
-	COSEM_low_level_security_mechanism_name              = uint(1)
-	COSEM_high_level_security_mechanism_name             = uint(2)
-	COSEM_high_level_security_mechanism_name_using_MD5   = uint(3)
-	COSEM_high_level_security_mechanism_name_using_SHA_1 = uint(4)
-	COSEM_High_Level_Security_Mechanism_Name_Using_GMAC  = uint(5)
-)
-
-const (
-	Logical_Name_Referencing_No_Ciphering   = uint(1)
-	Short_Name_Referencing_No_Ciphering     = uint(2)
-	Logical_Name_Referencing_With_Ciphering = uint(3)
-	Short_Name_Referencing_With_Ciphering   = uint(4)
-)
-
-const (
-	ACSE_Requirements_authentication = byte(0x80) // bit 0
-)
-
-const (
 	Transport_HLDC = int(1)
 	Transport_UDP  = int(2)
 	Transport_TCP  = int(3)
@@ -2743,7 +2723,7 @@ func ipTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport uint
 			ch <- &DlmsMessage{err, nil}
 			return
 		}
-		logf("sending: %02X\n", wpdu)
+		logf("sending: % 02X\n", wpdu)
 		_, err = rwc.Write(wpdu)
 		if nil != err {
 			errlogf("io.Write() failed, err: %v\n", err)
@@ -2860,7 +2840,7 @@ func ipTransportReceive(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport *
 			ch <- &DlmsMessage{err, nil}
 			return
 		}
-		logf("received pdu: %02X\n", pdu)
+		logf("received pdu: % 02X\n", pdu)
 
 		// send reply
 		m := make(map[string]interface{})
@@ -2935,34 +2915,16 @@ func (dconn *DlmsConn) handleTransportRequests() {
 }
 
 func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalDevice uint16, password string) <-chan *DlmsMessage {
-	var (
-		err  error
-		aarq AARQapdu
-		pdu  []byte
-	)
-
 	ch := make(chan *DlmsMessage)
 	go func() {
 		defer close(ch)
-
-		aarq.applicationContextName = tAsn1ObjectIdentifier([]uint{2, 16, 756, 5, 8, 1, Logical_Name_Referencing_No_Ciphering})
-		aarq.senderAcseRequirements = &tAsn1BitString{
-			buf:        []byte{ACSE_Requirements_authentication},
-			bitsUnused: 7,
+		var aarq = AARQ{
+			appCtxt:   LogicalName_NoCiphering,
+			authMech:  LowLevelSecurity,
+			authValue: password,
 		}
-		mechanismName := (tAsn1ObjectIdentifier)([]uint{2, 16, 756, 5, 8, 2, COSEM_low_level_security_mechanism_name})
-		aarq.mechanismName = &mechanismName
-		aarq.callingAuthenticationValue = new(tAsn1Choice)
-		_password := tAsn1GraphicString([]byte(password))
-		aarq.callingAuthenticationValue.setVal(int(C_Authentication_value_PR_charstring), &_password)
-
-		//TODO A-XDR encoding of userInformation
-		userInformation := tAsn1OctetString([]byte{0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x7E, 0x1F, 0x04, 0xB0})
-
-		aarq.userInformation = &userInformation
-
-		err, pdu = encode_AARQapdu(&aarq)
-		if nil != err {
+		pdu, err := aarq.encode()
+		if err != nil {
 			ch <- &DlmsMessage{err, nil}
 			return
 		}
@@ -2993,13 +2955,16 @@ func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalD
 			ch <- &DlmsMessage{err, nil}
 			return
 		}
-		err, aare := decode_AAREapdu((m["pdu"]).([]byte))
-		if nil != err {
+		pdu = m["pdu"].([]byte)
+
+		var aare AARE
+		err = aare.decode(pdu)
+		if err != nil {
 			ch <- &DlmsMessage{err, nil}
 			return
 		}
-		if C_Association_result_accepted != int(aare.result) {
-			err = fmt.Errorf("app connect failed, aare.result %d, aare.resultSourceDiagnostic: %d", aare.result, aare.resultSourceDiagnostic)
+		if aare.result != AssociationAccepted {
+			err = fmt.Errorf("app connect failed, result: %v, diagnostic: %v", aare.result, aare.diagnostic)
 			errlogf("%s", err)
 			ch <- &DlmsMessage{err, nil}
 			return
@@ -3048,6 +3013,7 @@ func (dconn *DlmsConn) Close() {
 	if dconn.closed {
 		return
 	}
+	logf("closing transport connection")
 	dconn.closed = true
 	close(dconn.ch)
 }
