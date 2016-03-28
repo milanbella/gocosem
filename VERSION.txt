@@ -5,3 +5,9 @@ Initial vesrion
 1.0.1
 ======
 fixed failing test TestMeter_ProfileTimeRange()
+
+1.0.2
+======
+- refactor of logging
+- AARQ asn1 encoding is hardcoded in go AARQ.encode() to avoid C-dependency,
+but original asn1c encoder encode_AARQapdu()  is preserved and may be stil used, it's just not included in compilation
