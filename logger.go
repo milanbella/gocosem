@@ -1,7 +1,6 @@
 package gocosem
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -26,6 +25,7 @@ const (
 	LOG_LEVEL_WARN  = 1
 )
 
+/*
 func init() {
 
 	var _logLevel string
@@ -49,6 +49,7 @@ func init() {
 		panic("incorrect value of command lone flag 'cosemLog': " + _logLevel)
 	}
 }
+*/
 
 func debugLog(f string, a ...interface{}) {
 	if logLevel >= LOG_LEVEL_DEBUG {

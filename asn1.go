@@ -984,7 +984,7 @@ func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 
 		default:
 			err = fmt.Errorf("encode_AARQapdu() failed, unknown callingAuthenticationValue tag %v", _pdu.callingAuthenticationValue.getTag())
-			errlogf("%s", err)
+			errorLog("%s", err)
 			return err, nil
 		}
 	}
@@ -1004,7 +1004,7 @@ func encode_AARQapdu(_pdu *AARQapdu) (err error, result []byte) {
 		C.hlp__free_AARQ_apdu_t(pdu)
 		s := C.GoString(ret.failed_type.name)
 		err = fmt.Errorf("C.der_encode() failed, failed type name: %v, errno: %v", s, errno)
-		errlogf("%s", err)
+		errorLog("%s", err)
 		return err, nil
 	}
 	C.hlp__free_AARQ_apdu_t(pdu)
@@ -1022,7 +1022,7 @@ func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 	C.hlp__free(unsafe.Pointer(&cb[0]))
 	if C.RC_OK != ret.code {
 		err = fmt.Errorf("C.ber_decode() failed, code: %v, consumed: %v, errno %v", ret.code, ret.consumed, errno)
-		errlogf("%s", err)
+		errorLog("%s", err)
 		return err, nil
 	}
 
@@ -1051,7 +1051,7 @@ func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 		pdu.resultSourceDiagnostic.setVal(int(C.Associate_source_diagnostic_PR_acse_service_provider), int(*(*C.long)(unsafe.Pointer(&b[0]))))
 	default:
 		err = fmt.Errorf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.result_source_diagnostic.present))
-		errlogf("%s", err)
+		errorLog("%s", err)
 		return err, nil
 	}
 
@@ -1104,7 +1104,7 @@ func decode_AAREapdu(inb []byte) (err error, pdu *AAREapdu) {
 			pdu.respondingAuthenticationValue.setVal(int(C.Authentication_value_PR_other), &other)
 		default:
 			err = fmt.Errorf("decode_AAREapdu(): unknown choice tag: %v", int(cpdu.responding_authentication_value.present))
-			errlogf("%s", err)
+			errorLog("%s", err)
 			return err, nil
 		}
 	}
