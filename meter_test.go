@@ -1,11 +1,11 @@
 package gocosem
 
 import (
-	"flag"
 	"fmt"
 	"testing"
 )
 
+/*
 var (
 	realMeter bool
 	meterIp   string
@@ -16,6 +16,7 @@ func init() {
 	flag.StringVar(&meterIp, "ip", "172.16.123.182", "meter ip address")
 	flag.Parse()
 }
+*/
 
 func TestMeter_TcpConnect(t *testing.T) {
 	if !realMeter {

@@ -109,7 +109,7 @@ func (aconn *AppConn) Close() {
 	if aconn.closed {
 		return
 	}
-	logf("closing app connection")
+	debugLog("closing app connection")
 	aconn.closed = true
 	close(aconn.finish)
 	for _, rips := range aconn.rips {
@@ -121,7 +121,7 @@ func (aconn *AppConn) Close() {
 }
 
 func (aconn *AppConn) transportSend(invokeId uint8, rips []*DlmsRequestResponse, pdu []byte) {
-	logf("enter")
+	debugLog("enter")
 	ch := make(chan *DlmsMessage)
 	msg := new(DlmsMessage)
 	msg.Data = &DlmsAppLevelSendRequest{ch, invokeId, rips, pdu}
@@ -129,7 +129,7 @@ func (aconn *AppConn) transportSend(invokeId uint8, rips []*DlmsRequestResponse,
 }
 
 func (aconn *AppConn) transportReceive() {
-	logf("enter")
+	debugLog("enter")
 	ch := make(chan *DlmsMessage)
 	msg := new(DlmsMessage)
 	msg.Data = &DlmsAppLevelReceiveRequest{ch}
@@ -142,49 +142,49 @@ func (aconn *AppConn) _transportSubmit(invokeId uint8, rips []*DlmsRequestRespon
 }
 
 func (aconn *AppConn) transportSubmit(invokeId uint8, rips []*DlmsRequestResponse, pdu []byte) {
-	logf("enter")
+	debugLog("enter")
 	go aconn._transportSubmit(invokeId, rips, pdu)
 }
 
 func (aconn *AppConn) handleAppLevelRequests() {
-	logf("enter")
+	debugLog("enter")
 	for msg := range aconn.ch {
 		switch v := msg.Data.(type) {
 		case *DlmsAppLevelSendRequest:
-			logf("send request\n")
+			debugLog("send request\n")
 
 			aconn.rips[v.invokeId] = v.rips
 			ch := make(chan *DlmsMessage)
 			aconn.dconn.transportSend(ch, aconn.applicationClient, aconn.logicalDevice, v.pdu)
 			_msg := <-ch
 			if nil != _msg.Err {
-				errlogf("closing app connection due to transport error: %v\n", _msg.Err)
+				errorLog("closing app connection due to transport error: %v\n", _msg.Err)
 				aconn.Close()
 				return
 			}
 
 		case *DlmsAppLevelReceiveRequest:
-			logf("receive request\n")
+			debugLog("receive request\n")
 
 			ch := make(chan *DlmsMessage)
 			aconn.dconn.transportReceive(ch, aconn.logicalDevice, aconn.applicationClient)
 			_msg := <-ch
 
 			if nil != _msg.Err {
-				errlogf("closing app connection due to transport error: %v\n", _msg.Err)
+				errorLog("closing app connection due to transport error: %v\n", _msg.Err)
 				aconn.Close()
 				return
 			}
 			m := _msg.Data.(map[string]interface{})
 			if m["srcWport"] != aconn.logicalDevice {
 				err := fmt.Errorf("incorret srcWport in received pdu: %v", m["srcWport"])
-				errlogf("%s", err)
+				errorLog("%s", err)
 				aconn.Close()
 				return
 			}
 			if m["dstWport"] != aconn.applicationClient {
 				err := fmt.Errorf("incorret dstWport in received pdu: %v", m["dstWport"])
-				errlogf("%s", err)
+				errorLog("%s", err)
 				aconn.Close()
 				return
 			}
@@ -195,23 +195,23 @@ func (aconn *AppConn) handleAppLevelRequests() {
 			p := make([]byte, 3)
 			err := binary.Read(buf, binary.BigEndian, p)
 			if nil != err {
-				errlogf("io.Read() failed: %v", err)
+				errorLog("io.Read() failed: %v", err)
 				aconn.Close()
 				return
 			}
 
 			invokeId := uint8((p[2] & 0xF0) >> 4)
-			logf("invokeId %d\n", invokeId)
+			debugLog("invokeId %d\n", invokeId)
 
 			rips := aconn.rips[invokeId]
 			if nil == rips {
-				errlogf("no request in progresss for invokeId %d", invokeId)
-				errlogf("closing app connection")
+				errorLog("no request in progresss for invokeId %d", invokeId)
+				errorLog("closing app connection")
 				aconn.Close()
 			}
 			if nil != rips[0].Dead {
-				errlogf("received pdu for dead request, invokeId %d, reason for request being dead: %s\n", rips[0].invokeId, *rips[0].Dead)
-				errlogf("closing app connection")
+				errorLog("received pdu for dead request, invokeId %d, reason for request being dead: %s\n", rips[0].invokeId, *rips[0].Dead)
+				errorLog("closing app connection")
 				aconn.Close()
 				return
 			}
@@ -225,7 +225,7 @@ func (aconn *AppConn) handleAppLevelRequests() {
 func (aconn *AppConn) killRequest(rips []*DlmsRequestResponse, err error) {
 	invokeId := rips[0].invokeId
 	if nil != rips[0].Dead {
-		logf("already dead request, invokeId: %d", invokeId)
+		debugLog("already dead request, invokeId: %d", invokeId)
 		return
 	}
 	for _, rip := range rips {
@@ -240,7 +240,7 @@ func (aconn *AppConn) killRequest(rips []*DlmsRequestResponse, err error) {
 	}
 	if nil != err {
 		err = fmt.Errorf("request killed, invokeId: %d, reason: %s", invokeId, *rips[0].Dead)
-		errlogf("%s", err)
+		errorLog("%s", err)
 	}
 	rips[0].Ch <- &DlmsMessage{err, DlmsResultResponse(rips)}
 	close(rips[0].Ch)
@@ -291,7 +291,7 @@ func (aconn *AppConn) processGetResponseWithList(rips []*DlmsRequestResponse, r 
 
 	if len(dataAccessResults) != len(rips) {
 		err = fmt.Errorf("unexpected count of received list entries")
-		errlogf("%s", err)
+		errorLog("%s", err)
 
 		if len(dataAccessResults) > len(rips) {
 			dataAccessResults = dataAccessResults[0:len(rips)]
@@ -319,10 +319,10 @@ func (aconn *AppConn) processGetResponseWithList(rips []*DlmsRequestResponse, r 
 
 func (aconn *AppConn) processBlockResponse(rips []*DlmsRequestResponse, r io.Reader, err error) {
 	if 1 == len(rips) {
-		logf("blocks received, processing ResponseNormal")
+		debugLog("blocks received, processing ResponseNormal")
 		aconn.processGetResponseNormalBlock(rips, r, err)
 	} else {
-		logf("blocks received, processing ResponseWithList")
+		debugLog("blocks received, processing ResponseWithList")
 		aconn.processGetResponseWithList(rips, r, err)
 	}
 }
@@ -351,7 +351,7 @@ func (aconn *AppConn) processSetResponseWithList(rips []*DlmsRequestResponse, r 
 
 	if len(dataAccessResults) != len(rips) {
 		err = fmt.Errorf("unexpected count of received list entries")
-		errlogf("%s", err)
+		errorLog("%s", err)
 
 		if len(dataAccessResults) > len(rips) {
 			dataAccessResults = dataAccessResults[0:len(rips)]
@@ -378,21 +378,21 @@ func (aconn *AppConn) processSetResponseWithList(rips []*DlmsRequestResponse, r 
 func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.Reader) {
 
 	invokeId := uint8((p[2] & 0xF0) >> 4)
-	logf("invokeId %d\n", invokeId)
+	debugLog("invokeId %d\n", invokeId)
 
 	if (0xC4 == p[0]) && (0x01 == p[1]) {
-		logf("processing GetResponseNormal")
+		debugLog("processing GetResponseNormal")
 
 		aconn.processGetResponseNormal(rips, r, nil)
 
 	} else if (0xC4 == p[0]) && (0x03 == p[1]) {
-		logf("processing GetResponseWithList")
+		debugLog("processing GetResponseWithList")
 
 		aconn.processGetResponseWithList(rips, r, nil)
 
 	} else if (0xC4 == p[0]) && (0x02 == p[1]) {
 		// data blocks response
-		logf("processing GetResponsewithDataBlock")
+		debugLog("processing GetResponsewithDataBlock")
 
 		err, lastBlock, blockNumber, dataAccessResult, rawData := decode_GetResponsewithDataBlock(r)
 		if nil != err {
@@ -401,7 +401,7 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 		}
 		if 0 != dataAccessResult {
 			err = fmt.Errorf("error occured receiving response block, invokeId: %d, blockNumber: %d, dataAccessResult: %d", invokeId, blockNumber, dataAccessResult)
-			errlogf("%s", err)
+			errorLog("%s", err)
 			aconn.killRequest(rips, err)
 			return
 		}
@@ -418,7 +418,7 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 		} else {
 			// requests next data block
 
-			logf("requesting next data block after block %d", blockNumber)
+			debugLog("requesting next data block after block %d", blockNumber)
 
 			var buf bytes.Buffer
 			invokeIdAndPriority := p[2]
@@ -438,17 +438,17 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 		}
 
 	} else if (0xC5 == p[0]) && (0x01 == p[1]) {
-		logf("processing SetResponseNormal")
+		debugLog("processing SetResponseNormal")
 
 		aconn.processSetResponseNormal(rips, r, nil)
 
 	} else if (0xC5 == p[0]) && (0x05 == p[1]) {
-		logf("processing SetResponseWithList")
+		debugLog("processing SetResponseWithList")
 
 		aconn.processSetResponseWithList(rips, r, nil)
 
 	} else if (0xC5 == p[0]) && (0x02 == p[1]) {
-		logf("processing SetResponseForDataBlock")
+		debugLog("processing SetResponseForDataBlock")
 
 		req := rips[0].Req
 
@@ -459,7 +459,7 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 		}
 		if req.blockNumber != blockNumber {
 			err = fmt.Errorf("error occured receiving response block: received unexpected blockNumber: %d, invokeId: %d ", blockNumber, invokeId)
-			errlogf("%s", err)
+			errorLog("%s", err)
 			aconn.killRequest(rips, err)
 			return
 		}
@@ -479,7 +479,7 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 			lastBlock = true
 		}
 
-		logf("setting next data block (current block is %d)", blockNumber)
+		debugLog("setting next data block (current block is %d)", blockNumber)
 
 		var buf bytes.Buffer
 		invokeIdAndPriority := p[2]
@@ -499,7 +499,7 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 		aconn.transportSubmit(invokeId, rips, buf.Bytes())
 
 	} else if (0xC5 == p[0]) && (0x03 == p[1]) {
-		logf("processing SetResponseForLastDataBlock")
+		debugLog("processing SetResponseForLastDataBlock")
 
 		req := rips[0].Req
 
@@ -510,7 +510,7 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 		}
 		if req.blockNumber != blockNumber {
 			err = fmt.Errorf("error occured receiving response block: received unexpected blockNumber: %d, invokeId: %d ", blockNumber, invokeId)
-			errlogf("%s", err)
+			errorLog("%s", err)
 			aconn.killRequest(rips, err)
 			return
 		}
@@ -521,7 +521,7 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 		aconn.killRequest(rips, nil)
 
 	} else if (0xC5 == p[0]) && (0x04 == p[1]) {
-		logf("processing SetResponseForLastDataBlockWithList")
+		debugLog("processing SetResponseForLastDataBlockWithList")
 
 		req := rips[0].Req
 
@@ -532,14 +532,14 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 		}
 		if req.blockNumber != blockNumber {
 			err = fmt.Errorf("error occured receiving response block: received unexpected blockNumber: %d, invokeId: %d ", blockNumber, invokeId)
-			errlogf("%s", err)
+			errorLog("%s", err)
 			aconn.killRequest(rips, err)
 			return
 		}
 
 		if len(rips) != len(dataAccessResults) {
 			err = fmt.Errorf("error occured receiving response block: received unexpected number of results: %d, expected: %d, invokeId: %d ", len(dataAccessResults), len(rips), invokeId)
-			errlogf("%s", err)
+			errorLog("%s", err)
 			aconn.killRequest(rips, err)
 			return
 		}
@@ -553,27 +553,27 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 
 	} else {
 		err := fmt.Errorf("received pdu discarded due to unknown tag: %02X %02X", p[0], p[1])
-		errlogf("%s", err)
+		errorLog("%s", err)
 		return
 	}
 }
 
 func (aconn *AppConn) getInvokeId() (err error, invokeId uint8) {
 
-	logf("waiting for free invokeId ...")
+	debugLog("waiting for free invokeId ...")
 	select {
 	case _invokeId := <-aconn.invokeIdsCh:
-		logf("invokeId: %d", _invokeId)
+		debugLog("invokeId: %d", _invokeId)
 		return nil, _invokeId
 	case <-aconn.finish:
 		err = fmt.Errorf("aborted, reason: app connection closed")
-		errlogf("%s", err)
+		errorLog("%s", err)
 		return err, 0
 	}
 }
 
 func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
-	logf("")
+	debugLog("")
 	highPriority := true
 
 	if 0 == len(vals) {
@@ -583,7 +583,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 
 	if aconn.closed {
 		err := fmt.Errorf("connection closed")
-		errlogf("%s", err)
+		errorLog("%s", err)
 		ch <- &DlmsMessage{err, nil}
 		return
 	}
@@ -593,7 +593,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 		ch <- &DlmsMessage{err, nil}
 		return
 	}
-	logf("invokeId %d\n", invokeId)
+	debugLog("invokeId %d\n", invokeId)
 
 	rips := make([]*DlmsRequestResponse, len(vals))
 	for i := 0; i < len(vals); i += 1 {
@@ -622,7 +622,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 		if nil == vals[0].Data {
 			_, err = buf.Write([]byte{0xC0, 0x01, byte(invokeIdAndPriority)})
 			if nil != err {
-				errlogf("buf.Write() failed: %v\n", err)
+				errorLog("buf.Write() failed: %v\n", err)
 				return
 			}
 			err = encode_GetRequestNormal(&buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
@@ -633,7 +633,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 			if 0 == vals[0].BlockSize {
 				_, err = buf.Write([]byte{0xC1, 0x01, byte(invokeIdAndPriority)})
 				if nil != err {
-					errlogf("buf.Write() failed: %v\n", err)
+					errorLog("buf.Write() failed: %v\n", err)
 					return
 				}
 
@@ -644,7 +644,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 			} else {
 				_, err = buf.Write([]byte{0xC1, 0x02, byte(invokeIdAndPriority)})
 				if nil != err {
-					errlogf("buf.Write() failed: %v\n", err)
+					errorLog("buf.Write() failed: %v\n", err)
 					return
 				}
 
@@ -680,7 +680,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 		if nil == vals[0].Data {
 			_, err = buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
 			if nil != err {
-				errlogf("buf.Write() failed: %v\n", err)
+				errorLog("buf.Write() failed: %v\n", err)
 				return
 			}
 			var (
@@ -721,7 +721,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 			if 0 == vals[0].BlockSize {
 				_, err = buf.Write([]byte{0xC1, 0x04, byte(invokeIdAndPriority)})
 				if nil != err {
-					errlogf("buf.Write() failed: %v\n", err)
+					errorLog("buf.Write() failed: %v\n", err)
 					return
 				}
 
@@ -732,7 +732,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 			} else {
 				_, err = buf.Write([]byte{0xC1, 0x05, byte(invokeIdAndPriority)})
 				if nil != err {
-					errlogf("buf.Write() failed: %v\n", err)
+					errorLog("buf.Write() failed: %v\n", err)
 					return
 				}
 
