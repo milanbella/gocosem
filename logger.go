@@ -1,6 +1,7 @@
 package gocosem
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"os"
@@ -10,8 +11,8 @@ import (
 )
 
 var (
-	DebugEnabled = true
-	Log          = log.New(os.Stderr, "[gocosem] ", log.Lmicroseconds)
+	Log      = log.New(os.Stderr, "[gocosem] ", log.Lmicroseconds)
+	logLevel int
 )
 
 const (
@@ -24,6 +25,30 @@ const (
 	LOG_LEVEL_TRACE = 2
 	LOG_LEVEL_WARN  = 1
 )
+
+func init() {
+
+	var _logLevel string
+
+	flag.StringVar(&_logLevel, "cosemLog", "INFO", "log level [ALL|DEBUG|FATAL|INFO|OFF]")
+	flag.Parse()
+
+	if "ALL" == _logLevel {
+		logLevel = LOG_LEVEL_ALL
+	} else if "DEBUG" == _logLevel {
+		logLevel = LOG_LEVEL_DEBUG
+	} else if "ERROR" == _logLevel {
+		logLevel = LOG_LEVEL_ERROR
+	} else if "FATAL" == _logLevel {
+		logLevel = LOG_LEVEL_FATAL
+	} else if "INFO" == _logLevel {
+		logLevel = LOG_LEVEL_INFO
+	} else if "OFF" == _logLevel {
+		logLevel = LOG_LEVEL_OFF
+	} else {
+		panic("incorrect value of command lone flag 'cosemLog': " + _logLevel)
+	}
+}
 
 func debugLog(f string, a ...interface{}) {
 	if logLevel >= LOG_LEVEL_DEBUG {
