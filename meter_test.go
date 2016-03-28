@@ -764,6 +764,10 @@ func TestMeter_ProfileTimeRange(t *testing.T) {
 
 	t.Logf("time from: %s", tim.PrintDateTime())
 
+	// for some reason deviation and status must be zeroed or else thi meter reports error
+	tim.Deviation = 0
+	tim.ClockStatus = 0
+
 	fromValue := new(DlmsData)
 	fromValue.SetOctetString(tim.ToBytes())
 
@@ -782,6 +786,10 @@ func TestMeter_ProfileTimeRange(t *testing.T) {
 		tim.Deviation = 0
 		tim.ClockStatus = 0
 	*/
+
+	// for some reason deviation and status must be zeroed or else thi meter reports error
+	tim.Deviation = 0
+	tim.ClockStatus = 0
 
 	t.Logf("time to: %s", tim.PrintDateTime())
 
