@@ -1,3 +1,7 @@
 1.0.0
 ======
 Initial vesrion
+
+1.0.1
+======
+fixed failing test TestMeter_ProfileTimeRange()
