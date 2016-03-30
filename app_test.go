@@ -768,7 +768,7 @@ func TestX_SetRequestWithList_blockTransfer(t *testing.T) {
 	}
 }
 
-func TestX_10000parallelRequests(t *testing.T) {
+func TestX_1000parallelRequests(t *testing.T) {
 	ensureMockCosemServer(t)
 	defer mockCosemServer.Close()
 	mockCosemServer.Init()
@@ -803,14 +803,14 @@ func TestX_10000parallelRequests(t *testing.T) {
 	vals[0] = val
 
 	sink := make(chan *DlmsMessage)
-	count := int(10000)
+	count := int(1000)
 
 	n1 := count
 	countSent := 0
 	for i := 0; i < count; i += 1 {
 		go func() {
 			ch := aconn.SendRequest(vals)
-			msg = <-ch
+			msg := <-ch
 			sink <- msg
 			countSent++
 			if countSent == n1 {

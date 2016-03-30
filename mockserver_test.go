@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
@@ -17,9 +18,10 @@ type tMockCosemObject struct {
 }
 
 type tMockCosemServer struct {
-	closed              bool
+	//closed              bool
 	ln                  net.Listener
-	connections         *list.List // list of *tMockCosemServerConnection
+	connections         *list.List  // list of *tMockCosemServerConnection
+	connections_mtx     *sync.Mutex // TODO: avoid mutex
 	objects             map[string]*tMockCosemObject
 	blockLength         int
 	replyDelayMsec      int
@@ -530,8 +532,8 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 	return nil
 }
 
-func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) (err error) {
-	for (!conn.closed) && (!conn.srv.closed) {
+func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) {
+	for {
 
 		ch := make(DlmsChannel)
 		ipTransportReceive(ch, conn.rwc, &conn.applicationClient, &conn.logicalDevice)
@@ -563,9 +565,6 @@ func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) (err error
 			}
 		}()
 	}
-	t.Logf("mock server: closing client connection")
-	conn.rwc.Close()
-	return nil
 }
 
 func (srv *tMockCosemServer) objectKey(instanceId *DlmsOid) string {
@@ -679,7 +678,9 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	conn.accessSelectors = make(map[uint8][]DlmsAccessSelector)
 	conn.accessParameters = make(map[uint8][]*DlmsData)
 
+	mockCosemServer.connections_mtx.Lock()
 	srv.connections.PushBack(conn)
+	mockCosemServer.connections_mtx.Unlock()
 
 	go conn.receiveAndReply(t)
 	return nil
@@ -719,24 +720,28 @@ func startMockCosemServer(t *testing.T, ch DlmsChannel, addr string, port int, a
 
 	mockCosemServer = new(tMockCosemServer)
 	mockCosemServer.connections = list.New()
+	mockCosemServer.connections_mtx = &sync.Mutex{}
 	go mockCosemServer.accept(t, ch, tcpAddr, aare)
 }
 
 func (srv *tMockCosemServer) Close() {
+	srv.connections_mtx.Lock()
 	for e := srv.connections.Front(); e != nil; e = e.Next() {
 		sconn := e.Value.(*tMockCosemServerConnection)
 		if !sconn.closed {
 			sconn.closed = true
-			sconn.rwc.Close()
 		}
 	}
 	srv.connections = list.New()
+	srv.connections_mtx.Unlock()
 }
 
 func (srv *tMockCosemServer) Init() {
 	srv.Close()
 
+	srv.connections_mtx.Lock()
 	srv.connections = list.New()
+	srv.connections_mtx.Unlock()
 	srv.objects = make(map[string]*tMockCosemObject)
 	srv.blockLength = 0
 	srv.replyDelayMsec = 0
