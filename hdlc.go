@@ -7,6 +7,12 @@ const (
 	HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 )
 
+const (
+	ADDRESS_BYTE_LENGTH_1 = iota
+	ADDRESS_BYTE_LENGTH_2
+	ADDRESS_BYTE_LENGTH_4
+)
+
 type HdlcTransport struct {
 	rwc            io.ReadWriteCloser
 	ch             chan *DlmsMessage
@@ -15,13 +21,14 @@ type HdlcTransport struct {
 }
 
 type HdlcFrame struct {
-	direction        int
-	formatType       uint8
-	segmentation     bool
-	length           uint16
-	logicalDeviceId  uint16
-	physicalDeviceId *uint16 // may not be present
-	clientId         uint8
+	direction                int
+	formatType               uint8
+	segmentation             bool
+	length                   uint16
+	logicalDeviceId          uint16
+	physicalDeviceId         *uint16 // may not be present
+	clientId                 uint8
+	expectedServerAddrLength int
 }
 
 var ErrorMalformedSegment = errors.New("ErrorMalformedSegment")
@@ -39,14 +46,23 @@ func (htran *HDLCTransport) parseServerAddress(frame *HdlcFrame, r io.Reader) (e
 
 	//TODO: implemet cosem: 8.4.2.5 Handling inopportune address lengths in the server
 
+	if !((ADDRESS_LENGTH_1 == frame.expectedServerAddrLength) || (ADDRESS_LENGTH_2 == frame.expectedServerAddrLength) || (ADDRESS_LENGTH_4 == frame.expectedServerAddrLength)) {
+		panic("wrong expected server address length value")
+	}
+
 	err = binary.Read(r, binary.BigEndian, &b0)
 	if nil != err {
 		errorLog("binary.Read() failed, err: %v", err)
 		return err
 	}
 	if b0&0x01 > 0 {
-		frame.dst.logicalDeviceId = (uint16(b0) & 0x00FE) >> 1
-		frame.dst.physicalDeviceId = nil
+		if ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+			frame.dst.logicalDeviceId = (uint16(b0) & 0x00FE) >> 1
+			frame.dst.physicalDeviceId = nil
+		} else {
+			errorLog("short server address")
+			return ErrorMalformedSegment
+		}
 	} else {
 		err = binary.Read(r, binary.BigEndian, &b1)
 		if nil != err {
@@ -54,10 +70,28 @@ func (htran *HDLCTransport) parseServerAddress(frame *HdlcFrame, r io.Reader) (e
 			return err
 		}
 		if b1&0x01 > 0 {
-			frame.dst.logicalDeviceId = (uint16(b0) & 0x00FE) >> 1
-			physicalDeviceId := new(uint16)
-			physicalDeviceId = (uint16(b1) & 0x00FE) >> 1
-			frame.dst.physicalDeviceId = physicalDeviceId
+			if ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
+				frame.dst.logicalDeviceId = (uint16(b0) & 0x00FE) >> 1
+				physicalDeviceId := new(uint16)
+				physicalDeviceId = (uint16(b1) & 0x00FE) >> 1
+				frame.dst.physicalDeviceId = physicalDeviceId
+			} else if ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+				if 0x7F == b1 {
+					// all station broadcast
+					frame.dst.logicalDeviceId = 0x7F
+					frame.dst.physicalDeviceId = nil
+				} else {
+					errorLog("long server address")
+					return ErrorMalformedSegment
+				}
+			} else if ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
+				frame.dst.logicalDeviceId = (uint16(b0) & 0x00FE) >> 1
+				physicalDeviceId := new(uint16)
+				physicalDeviceId = (uint16(b1) & 0x00FE) >> 1
+				frame.dst.physicalDeviceId = physicalDeviceId
+			} else {
+				panic()
+			}
 		} else {
 			err = binary.Read(r, binary.BigEndian, &b2)
 			if nil != err {
@@ -65,7 +99,7 @@ func (htran *HDLCTransport) parseServerAddress(frame *HdlcFrame, r io.Reader) (e
 				return err
 			}
 			if b2&0x01 > 0 {
-				errorLog("server address is shorter then 4 bytes")
+				errorLog("short server address")
 				return ErrorMalformedSegment
 			}
 			err = binary.Read(r, binary.BigEndian, &b3)
@@ -74,12 +108,18 @@ func (htran *HDLCTransport) parseServerAddress(frame *HdlcFrame, r io.Reader) (e
 				return err
 			}
 			if b3&0x01 > 0 {
-				frame.dst.logicalDeviceId = ((uint16(b0)&0x00FE)>>1)<<7 + ((uint16(b1) & 0x00FE) >> 1)
-				physicalDeviceId := new(uint16)
-				physicalDeviceId = ((uint16(b2)&0x00FE)>>1)<<7 + ((uint16(b3) & 0x00FE) >> 1)
-				frame.dst.physicalDeviceId = physicalDeviceId
+				if ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
+					frame.dst.logicalDeviceId = ((uint16(b0)&0x00FE)>>1)<<7 + ((uint16(b1) & 0x00FE) >> 1)
+					physicalDeviceId := new(uint16)
+					physicalDeviceId = ((uint16(b2)&0x00FE)>>1)<<7 + ((uint16(b3) & 0x00FE) >> 1)
+					frame.dst.physicalDeviceId = physicalDeviceId
+				} else if ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+				} else if ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
+				} else {
+					panic()
+				}
 			} else {
-				errorLog("server address is longer then 4 bytes")
+				errorLog("long server address")
 				return ErrorMalformedSegment
 			}
 		}
