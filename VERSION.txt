@@ -16,3 +16,7 @@ but original asn1c encoder encode_AARQapdu()  is preserved and may be stil used,
 ======
 - fixed all race detector warnings, except one TestX_1000parallelRequests() which is probably false positive 
 - lowered number of parallel requests to 1000 from 10000 in test TestX_1000parallelRequests() to avoid race detector to hit its limit on max number of parallel routines
+
+1.0.4
+======
+- refactor of logging
