@@ -1,59 +1,61 @@
 package gocosem
 
-const (
-	HDLC_FRAME_DIRECTION_CLIENT_INBOUND = iota
-	HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-	HDLC_FRAME_DIRECTION_SERVER_INBOUND
-	HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+import (
+	"encoding/binary"
+	"errors"
+	"io"
 )
 
 const (
-	HDLC_ADDRESS_BYTE_LENGTH_1 = iota
-	HDLC_ADDRESS_BYTE_LENGTH_2
-	HDLC_ADDRESS_BYTE_LENGTH_4
+	HDLC_FRAME_DIRECTION_CLIENT_INBOUND  = 1
+	HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND = 2
+	HDLC_FRAME_DIRECTION_SERVER_INBOUND  = 3
+	HDLC_FRAME_DIRECTION_SERVER_OUTBOUND = 4
 )
 
 const (
-	HDLC_CONTROL_I    = iota // I frame
-	HDLC_CONTROL_RR          // response ready
-	HDLC_CONTROL_RNR         // response not ready
-	HDLC_CONTROL_RNR         // response not ready
-	HDLC_CONTROL_SNRM        // set normal response mode
-	HDLC_CONTROL_DISC        // disconnect
-	HDLC_CONTROL_UA          // unnumbered acknowledgement
-	HDLC_CONTROL_DM          // disconnected mode
-	HDLC_CONTROL_FRMR        // frame reject
-	HDLC_CONTROL_UI          // unnumbered information
+	HDLC_ADDRESS_LENGTH_1 = 1
+	HDLC_ADDRESS_LENGTH_2 = 2
+	HDLC_ADDRESS_LENGTH_4 = 4
+)
+
+const (
+	HDLC_CONTROL_I    = 1 // I frame
+	HDLC_CONTROL_RR   = 2 // response ready
+	HDLC_CONTROL_RNR  = 3 // response not ready
+	HDLC_CONTROL_SNRM = 4 // set normal response mode
+	HDLC_CONTROL_DISC = 5 // disconnect
+	HDLC_CONTROL_UA   = 6 // unnumbered acknowledgement
+	HDLC_CONTROL_DM   = 7 // disconnected mode
+	HDLC_CONTROL_FRMR = 8 // frame reject
+	HDLC_CONTROL_UI   = 9 // unnumbered information
 )
 
 type HdlcTransport struct {
-	rwc            io.ReadWriteCloser
-	ch             chan *DlmsMessage
-	linkConnected  bool
-	readFrameState int
+	rwc io.ReadWriteCloser
 }
 
 type HdlcFrame struct {
-	direction        int
-	formatType       uint8
-	segmentation     bool
-	length           uint16
-	logicalDeviceId  uint16
-	physicalDeviceId *uint16 // may not be present
-	clientId         uint8
-	pf               bool  // poll/final bit
-	nr               uint8 // N(R) - receive sequence number
-	ns               uint8 // N(S) - send sequence number
-	vr               uint8 // N(R) - receive sequence variable
-	vs               uint8 // N(S) - send sequence variable
-	windowSize	 uint8
-	control          int
-	fcs16		 uint16 // current fcs16 checksum
-	infoField	 []byte // information
-	maxInfoFieldLengthReceive int
+	direction                  int
+	formatType                 uint8
+	segmentation               bool
+	length                     int
+	logicalDeviceId            uint16
+	physicalDeviceId           *uint16 // may not be present
+	clientId                   uint8
+	pf                         bool  // poll/final bit
+	nr                         uint8 // N(R) - receive sequence number
+	ns                         uint8 // N(S) - send sequence number
+	vr                         uint8 // N(R) - receive sequence variable
+	vs                         uint8 // N(S) - send sequence variable
+	windowSize                 uint8
+	control                    int
+	fcs16                      uint16 // current fcs16 checksum
+	infoField                  []byte // information
+	maxInfoFieldLengthReceive  int
 	maxInfoFieldLengthTransmit int
-	expectedServerAddrLength int // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
-	callingPhysicalDevice    bool
+	expectedServerAddrLength   int // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
+	callingPhysicalDevice      bool
 }
 
 var fcstab = []uint16{0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf,
@@ -89,25 +91,23 @@ var fcstab = []uint16{0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x
 	0xf78f, 0xe606, 0xd49d, 0xc514, 0xb1ab, 0xa022, 0x92b9, 0x8330,
 	0x7bc7, 0x6a4e, 0x58d5, 0x495c, 0x3de3, 0x2c6a, 0x1ef1, 0x0f78}
 
-const PPPINITFCS16 = uint16(0xffff) // Initial FCS value 
+const PPPINITFCS16 = uint16(0xffff) // Initial FCS value
 const PPPGOODFCS16 = uint16(0xf0b8) // Good final FCS value
-
 
 /*
  * Calculate a new fcs given the current fcs and the new data.
  */
-func pppfcs16 (fcs16 uint16, p []byte) uint16 {
+func pppfcs16(fcs16 uint16, p []byte) uint16 {
 	for i := 0; i < len(p); i++ {
 		// fcs = (fcs >> 8) ^ fcstab[(fcs ^ *cp++) & 0xff];
-		fcs = (fcs >> 8) ^ fcstab[(fcs^p[i])&0x00ff]
+		fcs16 = (fcs16 >> 8) ^ fcstab[(fcs16^uint16(p[i]))&0x00ff]
 	}
 	return fcs16
 }
 
-
 /*
     // How to use the fcs
-   
+
    tryfcs16(cp, len)
        register unsigned char *cp;
        register int len;
@@ -117,43 +117,40 @@ func pppfcs16 (fcs16 uint16, p []byte) uint16 {
        // add on output
        trialfcs = pppfcs16( PPPINITFCS16, cp, len );
        trialfcs ^= 0xffff;                  // complement
-       cp[len] = (trialfcs & 0x00ff);       // least significant byte first 
+       cp[len] = (trialfcs & 0x00ff);       // least significant byte first
        cp[len+1] = ((trialfcs >> 8) & 0x00ff);
 
 
 
 
-       // check on input 
+       // check on input
        trialfcs = pppfcs16( PPPINITFCS16, cp, len + 2 );
        if ( trialfcs == PPPGOODFCS16 )
            printf("Good FCS\n");
    }
 */
 
-
 //TODO: better error reporting
 var ErrorMalformedSegment = errors.New("ErrorMalformedSegment")
 var ErrorInvalidValue = errors.New("ErrorInvalidValue")
 
 func NewHdlcTransport(rwc io.ReadWriteCloser) *HdlcTransport {
-	htran = new(HdlcTrandport)
-	htran.linkConnected = false
-	htran.readFrameState = HDLC_READ_FRAME_STATE_FIRST_SEGMENT
+	htran := new(HdlcTransport)
+	htran.rwc = rwc
 	return htran
 }
 
-
-func (htran *HDLCTransport) decodeServerAddress(frame *HdlcFrame, r io.Reader) (err error, n int) {
+func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame, r io.Reader) (err error, n int) {
 	n = 0
 
 	var b0, b1, b2, b3 byte
 	p := make([]byte, 1)
 
-	if !((ADDRESS_LENGTH_1 == frame.expectedServerAddrLength) || (ADDRESS_LENGTH_2 == frame.expectedServerAddrLength) || (ADDRESS_LENGTH_4 == frame.expectedServerAddrLength)) {
+	if !((HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength)) {
 		panic("wrong expected server address length value")
 	}
 
-	_, err := r.Read(p)
+	_, err = r.Read(p)
 	if nil != err {
 		errorLog("r.Read() failed: %v", err)
 		return err, n
@@ -163,7 +160,7 @@ func (htran *HDLCTransport) decodeServerAddress(frame *HdlcFrame, r io.Reader) (
 	b0 = p[0]
 
 	if b0&0x01 > 0 {
-		if ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+		if HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
 			frame.logicalDeviceId = (uint16(b0) & 0x00FE) >> 1
 			frame.physicalDeviceId = nil
 		} else {
@@ -181,29 +178,27 @@ func (htran *HDLCTransport) decodeServerAddress(frame *HdlcFrame, r io.Reader) (
 		b1 = p[0]
 
 		if b1&0x01 > 0 {
-			upperMAC :=  (uint16(b0) & 0x00FE) >> 1
+			upperMAC := (uint16(b0) & 0x00FE) >> 1
 			lowerMAC := (uint16(b1) & 0x00FE) >> 1
-			if ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
+			if HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
 				frame.logicalDeviceId = upperMAC
-				physicalDeviceId := new(uint16)
-				physicalDeviceId = lowerMAC
-				frame.physicalDeviceId = physicalDeviceId
-			} else if ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+				frame.physicalDeviceId = new(uint16)
+				*frame.physicalDeviceId = lowerMAC
+			} else if HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
 				if 0x007F == lowerMAC {
 					// all station broadcast
 					frame.logicalDeviceId = lowerMAC
 					frame.physicalDeviceId = nil
 				} else {
 					errorLog("long server address")
-					return ErrorMalformedSegment
+					return ErrorMalformedSegment, n
 				}
-			} else if ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
+			} else if HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
 				frame.logicalDeviceId = upperMAC
-				physicalDeviceId := new(uint16)
-				physicalDeviceId = lowerMAC
-				frame.physicalDeviceId = physicalDeviceId
+				frame.physicalDeviceId = new(uint16)
+				*frame.physicalDeviceId = lowerMAC
 			} else {
-				panic()
+				panic("assertion failed")
 			}
 		} else {
 			_, err = r.Read(p)
@@ -233,41 +228,39 @@ func (htran *HDLCTransport) decodeServerAddress(frame *HdlcFrame, r io.Reader) (
 				upperMAC := ((uint16(b0)&0x00FE)>>1)<<7 + ((uint16(b1) & 0x00FE) >> 1)
 				lowerMAC := ((uint16(b2)&0x00FE)>>1)<<7 + ((uint16(b3) & 0x00FE) >> 1)
 
-				if ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
+				if HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
 
 					frame.logicalDeviceId = upperMAC
-					physicalDeviceId := new(uint16)
-					*physicalDeviceId = lowerMAC
-					frame.physicalDeviceId = physicalDeviceId
+					frame.physicalDeviceId = new(uint16)
+					*frame.physicalDeviceId = lowerMAC
 
-				} else if ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+				} else if HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
 					if (0x3FFF == upperMAC) && (0x3FFF == lowerMAC) {
 						// all station broadcast 0x3FFF
 						frame.logicalDeviceId = 0x3FFF
-						physicalDeviceId := new(uint16)
-						*physicalDeviceId = 0x3FFF
+						frame.physicalDeviceId = new(uint16)
+						*frame.physicalDeviceId = 0x3FFF
 					} else {
 						errorLog("long server address")
 						return ErrorMalformedSegment, n
 					}
-				} else if ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
+				} else if HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
 					if (0x3FFF == upperMAC) && (0x3FFF == lowerMAC) {
 						// all station broadcast 0x3FFF
 						frame.logicalDeviceId = 0x3FFF
-						physicalDeviceId := new(uint16)
-						*physicalDeviceId = 0x3FFF
-					} else if (upperMAC == 0x3FFF)  && (0x0001 == loweMAC) && frame.callingPhysicalDevice {
+						frame.physicalDeviceId = new(uint16)
+						*frame.physicalDeviceId = 0x3FFF
+					} else if (upperMAC == 0x3FFF) && (0x0001 == lowerMAC) && frame.callingPhysicalDevice {
 						// event reporting
 						frame.logicalDeviceId = upperMAC
-						physicalDeviceId := new(uint16)
-						*physicalDeviceId = lowerMAC
-						frame.physicalDeviceId = physicalDeviceId
+						frame.physicalDeviceId = new(uint16)
+						*frame.physicalDeviceId = lowerMAC
 					} else {
 						errorLog("long server address")
 						return ErrorMalformedSegment, n
 					}
 				} else {
-					panic()
+					panic("assertion failed")
 				}
 			} else {
 				errorLog("long server address")
@@ -275,38 +268,37 @@ func (htran *HDLCTransport) decodeServerAddress(frame *HdlcFrame, r io.Reader) (
 			}
 		}
 	}
+	return nil, n
 }
 
-func (htran *HDLCTransport) encodeServerAddress(frame *HdlcFrame, w io.Writer) (err error) {
-	n = 0
+func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame, w io.Writer) (err error) {
 
-	var b0, b1 byte
 	var v16 uint16
+	p := make([]byte, 1)
 
-	if !((ADDRESS_LENGTH_1 == frame.expectedServerAddrLength) || (ADDRESS_LENGTH_2 == frame.expectedServerAddrLength) || (ADDRESS_LENGTH_4 == frame.expectedServerAddrLength)) {
+	if !((HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength)) {
 		panic("wrong expected server address length value")
 	}
 
-	if ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+	if HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
 		p := make([]byte, 1)
 
 		// logicalDeviceId
 
 		logicalDeviceId := frame.logicalDeviceId
-		if logicalDeviceId & 0xFF80 > 0 {
+		if logicalDeviceId&0xFF80 > 0 {
 			errorLog("logicalDeviceId exceeds limit")
 			return ErrorInvalidValue
 		}
 
-		v16 = (logicalDeviceId << 1) | 0x0001)
+		v16 = (logicalDeviceId << 1) | 0x0001
 
 		p[0] = byte(v16 & 0x00FF)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
-			return err, n
+			return err
 		}
-		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		// physicalDeviceId
@@ -316,112 +308,136 @@ func (htran *HDLCTransport) encodeServerAddress(frame *HdlcFrame, w io.Writer) (
 			return ErrorInvalidValue
 		}
 
-
-	} else if ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
+	} else if HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
 
 		// logicalDeviceId
 
 		logicalDeviceId := frame.logicalDeviceId
-		if logicalDeviceId & 0xFF80 > 0 {
+		if logicalDeviceId&0xFF80 > 0 {
 			errorLog("logicalDeviceId exceeds limit")
 			return ErrorInvalidValue
 		}
 
-		v16 = (logicalDeviceId << 1) | 0x0001)
+		v16 = (logicalDeviceId << 1) | 0x0001
 
 		p[0] = byte(v16 & 0x00FF)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
-			return err, n
+			return err
 		}
-		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		// physicalDeviceId
 
-		physicalDeviceId := frame.physicalDeviceId
-		if physicalDeviceId & 0xFF80 > 0 {
+		if nil == frame.physicalDeviceId {
+			errorLog("physicalDeviceId not specified")
+			return ErrorInvalidValue
+		}
+
+		physicalDeviceId := *frame.physicalDeviceId
+		if physicalDeviceId&0xFF80 > 0 {
 			errorLog("physicalDeviceId exceeds limit")
 			return ErrorInvalidValue
 		}
 
-		v16 = (physicalDeviceId << 1) | 0x0001)
+		v16 = (physicalDeviceId << 1) | 0x0001
 
 		p[0] = byte(v16 & 0x00FF)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
-			return err, n
+			return err
 		}
-		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
-	} else if ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
+	} else if HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
 
 		// logicalDeviceId
 
 		logicalDeviceId := frame.logicalDeviceId
-		if logicalDeviceId & 0x1000 > 0 {
+		if logicalDeviceId&0x1000 > 0 {
 			errorLog("logicalDeviceId exceeds limit")
 			return ErrorInvalidValue
 		}
 
-		v16 = (logicalDeviceId << 1) | 0x0001)
+		v16 = (logicalDeviceId << 1) | 0x0001
 
 		p[0] = byte((v16 & 0xFF00) >> 8)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
-			return err, n
+			return err
 		}
-		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		p[0] = byte(v16 & 0x00FF)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
-			return err, n
+			return err
 		}
-		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		// physicalDeviceId
 
-		physicalDeviceId := frame.physicalDeviceId
-		if physicalDeviceId & 0x1000 > 0 {
+		if nil == frame.physicalDeviceId {
+			errorLog("physicalDeviceId not specified")
+			return ErrorInvalidValue
+		}
+
+		physicalDeviceId := *frame.physicalDeviceId
+		if physicalDeviceId&0x1000 > 0 {
 			errorLog("physicalDeviceId exceeds limit")
 			return ErrorInvalidValue
 		}
 
-		v16 = (physicalDeviceId << 1) | 0x0001)
+		v16 = (physicalDeviceId << 1) | 0x0001
 
 		p[0] = byte((v16 & 0xFF00) >> 8)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
-			return err, n
+			return err
 		}
-		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		p[0] = byte(v16 & 0x00FF)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
-			return err, n
+			return err
 		}
-		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 	} else {
 		panic("wrong expected server address length value")
 	}
 
-	return nil, n
+	return nil
 }
 
-func (htran *HDLCTransport) decodeClientAddress(frame *HdlcFrame, r io.Reader) (err error, n int) {
+func (htran *HdlcTransport) lengthServerAddress(frame *HdlcFrame) (n int) {
+
+	n = 0
+
+	if !((HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength)) {
+		panic("wrong expected server address length value")
+	}
+
+	if HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+		n = 1
+	} else if HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
+		n += 2
+	} else if HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
+		n += 4
+	} else {
+		panic("wrong expected server address length value")
+	}
+
+	return n
+}
+
+func (htran *HdlcTransport) decodeClientAddress(frame *HdlcFrame, r io.Reader) (err error, n int) {
 	n = 0
 	var b0 byte
 	p := make([]byte, 1)
@@ -445,14 +461,12 @@ func (htran *HDLCTransport) decodeClientAddress(frame *HdlcFrame, r io.Reader) (
 	return nil, n
 }
 
-//TODO
-func (htran *HDLCTransport) encodeClientAddress(frame *HdlcFrame, w io.Writer) (err error) {
-	n = 0
+func (htran *HdlcTransport) encodeClientAddress(frame *HdlcFrame, w io.Writer) (err error) {
 	var b0 byte
 	p := make([]byte, 1)
 
 	clientId := frame.clientId
-	if clientId & 0x80 > 0 {
+	if clientId&0x80 > 0 {
 		errorLog("clientId exceeds limit")
 		return ErrorInvalidValue
 	}
@@ -460,17 +474,22 @@ func (htran *HDLCTransport) encodeClientAddress(frame *HdlcFrame, w io.Writer) (
 	b0 = (clientId << 1) | 0x01
 
 	p[0] = b0
-	_, err = r.Write(p)
+	_, err = w.Write(p)
 	if nil != err {
 		errorLog("r.Write() failed: %v", err)
 		return err
 	}
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
 
-	return nil, n
+	return nil
 }
 
-func (htran *HDLCTransport) decodeFrameInfo(frame *HdlcFrame, r io.Reader, l int) (err error, n int) {
+func (htran *HdlcTransport) lengthClientAddress(frame *HdlcFrame) int {
+	return 1
+}
+
+func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, r io.Reader, l int) (err error, n int) {
+	p := make([]byte, 1)
 
 	// HCS - header control sum
 
@@ -480,6 +499,7 @@ func (htran *HDLCTransport) decodeFrameInfo(frame *HdlcFrame, r io.Reader, l int
 		return err, n
 	}
 	n += 1
+	l += 1
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
 	_, err = r.Read(p)
 	if nil != err {
@@ -487,7 +507,9 @@ func (htran *HDLCTransport) decodeFrameInfo(frame *HdlcFrame, r io.Reader, l int
 		return err, n
 	}
 	n += 1
+	l += 1
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
+
 	if PPPGOODFCS16 != frame.fcs16 {
 		errorLog("wrong HCS")
 		return ErrorMalformedSegment, n
@@ -495,90 +517,146 @@ func (htran *HDLCTransport) decodeFrameInfo(frame *HdlcFrame, r io.Reader, l int
 
 	// read information field
 
-	infoFieldLength := frame.length - (l + 2) // substract also 2 bytes for final FCS
+	infoFieldLength := frame.length - l
 
-	if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND) {
-		if (infoFieldLength > frame.maxInfoFieldLengthReceive) {
-			errorLog("long info field")
+	if infoFieldLength > 0 {
+
+		if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
+			if infoFieldLength > frame.maxInfoFieldLengthReceive {
+				errorLog("long info field")
+				return ErrorMalformedSegment, n
+			}
+		} else {
+			panic("frame direction is not inbound")
+		}
+
+		p = make([]byte, infoFieldLength)
+		err = binary.Read(r, binary.BigEndian, p)
+		if nil != err {
+			errorLog("binary.Read() failed: %v", err)
+			return err, n
+		}
+		n += len(p)
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		frame.infoField = p
+
+		// FCS - frame control sum
+
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		if PPPGOODFCS16 != frame.fcs16 {
+			errorLog("wrong FCS")
 			return ErrorMalformedSegment, n
 		}
 	} else {
-		panic("frame direction is not inbound")
+		frame.infoField = make([]byte, 0)
 	}
 
-	p = make([]byte, infoFieldLength)
-	err = binary.Read(r, binary.BigEndian,  p)
-	if nil != err {
-		errorLog("binary.Read() failed: %v", err)
-		return err, n
-	}
-	n += len(p)
-	frame.fcs16 = pppfcs16(frame.fcs16, p)
-
-
-	frame.infoField = p
 	return nil, n
 }
 
-func (htran *HDLCTransport) encodeFrameInfo(frame *HdlcFrame, w io.Writer) (err error, n int) {
-	n = 0
+func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame, w io.Writer) (err error) {
 	p := make([]byte, 1)
 
-	var b0 byte
+	infoFieldLength := len(frame.infoField)
 
+	if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
+		if infoFieldLength > frame.maxInfoFieldLengthReceive {
+			errorLog("long info field")
+			return ErrorMalformedSegment
+		}
+	} else if (HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_OUTBOUND == frame.direction) {
+		if infoFieldLength > frame.maxInfoFieldLengthTransmit {
+			errorLog("long info field")
+			return ErrorMalformedSegment
+		}
+	} else {
+		panic("assertion failed")
+	}
 
-	// HCS - header control sum 
+	// HCS - header control sum
 
 	fcs16 := frame.fcs16
 	p[0] = byte(^fcs16 & 0x00FF)
-	_, err = r.Write(p)
+	_, err = w.Write(p)
 	if nil != err {
-		errorLog("r.Write() failed: %v", err)
-		return err, n
+		errorLog("w.Write() failed: %v", err)
+		return err
 	}
-	n += 1
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
 	p[0] = byte((^fcs16 & 0xFF00) >> 8)
-	_, err = r.Write(p)
+	_, err = w.Write(p)
 	if nil != err {
-		errorLog("r.Write() failed: %v", err)
-		return err, n
+		errorLog("w.Write() failed: %v", err)
+		return err
 	}
-	n += 1
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 	// write information field
 
-	infoFieldLength := len(frameInfo)
+	if (nil != frame.infoField) && len(frame.infoField) > 0 {
 
-	if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND) {
-		if (infoFieldLength > frame.maxInfoFieldLengthReceive) {
-			errorLog("long info field")
-			return ErrorMalformedSegment, n
+		if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
+			if infoFieldLength > frame.maxInfoFieldLengthReceive {
+				errorLog("long info field")
+				return ErrorMalformedSegment
+			}
+		} else if (HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_OUTBOUND == frame.direction) {
+			if infoFieldLength > frame.maxInfoFieldLengthTransmit {
+				errorLog("long info field")
+				return ErrorMalformedSegment
+			}
+		} else {
+			panic("assertion failed")
 		}
-	} else if (HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND) || (HDLC_FRAME_DIRECTION_SERVER_OUTBOUND) {
-		if (infoFieldLength > frame.maxInfoFieldLengthTransmit) {
-			errorLog("long info field")
-			return ErrorMalformedSegment, n
+
+		p = frame.infoField
+		err = binary.Write(w, binary.BigEndian, p)
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
 		}
-	} else {
-		panic()
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		// FCS - frame control sum
+
+		fcs16 := frame.fcs16
+		p[0] = byte(^fcs16 & 0x00FF)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		p[0] = byte((^fcs16 & 0xFF00) >> 8)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
 	}
 
-	p = frame.infoField
-	err = binary.Write(w, binary.BigEndian,  p)
-	if nil != err {
-		errorLog("binary.Write() failed: %v", err)
-		return err, n
-	}
-	n += len(p)
-	frame.fcs16 = pppfcs16(frame.fcs16, p)
-
-
-	return nil, err
+	return nil
 }
 
-func (htran *HDLCTransport) decodeFrameControl(frame *HdlcFrame, r io.Reader, int l) (err error, n int) {
+// decode frame address, control and information field
+
+func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, r io.Reader, l int) (err error, n int) {
 	n = 0
 	var b0 byte
 	var nn int
@@ -588,23 +666,23 @@ func (htran *HDLCTransport) decodeFrameControl(frame *HdlcFrame, r io.Reader, in
 	// dst and src address
 
 	if HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction {
-		err, nn = htran.decodeServerAddress(r)
+		err, nn = htran.decodeServerAddress(frame, r)
 		if nil != err {
 			return err, n
 		}
 		n += nn
-		err, nn  = htran.decodeClientAddress(r)
+		err, nn = htran.decodeClientAddress(frame, r)
 		if nil != err {
 			return err, n
 		}
 		n += nn
 	} else if HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction {
-		err, nn = htran.decodeClientAddress(r)
+		err, nn = htran.decodeClientAddress(frame, r)
 		if nil != err {
 			return err, n
 		}
 		n += nn
-		err, nn = htran.decodeServerAddress(r)
+		err, nn = htran.decodeServerAddress(frame, r)
 		if nil != err {
 			return err, n
 		}
@@ -633,76 +711,225 @@ func (htran *HDLCTransport) decodeFrameControl(frame *HdlcFrame, r io.Reader, in
 		frame.nr = b0 & 0xE0 >> 5
 		frame.ns = b0 & 0x0E >> 1
 
-		err, nn := htran.decodeFrameInfo(frame, l+n)
+		err, nn := htran.decodeFrameInfo(frame, r, l+n)
+		if nil != err {
+			return err, n
+		}
 		n += nn
 
-	} else if  (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 == 0) && (b0&0x01 > 0) {
+	} else if (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 == 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_RR
-	} else if  (b0&0x08 == 0) && (b0&0x04 > 0) && (b0&0x02 == 0) && (b0&0x01 > 0) {
+
+		// FCS - frame control sum
+
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		if PPPGOODFCS16 != frame.fcs16 {
+			errorLog("wrong FCS")
+			return ErrorMalformedSegment, n
+		}
+	} else if (b0&0x08 == 0) && (b0&0x04 > 0) && (b0&0x02 == 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_RNR
-	} else if (b0&0x80 > 0) && (b0&0x40 == 0) && (b0&0x20 == 0)  && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
+
+		// FCS - frame control sum
+
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		if PPPGOODFCS16 != frame.fcs16 {
+			errorLog("wrong FCS")
+			return ErrorMalformedSegment, n
+		}
+	} else if (b0&0x80 > 0) && (b0&0x40 == 0) && (b0&0x20 == 0) && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
 
 		frame.control = HDLC_CONTROL_SNRM
 
-		err, nn := htran.decodeFrameInfo(frame, l+n)
+		err, nn := htran.decodeFrameInfo(frame, r, l+n)
+		if nil != err {
+			return err, n
+		}
 		n += nn
 
 	} else if (b0&0x80 == 0) && (b0&0x40 > 0) && (b0&0x20 == 0) && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_DISC
+
+		// FCS - frame control sum
+
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		if PPPGOODFCS16 != frame.fcs16 {
+			errorLog("wrong FCS")
+			return ErrorMalformedSegment, n
+		}
 	} else if (b0&0x80 == 0) && (b0&0x40 > 0) && (b0&0x20 > 0) && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_UA
+
+		// FCS - frame control sum
+
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		if PPPGOODFCS16 != frame.fcs16 {
+			errorLog("wrong FCS")
+			return ErrorMalformedSegment, n
+		}
 	} else if (b0&0x80 == 0) && (b0&0x40 == 0) && (b0&0x20 == 0) && (b0&0x08 > 0) && (b0&0x04 > 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_DM
+
+		// FCS - frame control sum
+
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		if PPPGOODFCS16 != frame.fcs16 {
+			errorLog("wrong FCS")
+			return ErrorMalformedSegment, n
+		}
 	} else if (b0&0x80 > 0) && (b0&0x40 == 0) && (b0&0x20 == 0) && (b0&0x08 == 0) && (b0&0x04 > 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_FRMR
+
+		// FCS - frame control sum
+
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		if PPPGOODFCS16 != frame.fcs16 {
+			errorLog("wrong FCS")
+			return ErrorMalformedSegment, n
+		}
 	} else if (b0&0x80 == 0) && (b0&0x40 == 0) && (b0&0x20 == 0) && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_UI
+
+		// FCS - frame control sum
+
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		_, err = r.Read(p)
+		if nil != err {
+			errorLog("r.Read() failed: %v", err)
+			return err, n
+		}
+		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		if PPPGOODFCS16 != frame.fcs16 {
+			errorLog("wrong FCS")
+			return ErrorMalformedSegment, n
+		}
 	} else {
 		errorLog("malformed control field")
 		return ErrorMalformedSegment, n
 	}
 
-	// FCS - frame control sum
-
-	if PPPGOODFCS16 != frame.fcs16 {
-		errorLog("wrong FCS")
-		return ErrorMalformedSegment, n
-	}
-
 	return nil, n
-
 }
 
+// encode frame address, control and information field
 
-func (htran *HDLCTransport) encodeFrameControl(frame *HdlcFrame, r io.Writer) (err error) {
-	n = 0
+func (htran *HdlcTransport) encodeFrameACI(frame *HdlcFrame, w io.Writer) (err error) {
 	var b0 byte
-	var nn int
 
 	p := make([]byte, 1)
 
 	// dst and src address
 
 	if HDLC_FRAME_DIRECTION_SERVER_OUTBOUND == frame.direction {
-		err = htran.encodeServerAddress(r)
+		err = htran.encodeServerAddress(frame, w)
 		if nil != err {
 			return err
 		}
-		err  = htran.encodeClientAddress(r)
+		err = htran.encodeClientAddress(frame, w)
 		if nil != err {
 			return err
 		}
 	} else if HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND == frame.direction {
-		err, nn = htran.encodeClientAddress(r)
+		err = htran.encodeClientAddress(frame, w)
 		if nil != err {
-			return err, n
+			return err
 		}
-		n += nn
-		err, nn = htran.encodeServerAddress(r)
+		err = htran.encodeServerAddress(frame, w)
 		if nil != err {
-			return err, n
+			return err
 		}
-		n += nn
 	} else {
 		panic("frame direction is not outbound")
 	}
@@ -728,19 +955,17 @@ func (htran *HDLCTransport) encodeFrameControl(frame *HdlcFrame, r io.Writer) (e
 		b0 |= frame.ns << 1
 
 		p[0] = b0
-		_, err = r.Write(p)
+		_, err = w.Write(p)
 		if nil != err {
-			errorLog("r.Write() failed: %v", err)
-			return err, n
+			errorLog("w.Write() failed: %v", err)
+			return err
 		}
-		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
-		err, nn = encodeFrameInfo(frame, w, frame.infoField)
+		err = htran.encodeFrameInfo(frame, w)
 		if nil != err {
-			return err, n
+			return err
 		}
-		n += nn
 
 	} else if HDLC_CONTROL_RR == frame.control {
 		b0 |= 0x01
@@ -751,12 +976,29 @@ func (htran *HDLCTransport) encodeFrameControl(frame *HdlcFrame, r io.Writer) (e
 		b0 |= frame.nr << 5
 
 		p[0] = b0
-		_, err = r.Write(p)
+		_, err = w.Write(p)
 		if nil != err {
-			errorLog("r.Write() failed: %v", err)
-			return err, n
+			errorLog("w.Write() failed: %v", err)
+			return err
 		}
-		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		// FCS - frame control sum
+
+		fcs16 := frame.fcs16
+		p[0] = byte(^fcs16 & 0x00FF)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		p[0] = byte((^fcs16 & 0xFF00) >> 8)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 	} else if HDLC_CONTROL_RNR == frame.control {
@@ -769,33 +1011,48 @@ func (htran *HDLCTransport) encodeFrameControl(frame *HdlcFrame, r io.Writer) (e
 		b0 |= frame.nr << 5
 
 		p[0] = b0
-		_, err = r.Write(p)
+		_, err = w.Write(p)
 		if nil != err {
-			errorLog("r.Write() failed: %v", err)
-			return err, n
+			errorLog("w.Write() failed: %v", err)
+			return err
 		}
-		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		// FCS - frame control sum
+
+		fcs16 := frame.fcs16
+		p[0] = byte(^fcs16 & 0x00FF)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		p[0] = byte((^fcs16 & 0xFF00) >> 8)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
 	} else if HDLC_CONTROL_SNRM == frame.control {
 		b0 |= 0x01
 		b0 |= 0x02
 		b0 |= 0x80
 
 		p[0] = b0
-		_, err = r.Write(p)
+		_, err = w.Write(p)
 		if nil != err {
-			errorLog("r.Write() failed: %v", err)
-			return err, n
+			errorLog("w.Write() failed: %v", err)
+			return err
 		}
-		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
-		err, nn = encodeFrameInfo(frame, w, frame.infoField)
+		err = htran.encodeFrameInfo(frame, w)
 		if nil != err {
-			return err, n
+			return err
 		}
-		n += nn
-
 
 	} else if HDLC_CONTROL_DISC == frame.control {
 		b0 |= 0x01
@@ -803,12 +1060,29 @@ func (htran *HDLCTransport) encodeFrameControl(frame *HdlcFrame, r io.Writer) (e
 		b0 |= 0x40
 
 		p[0] = b0
-		_, err = r.Write(p)
+		_, err = w.Write(p)
 		if nil != err {
-			errorLog("r.Write() failed: %v", err)
-			return err, n
+			errorLog("w.Write() failed: %v", err)
+			return err
 		}
-		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		// FCS - frame control sum
+
+		fcs16 := frame.fcs16
+		p[0] = byte(^fcs16 & 0x00FF)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		p[0] = byte((^fcs16 & 0xFF00) >> 8)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 	} else if HDLC_CONTROL_UA == frame.control {
@@ -818,12 +1092,29 @@ func (htran *HDLCTransport) encodeFrameControl(frame *HdlcFrame, r io.Writer) (e
 		b0 |= 0x40
 
 		p[0] = b0
-		_, err = r.Write(p)
+		_, err = w.Write(p)
 		if nil != err {
-			errorLog("r.Write() failed: %v", err)
-			return err, n
+			errorLog("w.Write() failed: %v", err)
+			return err
 		}
-		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		// FCS - frame control sum
+
+		fcs16 := frame.fcs16
+		p[0] = byte(^fcs16 & 0x00FF)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		p[0] = byte((^fcs16 & 0xFF00) >> 8)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 	} else if HDLC_CONTROL_DM == frame.control {
@@ -833,12 +1124,29 @@ func (htran *HDLCTransport) encodeFrameControl(frame *HdlcFrame, r io.Writer) (e
 		b0 |= 0x08
 
 		p[0] = b0
-		_, err = r.Write(p)
+		_, err = w.Write(p)
 		if nil != err {
-			errorLog("r.Write() failed: %v", err)
-			return err, n
+			errorLog("w.Write() failed: %v", err)
+			return err
 		}
-		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		// FCS - frame control sum
+
+		fcs16 := frame.fcs16
+		p[0] = byte(^fcs16 & 0x00FF)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		p[0] = byte((^fcs16 & 0xFF00) >> 8)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 	} else if HDLC_CONTROL_FRMR == frame.control {
@@ -848,12 +1156,29 @@ func (htran *HDLCTransport) encodeFrameControl(frame *HdlcFrame, r io.Writer) (e
 		b0 |= 0x80
 
 		p[0] = b0
-		_, err = r.Write(p)
+		_, err = w.Write(p)
 		if nil != err {
-			errorLog("r.Write() failed: %v", err)
-			return err, n
+			errorLog("w.Write() failed: %v", err)
+			return err
 		}
-		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		// FCS - frame control sum
+
+		fcs16 := frame.fcs16
+		p[0] = byte(^fcs16 & 0x00FF)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		p[0] = byte((^fcs16 & 0xFF00) >> 8)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 	} else if HDLC_CONTROL_UI == frame.control {
@@ -861,12 +1186,29 @@ func (htran *HDLCTransport) encodeFrameControl(frame *HdlcFrame, r io.Writer) (e
 		b0 |= 0x02
 
 		p[0] = b0
-		_, err = r.Write(p)
+		_, err = w.Write(p)
 		if nil != err {
-			errorLog("r.Write() failed: %v", err)
-			return err, n
+			errorLog("w.Write() failed: %v", err)
+			return err
 		}
-		n += 1
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		// FCS - frame control sum
+
+		fcs16 := frame.fcs16
+		p[0] = byte(^fcs16 & 0x00FF)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		p[0] = byte((^fcs16 & 0xFF00) >> 8)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 	} else {
@@ -874,30 +1216,37 @@ func (htran *HDLCTransport) encodeFrameControl(frame *HdlcFrame, r io.Writer) (e
 		return ErrorInvalidValue
 	}
 
-	// FCS - frame control sum
-
-	fcs16 := frame.fcs16
-	p[0] = byte(^fcs16 & 0x00FF)
-	_, err = r.Write(p)
-	if nil != err {
-		errorLog("r.Write() failed: %v", err)
-		return err, n
-	}
-	n += 1
-	frame.fcs16 = pppfcs16(frame.fcs16, p)
-	p[0] = byte((^fcs16 & 0xFF00) >> 8)
-	_, err = r.Write(p)
-	if nil != err {
-		errorLog("r.Write() failed: %v", err)
-		return err, n
-	}
-	n += 1
-	frame.fcs16 = pppfcs16(frame.fcs16, p)
-
-	return nil, err
+	return nil
 }
 
-func (htran *HDLCTransport) decodeFrameFormat(frame *HdlcFrame, r io.Reader, l int) (err error, n int) {
+func (htran *HdlcTransport) lengthOfFrame(frame *HdlcFrame) (n int) {
+	n = 0
+
+	// format type
+	n += 2
+
+	// src, dst address
+
+	n += htran.lengthServerAddress(frame)
+	n += htran.lengthClientAddress(frame)
+
+	// control
+	n += 1
+
+	// HCS - header control sum
+	n += 2
+
+	if (nil != frame.infoField) && len(frame.infoField) > 0 {
+		// FCS - frame control sum
+		n += 2
+	}
+
+	return n
+}
+
+// decode frame format, address, control and information field
+
+func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, r io.Reader, l int) (err error, n int) {
 	n = 0
 
 	p := make([]byte, 1)
@@ -907,9 +1256,9 @@ func (htran *HDLCTransport) decodeFrameFormat(frame *HdlcFrame, r io.Reader, l i
 	_, err = r.Read(p)
 	if nil != err {
 		errorLog("r.Read() failed: %v", err)
-		return err
+		return err, n
 	}
-	++n
+	n++
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 	// format field
@@ -920,9 +1269,9 @@ func (htran *HDLCTransport) decodeFrameFormat(frame *HdlcFrame, r io.Reader, l i
 		_, err = r.Read(p)
 		if nil != err {
 			errorLog("r.Read() failed: %v", err)
-			return err
+			return err, n
 		}
-		++n
+		n++
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 		b1 = p[0]
 
@@ -935,31 +1284,74 @@ func (htran *HDLCTransport) decodeFrameFormat(frame *HdlcFrame, r io.Reader, l i
 			frame.segmentation = false
 		}
 
-		frame.length = (uint16(b0&0x07) << 8) + uint16(b1)
+		frame.length = int((uint16(b0&0x07) << 8) + uint16(b1))
 
-		err = htran.decodeFrameControl(frame, r, l+n)
-		return err
+		err, nn := htran.decodeFrameACI(frame, r, l+n)
+		n += nn
+		return err, n
 	} else {
-		return ErrorMalformedSegment
+		return ErrorMalformedSegment, n
 	}
 }
 
-func (htran *HDLCTransport) readFrame(r io.Reader, direction int) (err error, frame *HdlcFrame) {
-	var n int
+// encode frame format, address, control and information field
+
+func (htran *HdlcTransport) encodeFrameFACI(frame *HdlcFrame, w io.Writer) (err error) {
+
+	p := make([]byte, 1)
+	var b0, b1 byte
+
+	// frame format
+	b0 |= 0xA0
+
+	// segmentation
+	if frame.segmentation {
+		b0 |= 0x08
+	}
+
+	length := uint16(htran.lengthOfFrame(frame))
+	if length > 0x07FF {
+		errorLog("frame length exceeds limt")
+		return ErrorInvalidValue
+	}
+	b0 |= byte((0xFF00 & length) >> 8)
+	b1 = byte(0x00FF & length)
+
+	p[0] = b0
+	_, err = w.Write(p)
+	if nil != err {
+		errorLog("w.Write() failed: %v", err)
+		return err
+	}
+	frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+	p[0] = b1
+	_, err = w.Write(p)
+	if nil != err {
+		errorLog("w.Write() failed: %v", err)
+		return err
+	}
+	frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+	return htran.encodeFrameACI(frame, w)
+
+}
+
+func (htran *HdlcTransport) readFrame(r io.Reader, direction int) (err error, frame *HdlcFrame) {
 	p := make([]byte, 1)
 	for {
-		// expect flag
-		n, err = r.Read(p)
+		// expect opening flag
+		_, err = r.Read(p)
 		if nil != err {
 			errorLog("r.Read() failed: %v", err)
 			return err, nil
 		}
-		if 0x7E == p[0] {
+		if 0x7E == p[0] { // flag
 			frame := new(HdlcFrame)
 			frame.direction = direction
 			frame.fcs16 = PPPINITFCS16
 
-			err, _ = htran.decodeFrameFormat(frame, r, 0)
+			err, _ = htran.decodeFrameFACI(frame, r, 0)
 			if nil != err {
 				if ErrorMalformedSegment == err {
 					// ignore malformed segment and try read next segment
@@ -968,9 +1360,41 @@ func (htran *HDLCTransport) readFrame(r io.Reader, direction int) (err error, fr
 					return nil, frame
 				}
 			}
+
 		} else {
 			// ignore everything until leading flag arrives
 			continue
 		}
 	}
+}
+
+func (htran *HdlcTransport) writeFrame(frame *HdlcFrame, w io.Writer) (err error) {
+
+	if 0 == frame.direction {
+		errorLog("frame direction not specified")
+		return ErrorInvalidValue
+	}
+	if 0 == frame.control {
+		errorLog("frame controltype not specified")
+		return ErrorInvalidValue
+	}
+
+	p := make([]byte, 1)
+
+	// opening flag
+	p[0] = 0x7E
+	_, err = w.Write(p)
+	if nil != err {
+		errorLog("w.Write() failed: %v", err)
+		return err
+	}
+
+	err = htran.encodeFrameFACI(frame, w)
+	if nil != err {
+		errorLog("w.Write() failed: %v", err)
+		return err
+	}
+
+	return nil
+
 }
