@@ -33,9 +33,13 @@ const (
 )
 
 type HdlcTransport struct {
-	rw              io.ReadWriter
-	responseTimeout int // in milliseconds
-	connected       bool
+	rw                         io.ReadWriter
+	responseTimeout            int // in milliseconds
+	connected                  bool
+	windowSize                 uint8
+	maxInfoFieldLengthReceive  int
+	maxInfoFieldLengthTransmit int
+	expectedServerAddrLength   int // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
 }
 
 type HdlcClientConnection struct {
@@ -51,24 +55,20 @@ type HdlcServerConnection struct {
 }
 
 type HdlcFrame struct {
-	direction                  int
-	formatType                 uint8
-	segmentation               bool
-	length                     int
-	logicalDeviceId            uint16
-	physicalDeviceId           *uint16 // may not be present
-	clientId                   uint8
-	pf                         bool  // poll/final bit
-	nr                         uint8 // N(R) - receive sequence number
-	ns                         uint8 // N(S) - send sequence number
-	windowSize                 uint8
-	control                    int
-	fcs16                      uint16 // current fcs16 checksum
-	infoField                  []byte // information
-	maxInfoFieldLengthReceive  int
-	maxInfoFieldLengthTransmit int
-	expectedServerAddrLength   int // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
-	callingPhysicalDevice      bool
+	direction             int
+	formatType            uint8
+	segmentation          bool
+	length                int
+	logicalDeviceId       uint16
+	physicalDeviceId      *uint16 // may not be present
+	clientId              uint8
+	pf                    bool  // poll/final bit
+	nr                    uint8 // N(R) - receive sequence number
+	ns                    uint8 // N(S) - send sequence number
+	control               int
+	fcs16                 uint16 // current fcs16 checksum
+	infoField             []byte // information
+	callingPhysicalDevice bool
 }
 
 var fcstab = []uint16{0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf,
@@ -164,7 +164,7 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 	var b0, b1, b2, b3 byte
 	p := make([]byte, 1)
 
-	if !((HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength)) {
+	if !((HDLC_ADDRESS_LENGTH_1 == htran.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_2 == htran.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_4 == htran.expectedServerAddrLength)) {
 		panic("wrong expected server address length value")
 	}
 
@@ -178,7 +178,7 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 	b0 = p[0]
 
 	if b0&0x01 > 0 {
-		if HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+		if HDLC_ADDRESS_LENGTH_1 == htran.expectedServerAddrLength {
 			frame.logicalDeviceId = (uint16(b0) & 0x00FE) >> 1
 			frame.physicalDeviceId = nil
 		} else {
@@ -198,11 +198,11 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 		if b1&0x01 > 0 {
 			upperMAC := (uint16(b0) & 0x00FE) >> 1
 			lowerMAC := (uint16(b1) & 0x00FE) >> 1
-			if HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
+			if HDLC_ADDRESS_LENGTH_2 == htran.expectedServerAddrLength {
 				frame.logicalDeviceId = upperMAC
 				frame.physicalDeviceId = new(uint16)
 				*frame.physicalDeviceId = lowerMAC
-			} else if HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+			} else if HDLC_ADDRESS_LENGTH_1 == htran.expectedServerAddrLength {
 				if 0x007F == lowerMAC {
 					// all station broadcast
 					frame.logicalDeviceId = lowerMAC
@@ -211,7 +211,7 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 					errorLog("long server address")
 					return HdlcErrorMalformedSegment, n
 				}
-			} else if HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
+			} else if HDLC_ADDRESS_LENGTH_4 == htran.expectedServerAddrLength {
 				frame.logicalDeviceId = upperMAC
 				frame.physicalDeviceId = new(uint16)
 				*frame.physicalDeviceId = lowerMAC
@@ -246,13 +246,13 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 				upperMAC := ((uint16(b0)&0x00FE)>>1)<<7 + ((uint16(b1) & 0x00FE) >> 1)
 				lowerMAC := ((uint16(b2)&0x00FE)>>1)<<7 + ((uint16(b3) & 0x00FE) >> 1)
 
-				if HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
+				if HDLC_ADDRESS_LENGTH_4 == htran.expectedServerAddrLength {
 
 					frame.logicalDeviceId = upperMAC
 					frame.physicalDeviceId = new(uint16)
 					*frame.physicalDeviceId = lowerMAC
 
-				} else if HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+				} else if HDLC_ADDRESS_LENGTH_1 == htran.expectedServerAddrLength {
 					if (0x3FFF == upperMAC) && (0x3FFF == lowerMAC) {
 						// all station broadcast 0x3FFF
 						frame.logicalDeviceId = 0x3FFF
@@ -262,7 +262,7 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 						errorLog("long server address")
 						return HdlcErrorMalformedSegment, n
 					}
-				} else if HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
+				} else if HDLC_ADDRESS_LENGTH_2 == htran.expectedServerAddrLength {
 					if (0x3FFF == upperMAC) && (0x3FFF == lowerMAC) {
 						// all station broadcast 0x3FFF
 						frame.logicalDeviceId = 0x3FFF
@@ -295,11 +295,11 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 	var v16 uint16
 	p := make([]byte, 1)
 
-	if !((HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength)) {
+	if !((HDLC_ADDRESS_LENGTH_1 == htran.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_2 == htran.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_4 == htran.expectedServerAddrLength)) {
 		panic("wrong expected server address length value")
 	}
 
-	if HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+	if HDLC_ADDRESS_LENGTH_1 == htran.expectedServerAddrLength {
 		p := make([]byte, 1)
 
 		// logicalDeviceId
@@ -327,7 +327,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 			return HdlcErrorInvalidValue
 		}
 
-	} else if HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
+	} else if HDLC_ADDRESS_LENGTH_2 == htran.expectedServerAddrLength {
 
 		// logicalDeviceId
 
@@ -370,7 +370,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 		}
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
-	} else if HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
+	} else if HDLC_ADDRESS_LENGTH_4 == htran.expectedServerAddrLength {
 
 		// logicalDeviceId
 
@@ -439,15 +439,15 @@ func (htran *HdlcTransport) lengthServerAddress(frame *HdlcFrame) (n int) {
 
 	n = 0
 
-	if !((HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength)) {
+	if !((HDLC_ADDRESS_LENGTH_1 == htran.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_2 == htran.expectedServerAddrLength) || (HDLC_ADDRESS_LENGTH_4 == htran.expectedServerAddrLength)) {
 		panic("wrong expected server address length value")
 	}
 
-	if HDLC_ADDRESS_LENGTH_1 == frame.expectedServerAddrLength {
+	if HDLC_ADDRESS_LENGTH_1 == htran.expectedServerAddrLength {
 		n = 1
-	} else if HDLC_ADDRESS_LENGTH_2 == frame.expectedServerAddrLength {
+	} else if HDLC_ADDRESS_LENGTH_2 == htran.expectedServerAddrLength {
 		n += 2
-	} else if HDLC_ADDRESS_LENGTH_4 == frame.expectedServerAddrLength {
+	} else if HDLC_ADDRESS_LENGTH_4 == htran.expectedServerAddrLength {
 		n += 4
 	} else {
 		panic("wrong expected server address length value")
@@ -544,7 +544,7 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 	if infoFieldLength > 0 {
 
 		if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
-			if infoFieldLength > frame.maxInfoFieldLengthReceive {
+			if infoFieldLength > htran.maxInfoFieldLengthReceive {
 				errorLog("long info field")
 				return HdlcErrorMalformedSegment, n
 			}
@@ -598,12 +598,12 @@ func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
 	infoFieldLength := len(frame.infoField)
 
 	if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
-		if infoFieldLength > frame.maxInfoFieldLengthReceive {
+		if infoFieldLength > htran.maxInfoFieldLengthReceive {
 			errorLog("long info field")
 			return HdlcErrorMalformedSegment
 		}
 	} else if (HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_OUTBOUND == frame.direction) {
-		if infoFieldLength > frame.maxInfoFieldLengthTransmit {
+		if infoFieldLength > htran.maxInfoFieldLengthTransmit {
 			errorLog("long info field")
 			return HdlcErrorMalformedSegment
 		}
@@ -634,12 +634,12 @@ func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
 	if (nil != frame.infoField) && len(frame.infoField) > 0 {
 
 		if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
-			if infoFieldLength > frame.maxInfoFieldLengthReceive {
+			if infoFieldLength > htran.maxInfoFieldLengthReceive {
 				errorLog("long info field")
 				return HdlcErrorMalformedSegment
 			}
 		} else if (HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_OUTBOUND == frame.direction) {
-			if infoFieldLength > frame.maxInfoFieldLengthTransmit {
+			if infoFieldLength > htran.maxInfoFieldLengthTransmit {
 				errorLog("long info field")
 				return HdlcErrorMalformedSegment
 			}
@@ -1519,5 +1519,70 @@ func (htran *HdlcTransport) listen() (err error, conn *HdlcServerConnection) {
 }
 
 func (conn *HdlcClientConnection) Write(p []byte) (n int, err error) {
+	var segment []byte
+	var i, l int
+
+	maxSegemntLen := conn.htran.maxInfoFieldLengthTransmit
+
+	// split to segments
+
+	ns = len(p) / maxSegemntLen
+	if len(p)%maxSegemntLen > 0 {
+		ns += 1
+	}
+	segments = make([]byte, ns)
+	_p := p
+	for i = 0; i < ns; i++ {
+		if len(_p) >= maxSegemntLen {
+			segments[i] = _p[0:maxSegemntLen]
+			_p = _p[maxSegemntLen:]
+		} else {
+			segments[i] = _p[0:len(_p)]
+		}
+	}
+
+	for len(segment) > 0 {
+
+		if conn.vs+1 > 7 {
+			// we ran out all available sequence numbers therefore we must wait for acknowledgement of last received sequence number
+
+			ch := make(chan map[string]interface{})
+			go func(ch chan map[string]interface{}) {
+				select {
+				case _ = <-time.After(time.Duration(htran.responseTimeout) * time.Millisecond):
+					errorLog("SNRM response timeout")
+					ch <- map[string]interface{}{"err": HdlcErrorTimeout}
+				case msg := <-htran.readFrameAsync(frame.direction):
+					ch <- msg
+				}
+			}(ch)
+
+		} else {
+			conn.vs += 1
+
+			frame := new(HdlcFrame)
+			frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+			if len(p) > 0 {
+				frame.segmentation = true
+			} else {
+				frame.segmentation = false
+				frame.poll = true
+			}
+			frame.ns = conn.vs
+			frame.nr = conn.vr
+			err := writeFrame(frame)
+			if nil != err {
+				//TODO: disconnect
+				return err
+			}
+		}
+
+		if len(p) > maxSegemntLen {
+			l = maxSegemntLen
+		} else {
+			l = len(p)
+		}
+		segment = p[0:l]
+	}
 	return 0, nil
 }
