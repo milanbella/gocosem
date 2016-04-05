@@ -43,9 +43,11 @@ type HdlcTransport struct {
 }
 
 type HdlcClientConnection struct {
-	htran *HdlcTransport
-	vs    uint8 // V(S) - send sequence variable
-	vr    uint8 // V(R) - receive sequence variable
+	htran      *HdlcTransport
+	vs         uint8 // V(S) - send sequence variable
+	vr         uint8 // V(R) - receive sequence variable
+	writeQueue chan *HdlcSegment
+	readQueue  chan *HdlcSegment
 }
 
 type HdlcServerConnection struct {
@@ -69,6 +71,11 @@ type HdlcFrame struct {
 	fcs16                 uint16 // current fcs16 checksum
 	infoField             []byte // information
 	callingPhysicalDevice bool
+}
+
+type HdlcSegment struct {
+	p    []byte
+	last bool
 }
 
 var fcstab = []uint16{0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf,
@@ -1454,6 +1461,7 @@ func (htran *HdlcTransport) sendSNRM() (err error, conn *HdlcClientConnection) {
 	frame := new(HdlcFrame)
 	frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 	frame.control = HDLC_CONTROL_SNRM
+	frame.poll = true
 	htran.writeFrame(frame)
 
 	ch := make(chan map[string]interface{})
@@ -1473,7 +1481,7 @@ func (htran *HdlcTransport) sendSNRM() (err error, conn *HdlcClientConnection) {
 		return (msg["err"]).(error), nil
 	}
 	frame = (msg["frame"]).(*HdlcFrame)
-	if HDLC_CONTROL_UA == frame.control {
+	if (HDLC_CONTROL_UA == frame.control) && frame.poll {
 		conn := new(HdlcClientConnection)
 		htran.connected = true
 		conn.htran = htran
@@ -1521,6 +1529,7 @@ func (htran *HdlcTransport) listen() (err error, conn *HdlcServerConnection) {
 func (conn *HdlcClientConnection) Write(p []byte) (n int, err error) {
 	var segment []byte
 	var i, l int
+	var retryCnt int
 
 	maxSegemntLen := conn.htran.maxInfoFieldLengthTransmit
 
@@ -1541,10 +1550,44 @@ func (conn *HdlcClientConnection) Write(p []byte) (n int, err error) {
 		}
 	}
 
-	for len(segment) > 0 {
+	// enqueue segments
+	for i = 0; i < len(segments); i++ {
+		segment := new(HdlcSegment)
+		segment.p = segments[i]
+		if i == len(segments)-1 {
+			segment.last = true
+		}
+		conn.writeQueue <- segment
+	}
 
-		if conn.vs+1 > 7 {
-			// we ran out all available sequence numbers therefore we must wait for acknowledgement of last received sequence number
+	return len(p), nil
+}
+
+func (conn *HdlcClientConnection) transmit(p []byte) (err error) {
+	var i, l int
+
+	for segment := range conn.writeQueue {
+
+		// send the segment
+
+		frame := new(HdlcFrame)
+		frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+		if !frame.last {
+			frame.segmentation = true
+		} else {
+		}
+		frame.ns = conn.vs
+		frame.nr = conn.vr
+		frame.infoField = segment[i]
+		err := writeFrame(frame)
+		if nil != err {
+			//TODO: disconnect
+			return err
+		}
+		if conn.vs+1 == 7 { // in modulo 8 mode sequence numbers are in range 0..7
+			// ran out all available sequence numbers, solicit and wait for acknowledgement
+
+			frame.poll = true
 
 			ch := make(chan map[string]interface{})
 			go func(ch chan map[string]interface{}) {
@@ -1556,33 +1599,51 @@ func (conn *HdlcClientConnection) Write(p []byte) (n int, err error) {
 					ch <- msg
 				}
 			}(ch)
-
-		} else {
-			conn.vs += 1
-
-			frame := new(HdlcFrame)
-			frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-			if len(p) > 0 {
-				frame.segmentation = true
-			} else {
-				frame.segmentation = false
-				frame.poll = true
-			}
-			frame.ns = conn.vs
-			frame.nr = conn.vr
-			err := writeFrame(frame)
-			if nil != err {
+			msg := <-ch
+			if nil != msg["err"].(error) {
 				//TODO: disconnect
 				return err
 			}
+
+			// received reply from server
+			frame := (msg["frame"]).(*HdlcFrame)
+			if HDLC_CONTROL_RR == frame.control {
+				if frame.poll {
+					if frame.nr < conn.vs {
+						// must retransmit unaknowledged frames
+						i -= conn.vs - frame.nr
+						conn.vs -= frame.nr
+					} else if frame.nr == conn.vs {
+						// all frames acknowledged,
+						conn.vs = 0
+					} else {
+						// TODO
+					}
+				} else {
+					//TODO
+				}
+			} else if HDLC_CONTROL_I == frame.control {
+				if frame.poll {
+					if frame.nr < conn.vs {
+						// must retransmit unaknowledged frames
+						i -= conn.vs - frame.nr
+						conn.vs -= frame.nr
+					} else if frame.nr == conn.vs {
+						// all frames acknowledged,
+						conn.vs = 0
+					} else {
+						// TODO
+					}
+				} else {
+					//TODO
+				}
+			} else {
+				//TODO
+			}
+		} else {
+			conn.vs += 1
 		}
 
-		if len(p) > maxSegemntLen {
-			l = maxSegemntLen
-		} else {
-			l = len(p)
-		}
-		segment = p[0:l]
 	}
 	return 0, nil
 }
