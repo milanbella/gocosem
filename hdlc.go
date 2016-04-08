@@ -41,9 +41,12 @@ type HdlcTransport struct {
 	expectedServerAddrLength   int        // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
 	writeQueue                 *list.List // list of *HdlcSegment
 	writeQueueMtx              *sync.Mutex
+	writeAck                   chan map[string]interface{}
 	readQueue                  *list.List // list of *HdlcSegment
 	readQueueMtx               *sync.Mutex
+	readAck                    chan map[string]interface{}
 	controlQueue               *list.List // list of *HdlcControlCommand
+	controlAck                 chan map[string]interface{}
 	controlQueueMtx            *sync.Mutex
 }
 
@@ -1497,8 +1500,6 @@ func (htran *HdlcTransport) handleHdlc(client bool) {
 	)
 	var state int
 
-	const windowSize = 8
-
 	segmentsNoAck := list.New() // unacknowledged segments
 	segmentsRcv := list.New()   // received segments
 	framesToSend := list.New()  // frames scheduled to send for the next poll
@@ -1594,19 +1595,23 @@ mainLoop:
 				frame.nr = vr
 				frame.infoField = segment[i]
 
-				if (vs+1 == 7) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
+				if (vs+1 == htran.windowSize-1) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
 					// ran out of available sequence numbers or encountered segment boundary, therefore must receive acknowledgement
 					frame.poll = true
 					sending = false
 					err := writeFrame(frame)
 					if nil != err {
+						if segment.last {
+							htran.writeAck <- map[string]interface{}{"err", err}
+						}
 						break mainLoop
+					}
+					if segment.last {
+						htran.writeAck <- map[string]interface{}{"err", err}
 					}
 					vs += 1
 					sending = false
-					if client {
-						waitForAck = true
-					}
+					waitForAck = true
 
 				} else {
 					// just transmit frame without soliciting acknowledgement
@@ -1777,7 +1782,7 @@ mainLoop:
 							segmentsNoAck.Remove(segmentsNoAck.Front())
 						}
 						vs = frame.nr
-						continue
+						continue mainLoop
 					} else if frame.nr == vs {
 						// all frames within window are acknowledged
 						vs = 0
@@ -1796,7 +1801,7 @@ mainLoop:
 							segmentsNoAck.Remove(segmentsNoAck.Front())
 						}
 						vs = frame.nr
-						continue
+						continue mainLoop
 					} else if frame.nr == vs {
 						// all frames within window are acknowledged
 						vs = 0
