@@ -1,9 +1,11 @@
 package gocosem
 
 import (
+	"container/list"
 	"encoding/binary"
 	"errors"
 	"io"
+	"sync"
 	"time"
 )
 
@@ -34,7 +36,7 @@ const (
 
 type HdlcTransport struct {
 	rw                         io.ReadWriter
-	responseTimeout            int // in milliseconds
+	responseTimeout            time.Duration
 	windowSize                 uint8
 	maxInfoFieldLengthReceive  int
 	maxInfoFieldLengthTransmit int
@@ -49,7 +51,7 @@ type HdlcTransport struct {
 	controlAck                 chan map[string]interface{}
 	controlQueueMtx            *sync.Mutex
 	closedAck                  chan bool
-	err                        error
+	errCh                      chan error
 }
 
 type HdlcClientConnection struct {
@@ -70,7 +72,7 @@ type HdlcFrame struct {
 	logicalDeviceId       uint16
 	physicalDeviceId      *uint16 // may not be present
 	clientId              uint8
-	pf                    bool  // poll/final bit
+	poll                  bool  // poll/final bit
 	nr                    uint8 // N(R) - receive sequence number
 	ns                    uint8 // N(S) - send sequence number
 	control               int
@@ -86,9 +88,7 @@ type HdlcSegment struct {
 }
 
 type HdlcControlCommand struct {
-	command int
-	last    bool
-	eof     bool
+	control int
 }
 
 var fcstab = []uint16{0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf,
@@ -178,10 +178,9 @@ var HdlcErrorNotDisconnecting = errors.New("not disconnecting")
 var HdlcErrorNoAllowed = errors.New("not allowed")
 var HdlcErrorProtocolError = errors.New("protocl error")
 
-func NewHdlcTransport(rw io.ReadWriter, responseTimeoutMilliseconds int) *HdlcTransport {
+func NewHdlcTransport(rw io.ReadWriter) *HdlcTransport {
 	htran := new(HdlcTransport)
 	htran.rw = rw
-	htran.responseTimeout = responseTimeoutMilliseconds
 	return htran
 }
 
@@ -755,7 +754,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 	b0 = p[0]
 
 	// P/F bit
-	frame.pf = b0&0x10 > 0
+	frame.poll = b0&0x10 > 0
 
 	if b0&0x01 == 0 {
 		frame.control = HDLC_CONTROL_I
@@ -991,7 +990,7 @@ func (htran *HdlcTransport) encodeFrameACI(frame *HdlcFrame) (err error) {
 
 	// P/F bit
 	b0 = 0
-	if frame.pf {
+	if frame.poll {
 		b0 |= 0x10
 	}
 
@@ -1488,20 +1487,16 @@ func (htran *HdlcTransport) writeFrameAsync(frame *HdlcFrame) <-chan map[string]
 	return ch
 }
 
-func (htran *HdlcTransport) handleHdlc() {
-	var i, l int
+func (htran *HdlcTransport) handleHdlc(listen bool) {
 	var frame *HdlcFrame
 	var segment *HdlcSegment
 	var command *HdlcControlCommand
 	var client bool
 	var sending bool
-	var waitForAck bool
-	var waitForDiscAck bool
-	var waitForConnAck bool
 	var msg map[string]interface{}
 	var err error
-	var vs int
-	var vr int
+	var vs uint8
+	var vr uint8
 
 	const (
 		STATE_CONNECTING = iota
@@ -1512,8 +1507,9 @@ func (htran *HdlcTransport) handleHdlc() {
 	var state int
 
 	segmentsNoAck := list.New() // unacknowledged segments
-	segmentsRcv := list.New()   // received segments
 	framesToSend := list.New()  // frames scheduled to send in next poll
+
+	sending = !listen
 
 mainLoop:
 	for {
@@ -1522,8 +1518,8 @@ mainLoop:
 			// flush any frames waiting for next poll
 
 			for framesToSend.Len() > 0 {
-				frame = framesToSend.Front().Value().(*HdlcFrame)
-				err = writeFrame(frame)
+				frame = framesToSend.Front().Value.(*HdlcFrame)
+				err = htran.writeFrame(frame)
 				if nil != err {
 					break mainLoop
 				}
@@ -1534,29 +1530,28 @@ mainLoop:
 
 			htran.controlQueueMtx.Lock()
 			if htran.controlQueue.Len() > 0 {
-				controlCommand = htran.controlQueue.Front().Value().(*HdlcControlCommand)
+				command = htran.controlQueue.Front().Value.(*HdlcControlCommand)
 			} else {
-				controlCommand = nil
+				command = nil
 			}
 			htran.controlQueueMtx.Unlock()
 
 			// check for any pending segment to transmit
 
-			if nil == controlCommand {
+			if nil == command {
 				if 0 == segmentsNoAck.Len() {
 					htran.readQueueMtx.Lock()
 					if htran.readQueue.Len() > 0 {
-						segment = <-htran.writeQueue
-						segment = htran.readQueue.Front().Value().(*HdlcSegment)
+						segment = htran.readQueue.Front().Value.(*HdlcSegment)
 					} else {
 						segment = nil
 					}
 					htran.readQueueMtx.Unlock()
 				} else {
 					// transmit again all unacknowledged frames
-					for e := segmentsNoAck.Front(); i != nil; e = e.Next() {
-						frame = e.Value().(*HdlcFrame)
-						err = writeFrame(frame)
+					for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
+						frame = e.Value.(*HdlcFrame)
+						err = htran.writeFrame(frame)
 						if nil != err {
 							break mainLoop
 						}
@@ -1565,15 +1560,15 @@ mainLoop:
 				}
 			}
 
-			if (nil != controlCommand) && (HDLC_CONTROL_SNRM == command.control) {
-				if STATE_DISCONNECTED {
+			if (nil != command) && (HDLC_CONTROL_SNRM == command.control) {
+				if STATE_DISCONNECTED == state {
 					frame = new(HdlcFrame)
 					frame.poll = true
-					client = true // Only client may connect the line therefore if line is disconnected the side initiating connection  becomes client.
+					client = true // Only client may connect the line therefore if line is disconnected line side initiating connection  becomes client.
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					frame.control = HDLC_CONTROL_SNRM
 					//TODO: encode info field
-					err = writeFrame(frame)
+					err = htran.writeFrame(frame)
 					if nil != err {
 						break mainLoop
 					}
@@ -1582,14 +1577,14 @@ mainLoop:
 				} else {
 					htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotDisconnected}
 				}
-			} else if (nil != controlCommand) && (HDLC_CONTROL_DISC == command.control) {
+			} else if (nil != command) && (HDLC_CONTROL_DISC == command.control) {
 				if client { // only client may disconnect the line.
 					if STATE_CONNECTED == state {
 						frame = new(HdlcFrame)
 						frame.poll = true
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 						frame.control = HDLC_CONTROL_DISC
-						err = writeFrame(frame)
+						err = htran.writeFrame(frame)
 						if nil != err {
 							break mainLoop
 						}
@@ -1612,12 +1607,12 @@ mainLoop:
 				frame.control = HDLC_CONTROL_I
 				frame.ns = vs
 				frame.nr = vr
-				frame.infoField = segment[i]
+				frame.infoField = segment.p
 
 				if (vs+1 == htran.windowSize-1) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
 					// ran out of available sequence numbers or encountered segment boundary, therefore wait for acknowledgement of all segments we transmitted so far
 					frame.poll = true
-					err = writeFrame(frame)
+					err = htran.writeFrame(frame)
 					if nil != err {
 						break mainLoop
 					}
@@ -1630,7 +1625,7 @@ mainLoop:
 
 				} else {
 					// just transmit frame without acknowledgement
-					err = writeFrame(frame)
+					err = htran.writeFrame(frame)
 					if nil != err {
 						break mainLoop
 					}
@@ -1648,7 +1643,7 @@ mainLoop:
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					frame.control = HDLC_CONTROL_SNRM
 					//TODO: encode info field
-					err = writeFrame(frame)
+					err = htran.writeFrame(frame)
 					if nil != err {
 						break mainLoop
 					}
@@ -1663,8 +1658,8 @@ mainLoop:
 					frame.poll = true
 					frame.control = HDLC_CONTROL_RR
 					frame.ns = vs
-					frame.nr = nr
-					err := writeFrame(frame)
+					frame.nr = vr
+					err := htran.writeFrame(frame)
 					if nil != err {
 						break mainLoop
 					}
@@ -1674,7 +1669,7 @@ mainLoop:
 					frame.poll = true
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					frame.control = HDLC_CONTROL_DISC
-					err = writeFrame(frame)
+					err = htran.writeFrame(frame)
 					if nil != err {
 						break mainLoop
 					}
@@ -1741,11 +1736,10 @@ mainLoop:
 
 						if frame.nr-1 <= vs {
 							// acknowledge received frames
-							if segmentsNoAck.Len() > htran.windowSize {
+							if segmentsNoAck.Len() > int(htran.windowSize) {
 								panic("assertion failed")
 							}
-							var e *list.Element
-							n = segmentsNoAck.Len() - (vs - frame.nr + 1) // (vs - frame.nr + 1) is number of unacknowledged frames
+							n := segmentsNoAck.Len() - int(vs-frame.nr+1) // (vs - frame.nr + 1) is number of unacknowledged frames
 							if n < 0 {
 								panic("assertion failed")
 							}
@@ -1754,7 +1748,7 @@ mainLoop:
 							}
 							continue mainLoop
 						} else if 0 == frame.nr {
-							if segmentsNoAck.Len() > htran.windowSize {
+							if segmentsNoAck.Len() > int(htran.windowSize) {
 								panic("assertion failed")
 							}
 							// all window acknowledged
@@ -1768,11 +1762,10 @@ mainLoop:
 						// ignore segment but reuse the P/F, nr
 						if frame.nr-1 <= vs {
 							// acknowledge received frames
-							if segmentsNoAck.Len() > htran.windowSize {
+							if segmentsNoAck.Len() > int(htran.windowSize) {
 								panic("assertion failed")
 							}
-							var e *list.Element
-							n = segmentsNoAck.Len() - (vs - frame.nr + 1) // (vs - frame.nr + 1) is number of unacknowledged frames
+							n := segmentsNoAck.Len() - int(vs-frame.nr+1) // (vs - frame.nr + 1) is number of unacknowledged frames
 							if n < 0 {
 								panic("assertion failed")
 							}
@@ -1781,7 +1774,7 @@ mainLoop:
 							}
 							continue mainLoop
 						} else if 0 == frame.nr {
-							if segmentsNoAck.Len() > htran.windowSize {
+							if segmentsNoAck.Len() > int(htran.windowSize) {
 								panic("assertion failed")
 							}
 							// all window acknowledged
@@ -1800,11 +1793,10 @@ mainLoop:
 				if STATE_CONNECTED == state {
 					if frame.nr-1 <= vs {
 						// acknowledge received frames
-						if segmentsNoAck.Len() > htran.windowSize {
+						if segmentsNoAck.Len() > int(htran.windowSize) {
 							panic("assertion failed")
 						}
-						var e *list.Element
-						n = segmentsNoAck.Len() - (vs - frame.nr + 1) // (vs - frame.nr + 1) is number of unacknowledged frames
+						n := segmentsNoAck.Len() - int(vs-frame.nr+1) // (vs - frame.nr + 1) is number of unacknowledged frames
 						if n < 0 {
 							panic("assertion failed")
 						}
@@ -1813,7 +1805,7 @@ mainLoop:
 						}
 						continue mainLoop
 					} else if 0 == frame.nr {
-						if segmentsNoAck.Len() > htran.windowSize {
+						if segmentsNoAck.Len() > int(htran.windowSize) {
 							panic("assertion failed")
 						}
 						// all window acknowledged
@@ -1829,11 +1821,10 @@ mainLoop:
 				if STATE_CONNECTED == state {
 					if frame.nr-1 <= vs {
 						// acknowledge received frames
-						if segmentsNoAck.Len() > htran.windowSize {
+						if segmentsNoAck.Len() > int(htran.windowSize) {
 							panic("assertion failed")
 						}
-						var e *list.Element
-						n = segmentsNoAck.Len() - (vs - frame.nr + 1) // (vs - frame.nr + 1) is number of unacknowledged frames
+						n := segmentsNoAck.Len() - int(vs-frame.nr+1) // (vs - frame.nr + 1) is number of unacknowledged frames
 						if n < 0 {
 							panic("assertion failed")
 						}
@@ -1842,7 +1833,7 @@ mainLoop:
 						}
 						continue mainLoop
 					} else if 0 == frame.nr {
-						if segmentsNoAck.Len() > htran.windowSize {
+						if segmentsNoAck.Len() > int(htran.windowSize) {
 							panic("assertion failed")
 						}
 						// all window acknowledged
@@ -1910,7 +1901,7 @@ mainLoop:
 			}
 		}
 	}
-	if err {
-		htran.err = err
+	if nil != err {
+		htran.errCh <- err
 	}
 }
