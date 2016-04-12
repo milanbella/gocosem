@@ -38,8 +38,10 @@ type HdlcTransport struct {
 	rw                         io.ReadWriter
 	responseTimeout            time.Duration
 	windowSize                 uint8
-	maxInfoFieldLengthReceive  int
 	maxInfoFieldLengthTransmit int
+	maxInfoFieldLengthReceive  int
+	windowSizeTransmit         int
+	windowSizeReceive          int
 	expectedServerAddrLength   int        // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
 	writeQueue                 *list.List // list of *HdlcSegment
 	writeQueueMtx              *sync.Mutex
@@ -78,6 +80,7 @@ type HdlcFrame struct {
 	control               int
 	fcs16                 uint16 // current fcs16 checksum
 	infoField             []byte // information
+	infoFieldFormat       uint8
 	callingPhysicalDevice bool
 }
 
@@ -89,6 +92,11 @@ type HdlcSegment struct {
 
 type HdlcControlCommand struct {
 	control int
+}
+
+type HdlcParameterGroup struct {
+	groupId uint8
+	field   []byte
 }
 
 var fcstab = []uint16{0x0000, 0x1189, 0x2312, 0x329b, 0x4624, 0x57ad, 0x6536, 0x74bf,
@@ -177,6 +185,9 @@ var HdlcErrorDisconnecting = errors.New("disconnecting")
 var HdlcErrorNotDisconnecting = errors.New("not disconnecting")
 var HdlcErrorNoAllowed = errors.New("not allowed")
 var HdlcErrorProtocolError = errors.New("protocl error")
+var HdlcErrorInfoFieldFormat = errors.New("wrong info field format")
+var HdlcErrorParameterGroupId = errors.New("wrong parameter group id")
+var HdlcErrorParameterValue = errors.New("wrong parameter value")
 
 func NewHdlcTransport(rw io.ReadWriter) *HdlcTransport {
 	htran := new(HdlcTransport)
@@ -702,6 +713,137 @@ func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
 	}
 
 	return nil
+}
+
+func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, maxInfoFieldLengthTransmit *uint8, maxInfoFieldLengthReceive *uint8, windowSizeTransmit *uint32, windowSizeReceive *uint32) {
+	r := bytes.NewBuffer(frame.infoField)
+
+	p := make([]byte, 1)
+
+	// format (always present)
+
+	_, err := io.ReadFull(r, p)
+	if nil != err {
+		errorLog("io.ReadFull() failed: %v", err)
+		return err, nil, nil, nil, nil
+	}
+	infoFieldFormat := uint8(p[0])
+	if 0x81 != infoFieldFormat {
+		errorLog("wrong info field format")
+		return HdlcErrorInfoFieldFormat, nil, nil, nil, nil
+	}
+
+	// group id
+
+	_, err := io.ReadFull(r, p)
+	if nil != err {
+		errorLog("io.ReadFull() failed: %v", err)
+		return err, nil, nil, nil, nil
+	}
+	groupId := uint8(p[0])
+	if 0x80 != groupId {
+		errorLog("wrong parameter group id")
+		return HdlcErrorParameterGroupId, nil, nil, nil, nil
+	}
+
+	// group length
+
+	_, err := io.ReadFull(r, p)
+	if nil != err {
+		if EOF == err {
+			return nil, nil, nil, nil, nil
+		} else {
+			errorLog("io.ReadFull() failed: %v", err)
+			return err, nil, nil, nil, nil
+		}
+	}
+	length := uint8(p[0])
+	if 0 == length {
+		return nil, nil, nil, nil, nil
+	}
+
+	pp := make([]byte, length)
+	_, err := io.ReadFull(r, pp)
+	if nil != err {
+		errorLog("io.ReadFull() failed: %v", err)
+		return err, nil, nil, nil, nil
+	}
+	rr := bytes.NewBuffer(pp)
+
+	// parameters
+
+	var buf *bytes.Buffer
+	for {
+		_, err := io.ReadFull(rr, p)
+		if nil != err {
+			if EOF == err {
+				break
+			}
+			errorLog("io.ReadFull() failed: %v", err)
+			return err, nil, nil, nil, nil
+		}
+		parameterId := uint8(p[0])
+
+		_, err := io.ReadFull(rr, p)
+		if nil != err {
+			errorLog("io.ReadFull() failed: %v", err)
+			return err, nil, nil, nil, nil
+		}
+		length = uint8(p[0])
+
+		pp = make([]byte, length)
+		_, err := io.ReadFull(rr, pp)
+		if nil != err {
+			errorLog("io.ReadFull() failed: %v", err)
+			return err, nil, nil, nil, nil
+		}
+		parameterValue = pp
+
+		if 0x05 == parameterId {
+			if 1 != length {
+				errorLog("wrong parameter value length")
+				return HdlcErrorParameterValue, nil, nil, nil, nil
+			}
+			maxInfoFieldLengthTransmit = new(uint8)
+			*maxInfoFieldLengthTransmit = uint8(parameterValue[0])
+		} else if 0x06 == parameterId {
+			if 1 != length {
+				errorLog("wrong parameter value length")
+				return HdlcErrorParameterValue, nil, nil, nil, nil
+			}
+			maxInfoFieldLengthReceive = new(uint8)
+			*maxInfoFieldLengthReceive = uint8(parameterValue[0])
+		} else if 0x07 == parameterId {
+			if 4 != length {
+				errorLog("wrong parameter value length")
+				return HdlcErrorParameterValue, nil, nil, nil, nil
+			}
+			windowSizeTransmit = new(uint32)
+			buf = new(bytes.Buffer)
+			err = binary.Read(buf, binary.BigEndian, windowSizeTransmit)
+			if nil != err {
+				errorLog("binary.Read() failed: %v", err)
+				return err, nil, nil, nil, nil
+			}
+		} else if 0x09 == parameterId {
+			if 4 != length {
+				errorLog("wrong parameter value length")
+				return HdlcErrorParameterValue, nil, nil, nil, nil
+			}
+			windowSizeReceive = new(uint32)
+			buf = new(bytes.Buffer)
+			err = binary.Read(buf, binary.BigEndian, windowSizeReceive)
+			if nil != err {
+				errorLog("binary.Read() failed: %v", err)
+				return err, nil, nil, nil, nil
+			}
+		} else {
+			// just ignore usupported parameter
+		}
+	}
+
+	return nil, maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive, windowSizeTransmit, windowSizeReceive
+
 }
 
 // decode frame address, control and information field
