@@ -1,6 +1,7 @@
 package gocosem
 
 import (
+	"bytes"
 	"container/list"
 	"encoding/binary"
 	"errors"
@@ -38,10 +39,10 @@ type HdlcTransport struct {
 	rw                         io.ReadWriter
 	responseTimeout            time.Duration
 	windowSize                 uint8
-	maxInfoFieldLengthTransmit int
-	maxInfoFieldLengthReceive  int
-	windowSizeTransmit         int
-	windowSizeReceive          int
+	maxInfoFieldLengthTransmit uint8
+	maxInfoFieldLengthReceive  uint8
+	windowSizeTransmit         uint32
+	windowSizeReceive          uint32
 	expectedServerAddrLength   int        // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
 	writeQueue                 *list.List // list of *HdlcSegment
 	writeQueueMtx              *sync.Mutex
@@ -92,6 +93,14 @@ type HdlcSegment struct {
 
 type HdlcControlCommand struct {
 	control int
+	snrm    *HdlcControlCommandSNRM
+}
+
+type HdlcControlCommandSNRM struct {
+	maxInfoFieldLengthTransmit uint8
+	maxInfoFieldLengthReceive  uint8
+	windowSizeTransmit         uint32
+	windowSizeReceive          uint32
 }
 
 type HdlcParameterGroup struct {
@@ -582,7 +591,7 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 	if infoFieldLength > 0 {
 
 		if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
-			if infoFieldLength > htran.maxInfoFieldLengthReceive {
+			if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
 				errorLog("long info field")
 				return HdlcErrorMalformedSegment, n
 			}
@@ -636,12 +645,12 @@ func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
 	infoFieldLength := len(frame.infoField)
 
 	if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
-		if infoFieldLength > htran.maxInfoFieldLengthReceive {
+		if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
 			errorLog("long info field")
 			return HdlcErrorMalformedSegment
 		}
 	} else if (HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_OUTBOUND == frame.direction) {
-		if infoFieldLength > htran.maxInfoFieldLengthTransmit {
+		if infoFieldLength > int(htran.maxInfoFieldLengthTransmit) {
 			errorLog("long info field")
 			return HdlcErrorMalformedSegment
 		}
@@ -672,12 +681,12 @@ func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
 	if (nil != frame.infoField) && len(frame.infoField) > 0 {
 
 		if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
-			if infoFieldLength > htran.maxInfoFieldLengthReceive {
+			if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
 				errorLog("long info field")
 				return HdlcErrorMalformedSegment
 			}
 		} else if (HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_OUTBOUND == frame.direction) {
-			if infoFieldLength > htran.maxInfoFieldLengthTransmit {
+			if infoFieldLength > int(htran.maxInfoFieldLengthTransmit) {
 				errorLog("long info field")
 				return HdlcErrorMalformedSegment
 			}
@@ -722,7 +731,7 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 
 	// format (always present)
 
-	_, err := io.ReadFull(r, p)
+	_, err = io.ReadFull(r, p)
 	if nil != err {
 		errorLog("io.ReadFull() failed: %v", err)
 		return err, nil, nil, nil, nil
@@ -735,7 +744,7 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 
 	// group id
 
-	_, err := io.ReadFull(r, p)
+	_, err = io.ReadFull(r, p)
 	if nil != err {
 		errorLog("io.ReadFull() failed: %v", err)
 		return err, nil, nil, nil, nil
@@ -748,9 +757,9 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 
 	// group length
 
-	_, err := io.ReadFull(r, p)
+	_, err = io.ReadFull(r, p)
 	if nil != err {
-		if EOF == err {
+		if io.EOF == err {
 			return nil, nil, nil, nil, nil
 		} else {
 			errorLog("io.ReadFull() failed: %v", err)
@@ -763,7 +772,7 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 	}
 
 	pp := make([]byte, length)
-	_, err := io.ReadFull(r, pp)
+	_, err = io.ReadFull(r, pp)
 	if nil != err {
 		errorLog("io.ReadFull() failed: %v", err)
 		return err, nil, nil, nil, nil
@@ -776,7 +785,7 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 	for {
 		_, err := io.ReadFull(rr, p)
 		if nil != err {
-			if EOF == err {
+			if io.EOF == err {
 				break
 			}
 			errorLog("io.ReadFull() failed: %v", err)
@@ -784,7 +793,7 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 		}
 		parameterId := uint8(p[0])
 
-		_, err := io.ReadFull(rr, p)
+		_, err = io.ReadFull(rr, p)
 		if nil != err {
 			errorLog("io.ReadFull() failed: %v", err)
 			return err, nil, nil, nil, nil
@@ -792,12 +801,12 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 		length = uint8(p[0])
 
 		pp = make([]byte, length)
-		_, err := io.ReadFull(rr, pp)
+		_, err = io.ReadFull(rr, pp)
 		if nil != err {
 			errorLog("io.ReadFull() failed: %v", err)
 			return err, nil, nil, nil, nil
 		}
-		parameterValue = pp
+		parameterValue := pp
 
 		if 0x05 == parameterId {
 			if 1 != length {
@@ -825,7 +834,7 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 				errorLog("binary.Read() failed: %v", err)
 				return err, nil, nil, nil, nil
 			}
-		} else if 0x09 == parameterId {
+		} else if 0x08 == parameterId {
 			if 4 != length {
 				errorLog("wrong parameter value length")
 				return HdlcErrorParameterValue, nil, nil, nil, nil
@@ -843,6 +852,147 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 	}
 
 	return nil, maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive, windowSizeTransmit, windowSizeReceive
+
+}
+
+func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldLengthTransmit *uint8, maxInfoFieldLengthReceive *uint8, windowSizeTransmit *uint32, windowSizeReceive *uint32) (err error) {
+
+	w := new(bytes.Buffer)
+
+	// format
+
+	err = binary.Write(w, binary.BigEndian, uint8(0x81))
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+
+	// group id
+
+	err = binary.Write(w, binary.BigEndian, uint8(0x80))
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+
+	if (nil == maxInfoFieldLengthTransmit) && (nil == maxInfoFieldLengthReceive) && (nil == windowSizeTransmit) && (nil == windowSizeReceive) {
+		frame.infoField = w.Bytes()
+		return nil
+	}
+
+	ww := new(bytes.Buffer)
+
+	if nil == maxInfoFieldLengthTransmit {
+		// write default value (IEC allows us also omitt parameter if not used, but it's safer just write default to prevent dumb server to crash)
+		maxInfoFieldLengthTransmit = new(uint8)
+		*maxInfoFieldLengthTransmit = 0
+	} else {
+		err = binary.Write(ww, binary.BigEndian, maxInfoFieldLengthTransmit)
+	}
+	err = binary.Write(ww, binary.BigEndian, uint8(0x05))
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+	err = binary.Write(ww, binary.BigEndian, uint8(1))
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+	err = binary.Write(ww, binary.BigEndian, maxInfoFieldLengthTransmit)
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+
+	if nil == maxInfoFieldLengthReceive {
+		// write default value (IEC allows us also omitt parameter if not used, but it's safer just write default to prevent dumb server to crash)
+		maxInfoFieldLengthReceive = new(uint8)
+		*maxInfoFieldLengthReceive = 0
+	} else {
+		err = binary.Write(ww, binary.BigEndian, maxInfoFieldLengthReceive)
+	}
+	err = binary.Write(ww, binary.BigEndian, uint8(0x06))
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+	err = binary.Write(ww, binary.BigEndian, uint8(1))
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+	err = binary.Write(ww, binary.BigEndian, maxInfoFieldLengthReceive)
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+
+	if nil == windowSizeTransmit {
+		// write default value (IEC allows us also omitt parameter if not used, but it's safer just write default to prevent dumb server to crash)
+		windowSizeTransmit = new(uint32)
+		*windowSizeTransmit = 0
+	} else {
+		err = binary.Write(ww, binary.BigEndian, windowSizeTransmit)
+	}
+	err = binary.Write(ww, binary.BigEndian, uint8(0x07))
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+	err = binary.Write(ww, binary.BigEndian, uint8(4))
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+	err = binary.Write(ww, binary.BigEndian, windowSizeTransmit)
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+
+	if nil == windowSizeReceive {
+		// write default value (IEC allows us also omitt parameter if not used, but it's safer just write default to prevent dumb server to crash)
+		windowSizeReceive = new(uint32)
+		*windowSizeReceive = 0
+	} else {
+		err = binary.Write(ww, binary.BigEndian, windowSizeReceive)
+	}
+	err = binary.Write(ww, binary.BigEndian, uint8(0x08))
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+	err = binary.Write(ww, binary.BigEndian, uint8(4))
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+	err = binary.Write(ww, binary.BigEndian, windowSizeReceive)
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+
+	groupValue := ww.Bytes()
+
+	// group length
+
+	err = binary.Write(w, binary.BigEndian, uint8(len(groupValue)))
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+
+	// group value
+
+	err = binary.Write(w, binary.BigEndian, groupValue)
+	if nil != err {
+		errorLog("binary.Write() failed: %v", err)
+		return err
+	}
+
+	return nil
 
 }
 
