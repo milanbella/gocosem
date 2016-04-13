@@ -201,6 +201,10 @@ var HdlcErrorParameterValue = errors.New("wrong parameter value")
 func NewHdlcTransport(rw io.ReadWriter) *HdlcTransport {
 	htran := new(HdlcTransport)
 	htran.rw = rw
+	htran.maxInfoFieldLengthTransmit = 128
+	htran.maxInfoFieldLengthReceive = 128
+	htran.windowSizeTransmit = 1
+	htran.windowSizeReceive = 1
 	return htran
 }
 
@@ -883,7 +887,6 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 	ww := new(bytes.Buffer)
 
 	if nil == maxInfoFieldLengthTransmit {
-		// write default value (IEC allows us also omitt parameter if not used, but it's safer just write default to prevent dumb server to crash)
 		maxInfoFieldLengthTransmit = new(uint8)
 		*maxInfoFieldLengthTransmit = 0
 	} else {
@@ -906,7 +909,6 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 	}
 
 	if nil == maxInfoFieldLengthReceive {
-		// write default value (IEC allows us also omitt parameter if not used, but it's safer just write default to prevent dumb server to crash)
 		maxInfoFieldLengthReceive = new(uint8)
 		*maxInfoFieldLengthReceive = 0
 	} else {
@@ -929,7 +931,6 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 	}
 
 	if nil == windowSizeTransmit {
-		// write default value (IEC allows us also omitt parameter if not used, but it's safer just write default to prevent dumb server to crash)
 		windowSizeTransmit = new(uint32)
 		*windowSizeTransmit = 0
 	} else {
@@ -952,7 +953,6 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 	}
 
 	if nil == windowSizeReceive {
-		// write default value (IEC allows us also omitt parameter if not used, but it's safer just write default to prevent dumb server to crash)
 		windowSizeReceive = new(uint32)
 		*windowSizeReceive = 0
 	} else {
@@ -992,6 +992,7 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 		return err
 	}
 
+	frame.infoField = w.Bytes()
 	return nil
 
 }
@@ -1859,7 +1860,13 @@ mainLoop:
 					client = true // Only client may connect the line therefore if line is disconnected line side initiating connection  becomes client.
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					frame.control = HDLC_CONTROL_SNRM
-					//TODO: encode info field
+
+					snrm := command.snrm
+					err = htran.encodeLinkParameters(frame, &snrm.maxInfoFieldLengthTransmit, &snrm.maxInfoFieldLengthReceive, &snrm.windowSizeTransmit, &snrm.windowSizeTransmit)
+					if nil != err {
+						break mainLoop
+					}
+
 					err = htran.writeFrame(frame)
 					if nil != err {
 						break mainLoop
@@ -2139,11 +2146,35 @@ mainLoop:
 				}
 			} else if HDLC_CONTROL_SNRM == frame.control {
 				if STATE_DISCONNECTED == state {
+
+					err, maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive, windowSizeTransmit, windowSizeReceive := htran.decodeLinkParameters(frame)
+					if nil != err {
+						break mainLoop
+					}
+
 					frame = new(HdlcFrame)
 					frame.poll = true
 					frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND // only client may send SNRM
 					frame.control = HDLC_CONTROL_UA
-					//TODO: handle the info field
+
+					// negotiate link parameters
+					if htran.maxInfoFieldLengthTransmit < *maxInfoFieldLengthTransmit {
+						*maxInfoFieldLengthTransmit = htran.maxInfoFieldLengthTransmit
+					}
+					if htran.maxInfoFieldLengthReceive < *maxInfoFieldLengthReceive {
+						*maxInfoFieldLengthReceive = htran.maxInfoFieldLengthReceive
+					}
+					if htran.windowSizeTransmit < *windowSizeTransmit {
+						*windowSizeTransmit = htran.windowSizeTransmit
+					}
+					if htran.windowSizeReceive < *windowSizeReceive {
+						*windowSizeReceive = htran.windowSizeReceive
+					}
+					err = htran.encodeLinkParameters(frame, maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive, windowSizeTransmit, windowSizeTransmit)
+					if nil != err {
+						break mainLoop
+					}
+
 					vs = 0
 					vr = 0
 					client = false
@@ -2179,7 +2210,26 @@ mainLoop:
 					state = STATE_DISCONNECTED
 					htran.controlAck <- map[string]interface{}{"err": nil}
 				} else if STATE_CONNECTING == state {
-					//TODO: handle the info field content
+
+					// negotiate link parameters
+
+					err, maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive, windowSizeTransmit, windowSizeReceive := htran.decodeLinkParameters(frame)
+					if nil != err {
+						break mainLoop
+					}
+					if nil != maxInfoFieldLengthTransmit {
+						htran.maxInfoFieldLengthTransmit = *maxInfoFieldLengthTransmit
+					}
+					if nil != maxInfoFieldLengthReceive {
+						htran.maxInfoFieldLengthReceive = *maxInfoFieldLengthReceive
+					}
+					if nil != windowSizeTransmit {
+						htran.windowSizeTransmit = *windowSizeTransmit
+					}
+					if nil != windowSizeReceive {
+						htran.windowSizeReceive = *windowSizeReceive
+					}
+
 					state = STATE_CONNECTED
 					vs = 0
 					vr = 0
