@@ -88,7 +88,6 @@ type HdlcFrame struct {
 type HdlcSegment struct {
 	p    []byte
 	last bool
-	eof  bool
 }
 
 type HdlcControlCommand struct {
@@ -206,6 +205,131 @@ func NewHdlcTransport(rw io.ReadWriter) *HdlcTransport {
 	htran.windowSizeTransmit = 1
 	htran.windowSizeReceive = 1
 	return htran
+}
+
+func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoFieldLengthReceive *uint8, windowSizeTransmit *uint32, windowSizeReceive *uint32) (err error) {
+
+	command := new(HdlcControlCommand)
+	command.control = HDLC_CONTROL_SNRM
+
+	command.snrm = new(HdlcControlCommandSNRM)
+
+	if maxInfoFieldLengthTransmit {
+		command.snrm.maxInfoFieldLengthTransmit = *maxInfoFieldLengthTransmit
+	} else {
+		command.snrm.maxInfoFieldLengthTransmit = htran.maxInfoFieldLengthTransmit
+	}
+
+	if maxInfoFieldLengthReceive {
+		command.snrm.maxInfoFieldLengthReceive = *maxInfoFieldLengthReceive
+	} else {
+		command.snrm.maxInfoFieldLengthReceive = htran.maxInfoFieldLengthReceive
+	}
+
+	if windowSizeTransmit {
+		command.snrm.windowSizeTransmit = *windowSizeTransmit
+	} else {
+		command.snrm.windowSizeTransmit = htran.windowSizeTransmit
+	}
+
+	if windowSizeReceive {
+		command.snrm.windowSizeReceive = *windowSizeReceive
+	} else {
+		command.snrm.windowSizeReceive = htran.windowSizeReceive
+	}
+
+	htran.controlQueueMtx.Lock()
+	htran.controlQueue.PushBack(command)
+	htran.controlQueueMtx.Unlock()
+
+	msg := <-htran.controlAck
+	return msg.err
+}
+
+func (htran *HdlcTransport) SendDISC() (err error) {
+
+	command := new(HdlcControlCommand)
+	command.control = HDLC_CONTROL_DISC
+
+	htran.controlQueueMtx.Lock()
+	htran.controlQueue.PushBack(command)
+	htran.controlQueueMtx.Unlock()
+
+	msg := <-htran.controlAck
+	return msg["err"].(error)
+}
+
+func (htran *HdlcTransport) Write(p []byte) (n int, err error) {
+	/*
+	   type HdlcSegment struct {
+	   	p    []byte
+	   	last bool
+	   }
+	*/
+
+	var segment *HdlcSegment
+	var maxSegmentSize = htran.maxInfoFieldLengthTransmit
+
+	n = len(p)
+	for len(p) > 0 {
+		segment = new(HdlcSegment)
+		if len(p) >= maxSegmentSize {
+			segment.p = p[0:maxSegmentSize]
+			p = p[len(segment.p):]
+		} else {
+			segment.p = p
+			p = p[len(segment.p):]
+			segment.last = true
+		}
+		htran.readQueueMtx.Lock()
+		htran.readQueue.PushBack(segment)
+		htran.readQueueMtx.Unlock()
+	}
+
+	msg := <-htran.readAck
+	return n, msg["err"].(error)
+}
+
+func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
+	var segment *HdlcSegment
+
+	msg := <-htran.writeAck
+	err = msg["err"].(error)
+	if nil != err {
+		return 0, err
+	}
+
+	n = 0
+	var l int
+	for len(p) > 0 {
+		htran.writeQueueMtx.Lock()
+		segment = htran.writeQueue.Front().Value.(*HdlcSegment)
+		htran.writeQueueMtx.Unlock()
+
+		if len(p) >= len(segment.p) {
+			l = len(segment.p) - len(p)
+			copy(p, segment.p)
+			n += l
+			p = p[l:]
+		} else {
+			// partially read segment and return it shortened back to queue
+
+			l = len(segment.p) - len(p)
+			copy(p, segment.p[0:l])
+			n += l
+			p = p[l:]
+			segment.p = segment.p[l:]
+
+			htran.writeQueueMtx.Lock()
+			segment = htran.writeQueue.PushFront(segment)
+			htran.writeQueueMtx.Unlock()
+		}
+
+		if segment.last {
+			break
+		}
+	}
+	return n, nil
 }
 
 func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n int) {
@@ -2026,11 +2150,11 @@ mainLoop:
 						segment = new(HdlcSegment)
 						segment.p = frame.infoField
 						segment.last = !frame.segmentation
-						htran.readQueueMtx.Lock()
-						htran.readQueue.PushBack(segment)
-						htran.readQueueMtx.Unlock()
+						htran.writeQueueMtx.Lock()
+						htran.writeQueue.PushBack(segment)
+						htran.writeQueueMtx.Unlock()
 						if segment.last {
-							htran.readAck <- map[string]interface{}{"err": nil}
+							htran.writeAck <- map[string]interface{}{"err": nil}
 						}
 
 						if frame.nr-1 <= vs {
