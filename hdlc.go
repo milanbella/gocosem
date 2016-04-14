@@ -343,9 +343,9 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 		panic("wrong expected server address length value")
 	}
 
-	_, err = r.Read(p)
+	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("r.Read() failed: %v", err)
+		errorLog("io.ReadFull() failed: %v", err)
 		return err, n
 	}
 	n += 1
@@ -361,9 +361,9 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 			return HdlcErrorMalformedSegment, n
 		}
 	} else {
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
@@ -394,9 +394,9 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 				panic("assertion failed")
 			}
 		} else {
-			_, err = r.Read(p)
+			_, err = io.ReadFull(r, p)
 			if nil != err {
-				errorLog("r.Read() failed: %v", err)
+				_, err = io.ReadFull(r, p)
 				return err, n
 			}
 			n += 1
@@ -408,9 +408,9 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 				return HdlcErrorMalformedSegment, n
 			}
 
-			_, err = r.Read(p)
+			_, err = io.ReadFull(r, p)
 			if nil != err {
-				errorLog("r.Read() failed: %v", err)
+				errorLog("io.ReadFull() failed: %v", err)
 				return err, n
 			}
 			n += 1
@@ -443,7 +443,7 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 						frame.logicalDeviceId = 0x3FFF
 						frame.physicalDeviceId = new(uint16)
 						*frame.physicalDeviceId = 0x3FFF
-					} else if (upperMAC == 0x3FFF) && (0x0001 == lowerMAC) && frame.callingPhysicalDevice {
+					} else if (upperMAC == 0x0001) && (0x3FFE == lowerMAC) && frame.callingPhysicalDevice {
 						// event reporting
 						frame.logicalDeviceId = upperMAC
 						frame.physicalDeviceId = new(uint16)
@@ -637,9 +637,9 @@ func (htran *HdlcTransport) decodeClientAddress(frame *HdlcFrame) (err error, n 
 	var b0 byte
 	p := make([]byte, 1)
 
-	_, err = r.Read(p)
+	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("r.Read() failed: %v", err)
+		errorLog("io.ReadFull() failed: %v", err)
 		return err, n
 	}
 	n += 1
