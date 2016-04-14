@@ -41,20 +41,25 @@ type HdlcTransport struct {
 	windowSize                 uint8
 	maxInfoFieldLengthTransmit uint8
 	maxInfoFieldLengthReceive  uint8
-	windowSizeTransmit         uint32
-	windowSizeReceive          uint32
-	expectedServerAddrLength   int        // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
-	writeQueue                 *list.List // list of *HdlcSegment
-	writeQueueMtx              *sync.Mutex
-	writeAck                   chan map[string]interface{}
-	readQueue                  *list.List // list of *HdlcSegment
-	readQueueMtx               *sync.Mutex
-	readAck                    chan map[string]interface{}
-	controlQueue               *list.List // list of *HdlcControlCommand
-	controlAck                 chan map[string]interface{}
-	controlQueueMtx            *sync.Mutex
-	closedAck                  chan bool
-	errCh                      chan error
+
+	//TODO: use these values
+	windowSizeTransmit uint32
+	windowSizeReceive  uint32
+
+	//TODO: init this value
+	expectedServerAddrLength int // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
+
+	writeQueue      *list.List // list of *HdlcSegment
+	writeQueueMtx   *sync.Mutex
+	writeAck        chan map[string]interface{}
+	readQueue       *list.List // list of *HdlcSegment
+	readQueueMtx    *sync.Mutex
+	readAck         chan map[string]interface{}
+	controlQueue    *list.List // list of *HdlcControlCommand
+	controlAck      chan map[string]interface{}
+	controlQueueMtx *sync.Mutex
+	closedAck       chan bool
+	errCh           chan error
 }
 
 type HdlcClientConnection struct {
@@ -260,12 +265,6 @@ func (htran *HdlcTransport) SendDISC() (err error) {
 }
 
 func (htran *HdlcTransport) Write(p []byte) (n int, err error) {
-	/*
-	   type HdlcSegment struct {
-	   	p    []byte
-	   	last bool
-	   }
-	*/
 
 	var segment *HdlcSegment
 	var maxSegmentSize = htran.maxInfoFieldLengthTransmit
@@ -769,22 +768,6 @@ func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
 	var w io.Writer = htran.rw
 	p := make([]byte, 1)
 
-	infoFieldLength := len(frame.infoField)
-
-	if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
-		if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
-			errorLog("long info field")
-			return HdlcErrorMalformedSegment
-		}
-	} else if (HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_OUTBOUND == frame.direction) {
-		if infoFieldLength > int(htran.maxInfoFieldLengthTransmit) {
-			errorLog("long info field")
-			return HdlcErrorMalformedSegment
-		}
-	} else {
-		panic("assertion failed")
-	}
-
 	// HCS - header control sum
 
 	fcs16 := frame.fcs16
@@ -806,6 +789,7 @@ func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
 	// write information field
 
 	if (nil != frame.infoField) && len(frame.infoField) > 0 {
+		infoFieldLength := len(frame.infoField)
 
 		if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
 			if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
@@ -1587,23 +1571,10 @@ func (htran *HdlcTransport) encodeFrameACI(frame *HdlcFrame) (err error) {
 		}
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
-		// FCS - frame control sum
-
-		fcs16 := frame.fcs16
-		p[0] = byte(^fcs16 & 0x00FF)
-		_, err = w.Write(p)
+		err = htran.encodeFrameInfo(frame)
 		if nil != err {
-			errorLog("w.Write() failed: %v", err)
 			return err
 		}
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		p[0] = byte((^fcs16 & 0xFF00) >> 8)
-		_, err = w.Write(p)
-		if nil != err {
-			errorLog("w.Write() failed: %v", err)
-			return err
-		}
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 	} else if HDLC_CONTROL_DM == frame.control {
 		b0 |= 0x01
@@ -1651,23 +1622,10 @@ func (htran *HdlcTransport) encodeFrameACI(frame *HdlcFrame) (err error) {
 		}
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
-		// FCS - frame control sum
-
-		fcs16 := frame.fcs16
-		p[0] = byte(^fcs16 & 0x00FF)
-		_, err = w.Write(p)
+		err = htran.encodeFrameInfo(frame)
 		if nil != err {
-			errorLog("w.Write() failed: %v", err)
 			return err
 		}
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		p[0] = byte((^fcs16 & 0xFF00) >> 8)
-		_, err = w.Write(p)
-		if nil != err {
-			errorLog("w.Write() failed: %v", err)
-			return err
-		}
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 	} else if HDLC_CONTROL_UI == frame.control {
 		b0 |= 0x01
@@ -1681,24 +1639,10 @@ func (htran *HdlcTransport) encodeFrameACI(frame *HdlcFrame) (err error) {
 		}
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
-		// FCS - frame control sum
-
-		fcs16 := frame.fcs16
-		p[0] = byte(^fcs16 & 0x00FF)
-		_, err = w.Write(p)
+		err = htran.encodeFrameInfo(frame)
 		if nil != err {
-			errorLog("w.Write() failed: %v", err)
 			return err
 		}
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		p[0] = byte((^fcs16 & 0xFF00) >> 8)
-		_, err = w.Write(p)
-		if nil != err {
-			errorLog("w.Write() failed: %v", err)
-			return err
-		}
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
-
 	} else {
 		errorLog("invalid control field value")
 		return HdlcErrorInvalidValue
@@ -1801,6 +1745,10 @@ func (htran *HdlcTransport) encodeFrameFACI(frame *HdlcFrame) (err error) {
 
 	length := uint16(htran.lengthOfFrame(frame))
 	if length > 0x07FF {
+		errorLog("frame length exceeds limt")
+		return HdlcErrorInvalidValue
+	}
+	if length > htran.maxInfoFieldLengthTransmit {
 		errorLog("frame length exceeds limt")
 		return HdlcErrorInvalidValue
 	}
