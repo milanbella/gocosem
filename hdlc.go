@@ -214,25 +214,25 @@ func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoF
 
 	command.snrm = new(HdlcControlCommandSNRM)
 
-	if maxInfoFieldLengthTransmit {
+	if nil != maxInfoFieldLengthTransmit {
 		command.snrm.maxInfoFieldLengthTransmit = *maxInfoFieldLengthTransmit
 	} else {
 		command.snrm.maxInfoFieldLengthTransmit = htran.maxInfoFieldLengthTransmit
 	}
 
-	if maxInfoFieldLengthReceive {
+	if nil != maxInfoFieldLengthReceive {
 		command.snrm.maxInfoFieldLengthReceive = *maxInfoFieldLengthReceive
 	} else {
 		command.snrm.maxInfoFieldLengthReceive = htran.maxInfoFieldLengthReceive
 	}
 
-	if windowSizeTransmit {
+	if nil != windowSizeTransmit {
 		command.snrm.windowSizeTransmit = *windowSizeTransmit
 	} else {
 		command.snrm.windowSizeTransmit = htran.windowSizeTransmit
 	}
 
-	if windowSizeReceive {
+	if nil != windowSizeReceive {
 		command.snrm.windowSizeReceive = *windowSizeReceive
 	} else {
 		command.snrm.windowSizeReceive = htran.windowSizeReceive
@@ -243,7 +243,7 @@ func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoF
 	htran.controlQueueMtx.Unlock()
 
 	msg := <-htran.controlAck
-	return msg.err
+	return msg["err"].(error)
 }
 
 func (htran *HdlcTransport) SendDISC() (err error) {
@@ -273,7 +273,7 @@ func (htran *HdlcTransport) Write(p []byte) (n int, err error) {
 	n = len(p)
 	for len(p) > 0 {
 		segment = new(HdlcSegment)
-		if len(p) >= maxSegmentSize {
+		if len(p) >= int(maxSegmentSize) {
 			segment.p = p[0:maxSegmentSize]
 			p = p[len(segment.p):]
 		} else {
@@ -321,7 +321,7 @@ func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
 			segment.p = segment.p[l:]
 
 			htran.writeQueueMtx.Lock()
-			segment = htran.writeQueue.PushFront(segment)
+			htran.writeQueue.PushFront(segment)
 			htran.writeQueueMtx.Unlock()
 		}
 
@@ -690,17 +690,17 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 
 	// HCS - header control sum
 
-	_, err = r.Read(p)
+	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("r.Read() failed: %v", err)
+		errorLog("io.ReadFull() failed: %v", err)
 		return err, n
 	}
 	n += 1
 	l += 1
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
-	_, err = r.Read(p)
+	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("r.Read() failed: %v", err)
+		errorLog("io.ReadFull() failed: %v", err)
 		return err, n
 	}
 	n += 1
@@ -1123,7 +1123,7 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 
 // decode frame address, control and information field
 
-func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, n int) {
+func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, expectingInfo bool, l int) (err error, n int) {
 	var r io.Reader = htran.rw
 	n = 0
 	var b0 byte
@@ -1133,7 +1133,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 	// dst and src address
 
-	if HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction {
+	if (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND == frame.direction) {
 		err, nn = htran.decodeServerAddress(frame)
 		if nil != err {
 			return err, n
@@ -1144,7 +1144,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 			return err, n
 		}
 		n += nn
-	} else if HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction {
+	} else if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_OUTBOUND == frame.direction) {
 		err, nn = htran.decodeClientAddress(frame)
 		if nil != err {
 			return err, n
@@ -1156,14 +1156,14 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		}
 		n += nn
 	} else {
-		panic("frame direction is not inbound")
+		panic("invalid frame direction")
 	}
 
 	// control
 
-	_, err = r.Read(p)
+	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("r.Read() failed: %v", err)
+		errorLog("io.ReadFull() failed: %v", err)
 		return err, n
 	}
 	n += 1
@@ -1190,16 +1190,16 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 		// FCS - frame control sum
 
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
@@ -1214,16 +1214,16 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 		// FCS - frame control sum
 
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
@@ -1248,16 +1248,16 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 		// FCS - frame control sum
 
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
@@ -1270,18 +1270,26 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 	} else if (b0&0x80 == 0) && (b0&0x40 > 0) && (b0&0x20 > 0) && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_UA
 
+		if expectingInfo {
+			err, nn := htran.decodeFrameInfo(frame, l+n)
+			if nil != err {
+				return err, n
+			}
+			n += nn
+		}
+
 		// FCS - frame control sum
 
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
@@ -1296,16 +1304,16 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 		// FCS - frame control sum
 
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
@@ -1318,18 +1326,24 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 	} else if (b0&0x80 > 0) && (b0&0x40 == 0) && (b0&0x20 == 0) && (b0&0x08 == 0) && (b0&0x04 > 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_FRMR
 
+		err, nn := htran.decodeFrameInfo(frame, l+n)
+		if nil != err {
+			return err, n
+		}
+		n += nn
+
 		// FCS - frame control sum
 
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
@@ -1342,18 +1356,24 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 	} else if (b0&0x80 == 0) && (b0&0x40 == 0) && (b0&0x20 == 0) && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_UI
 
+		err, nn := htran.decodeFrameInfo(frame, l+n)
+		if nil != err {
+			return err, n
+		}
+		n += nn
+
 		// FCS - frame control sum
 
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
@@ -1715,7 +1735,7 @@ func (htran *HdlcTransport) lengthOfFrame(frame *HdlcFrame) (n int) {
 
 // decode frame format, address, control and information field
 
-func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error, n int) {
+func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, expectingInfo bool, l int) (err error, n int) {
 	var r io.Reader = htran.rw
 	n = 0
 
@@ -1723,9 +1743,9 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 	var b0, b1 byte
 
 	// expect first byte of format field
-	_, err = r.Read(p)
+	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("r.Read() failed: %v", err)
+		errorLog("io.ReadFull() failed: %v", err)
 		return err, n
 	}
 	n++
@@ -1736,9 +1756,9 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		b0 = p[0]
 
 		// expect last second byte of format field
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n++
@@ -1756,7 +1776,7 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 
 		frame.length = int((uint16(b0&0x07) << 8) + uint16(b1))
 
-		err, nn := htran.decodeFrameACI(frame, l+n)
+		err, nn := htran.decodeFrameACI(frame, expectingInfo, l+n)
 		n += nn
 		return err, n
 	} else {
@@ -1808,14 +1828,14 @@ func (htran *HdlcTransport) encodeFrameFACI(frame *HdlcFrame) (err error) {
 
 }
 
-func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFrame) {
+func (htran *HdlcTransport) readFrame(direction int, expectingInfo bool) (err error, frame *HdlcFrame) {
 	var r io.Reader = htran.rw
 	p := make([]byte, 1)
 	for {
 		// expect opening flag
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, nil
 		}
 		if 0x7E == p[0] { // flag
@@ -1823,7 +1843,7 @@ func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFram
 			frame.direction = direction
 			frame.fcs16 = PPPINITFCS16
 
-			err, _ = htran.decodeFrameFACI(frame, 0)
+			err, _ = htran.decodeFrameFACI(frame, expectingInfo, 0)
 			if nil != err {
 				if HdlcErrorMalformedSegment == err {
 					// ignore malformed segment and try read next segment
@@ -1840,23 +1860,23 @@ func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFram
 	}
 }
 
-func (htran *HdlcTransport) readFrameAsync(direction int) <-chan map[string]interface{} {
+func (htran *HdlcTransport) readFrameAsync(direction int, expectingInfo bool) <-chan map[string]interface{} {
 	ch := make(chan map[string]interface{})
 	func() {
-		err, frame := htran.readFrame(direction)
+		err, frame := htran.readFrame(direction, expectingInfo)
 		ch <- map[string]interface{}{"err": err, "frame": frame}
 	}()
 	return ch
 }
 
-func (htran *HdlcTransport) readFrameAsyncWithTimeout(direction int, timeout time.Duration) <-chan map[string]interface{} {
+func (htran *HdlcTransport) readFrameAsyncWithTimeout(direction int, expectingInfo bool, timeout time.Duration) <-chan map[string]interface{} {
 	ch := make(chan map[string]interface{})
 	go func(ch chan map[string]interface{}) {
 		select {
 		case _ = <-time.After(time.Duration(htran.responseTimeout) * time.Millisecond):
 			errorLog("SNRM response timeout")
 			ch <- map[string]interface{}{"err": HdlcErrorTimeout}
-		case msg := <-htran.readFrameAsync(direction):
+		case msg := <-htran.readFrameAsync(direction, expectingInfo):
 			ch <- msg
 		}
 	}(ch)
@@ -2109,9 +2129,13 @@ mainLoop:
 			// receiving
 
 			if client {
-				msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_CLIENT_INBOUND, htran.responseTimeout)
+				if STATE_CONNECTING == state {
+					msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_CLIENT_INBOUND, true, htran.responseTimeout)
+				} else {
+					msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_CLIENT_INBOUND, false, htran.responseTimeout)
+				}
 			} else {
-				msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_SERVER_INBOUND, htran.responseTimeout)
+				msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_SERVER_INBOUND, false, htran.responseTimeout)
 			}
 			err = msg["err"].(error)
 			if nil != err {
