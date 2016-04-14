@@ -718,19 +718,15 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 
 	if infoFieldLength > 0 {
 
-		if (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
-			if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
-				errorLog("long info field")
-				return HdlcErrorMalformedSegment, n
-			}
-		} else {
-			panic("frame direction is not inbound")
+		if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
+			errorLog("long info field")
+			return HdlcErrorMalformedSegment, n
 		}
 
 		p = make([]byte, infoFieldLength)
-		err = binary.Read(r, binary.BigEndian, p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("binary.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += len(p)
@@ -740,16 +736,16 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 
 		// FCS - frame control sum
 
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		_, err = r.Read(p)
+		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("r.Read() failed: %v", err)
+			errorLog("io.ReadFull() failed: %v", err)
 			return err, n
 		}
 		n += 1
@@ -759,8 +755,11 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 			errorLog("wrong FCS")
 			return HdlcErrorMalformedSegment, n
 		}
-	} else {
+	} else if infoFieldLength == 0 {
 		frame.infoField = make([]byte, 0)
+	} else {
+		errorLog("incorrect frame length")
+		return HdlcErrorMalformedSegment, n
 	}
 
 	return nil, n
@@ -1384,7 +1383,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, expectingInfo bool,
 			return HdlcErrorMalformedSegment, n
 		}
 	} else {
-		errorLog("malformed control field")
+		errorLog("unknown control field value")
 		return HdlcErrorMalformedSegment, n
 	}
 
