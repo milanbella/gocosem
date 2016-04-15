@@ -214,14 +214,14 @@ func NewHdlcTransport(rw io.ReadWriter) *HdlcTransport {
 	return htran
 }
 
-func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoFieldLengthTransmit *uint8, maxInfoFieldLengthReceive *uint8, windowSizeTransmit *uint32, windowSizeReceive *uint32) (err error) {
+func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoFieldLengthReceive *uint8, windowSizeTransmit *uint32, windowSizeReceive *uint32) (err error) {
 
 	command := new(HdlcControlCommand)
 	command.control = HDLC_CONTROL_SNRM
 
 	command.snrm = new(HdlcControlCommandSNRM)
 
-	if nil != maxInfoFieldLength {
+	if nil != maxInfoFieldLengthTransmit {
 		command.snrm.maxInfoFieldLengthTransmit = *maxInfoFieldLengthTransmit
 	} else {
 		command.snrm.maxInfoFieldLengthTransmit = htran.maxInfoFieldLengthTransmit
@@ -1775,10 +1775,6 @@ func (htran *HdlcTransport) encodeFrameFACI(frame *HdlcFrame) (err error) {
 		errorLog("frame length exceeds limt")
 		return HdlcErrorInvalidValue
 	}
-	if length > htran.maxInfoFieldLengthTransmit {
-		errorLog("frame length exceeds limt")
-		return HdlcErrorInvalidValue
-	}
 	b0 |= byte((0xFF00 & length) >> 8)
 	b1 = byte(0x00FF & length)
 
@@ -1908,8 +1904,8 @@ func (htran *HdlcTransport) handleHdlc(listen bool) {
 	var err error
 	var vs uint8
 	var vr uint8
-	var transmittedFramesCnt uint8
-	var receivedFramesCnt uint8
+	var transmittedFramesCnt uint32
+	var receivedFramesCnt uint32
 
 	const (
 		STATE_CONNECTING = iota
@@ -2120,12 +2116,12 @@ mainLoop:
 
 			if client {
 				if STATE_CONNECTING == state {
-					msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_CLIENT_INBOUND, true, htran.responseTimeout)
+					msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_CLIENT_INBOUND, htran.responseTimeout)
 				} else {
-					msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_CLIENT_INBOUND, false, htran.responseTimeout)
+					msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_CLIENT_INBOUND, htran.responseTimeout)
 				}
 			} else {
-				msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_SERVER_INBOUND, false, htran.responseTimeout)
+				msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_SERVER_INBOUND, htran.responseTimeout)
 			}
 			err = msg["err"].(error)
 			if nil != err {
@@ -2329,7 +2325,7 @@ mainLoop:
 						*windowSizeTransmit = htran.windowSizeTransmit
 					}
 
-					if nil != *windowSizeReceive {
+					if nil != windowSizeReceive {
 						if *windowSizeReceive > htran.windowSizeReceive {
 							*windowSizeReceive = htran.windowSizeReceive
 						} else {
