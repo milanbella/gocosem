@@ -224,25 +224,25 @@ func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoF
 	if nil != maxInfoFieldLengthTransmit {
 		command.snrm.maxInfoFieldLengthTransmit = *maxInfoFieldLengthTransmit
 	} else {
-		command.snrm.maxInfoFieldLengthTransmit = htran.maxInfoFieldLengthTransmit
+		command.snrm.maxInfoFieldLengthTransmit = 128
 	}
 
 	if nil != maxInfoFieldLengthReceive {
 		command.snrm.maxInfoFieldLengthReceive = *maxInfoFieldLengthReceive
 	} else {
-		command.snrm.maxInfoFieldLengthReceive = htran.maxInfoFieldLengthReceive
+		command.snrm.maxInfoFieldLengthReceive = 128
 	}
 
 	if nil != windowSizeTransmit {
 		command.snrm.windowSizeTransmit = *windowSizeTransmit
 	} else {
-		command.snrm.windowSizeTransmit = htran.windowSizeTransmit
+		command.snrm.windowSizeTransmit = 1
 	}
 
 	if nil != windowSizeReceive {
 		command.snrm.windowSizeReceive = *windowSizeReceive
 	} else {
-		command.snrm.windowSizeReceive = htran.windowSizeReceive
+		command.snrm.windowSizeReceive = 1
 	}
 
 	htran.controlQueueMtx.Lock()
@@ -2384,15 +2384,23 @@ mainLoop:
 					}
 					if nil != maxInfoFieldLengthTransmit {
 						htran.maxInfoFieldLengthTransmit = *maxInfoFieldLengthTransmit
+					} else {
+						htran.maxInfoFieldLengthTransmit = 128
 					}
 					if nil != maxInfoFieldLengthReceive {
 						htran.maxInfoFieldLengthReceive = *maxInfoFieldLengthReceive
+					} else {
+						htran.maxInfoFieldLengthReceive = 128
 					}
 					if nil != windowSizeTransmit {
 						htran.windowSizeTransmit = *windowSizeTransmit
+					} else {
+						htran.windowSizeTransmit = 1
 					}
 					if nil != windowSizeReceive {
 						htran.windowSizeReceive = *windowSizeReceive
+					} else {
+						htran.windowSizeReceive = 1
 					}
 
 					state = STATE_CONNECTED
