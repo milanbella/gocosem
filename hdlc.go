@@ -2149,10 +2149,35 @@ mainLoop:
 
 			if HDLC_CONTROL_I == frame.control {
 				if STATE_CONNECTED == state {
-					if frame.ns == vr {
-						receivedFramesCnt += 1
-						// Accept in sequence frame.
 
+					// check for any reason to reject received frame
+
+					var reasonForReject []byte
+					if frame.nr-1 > vs {
+						// peer acknowledged sequence number which is ahead of our current sequnece number
+						// reject frame
+						reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
+					}
+					if frame.nr-1 < segmentsNoAck.Front().Value.(HdlcFrame).ns {
+						reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+					}
+					if nil != reasonForReject {
+						frame = new(HdlcFrame)
+						if client {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						} else {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						}
+						frame.control = HDLC_CONTROL_FRMR
+						frame.infoField = reasonForReject
+						framesToSend.PushBack(frame)
+						continue mainLoop
+					}
+
+					if frame.ns == vr {
+
+						// Accept in sequence frame.
+						receivedFramesCnt += 1
 						if htran.modulus-1 == vr {
 							vr = 0
 						} else {
@@ -2169,54 +2194,24 @@ mainLoop:
 							htran.writeAck <- map[string]interface{}{"err": nil}
 						}
 
-						if frame.nr-1 <= vs {
-							// acknowledge received frames
-							if segmentsNoAck.Len() > int(htran.modulus) {
-								panic("assertion failed")
+						// acknowledge received frames
+						for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
+							if e.Value.(HdlcFrame).ns <= frame.nr-1 {
+								segmentsNoAck.Remove(e)
 							}
-							n := segmentsNoAck.Len() - int(vs-frame.nr+1) // (vs - frame.nr + 1) is number of unacknowledged frames
-							if n < 0 {
-								panic("assertion failed")
-							}
-							for i := 0; i < n; i++ {
-								segmentsNoAck.Remove(segmentsNoAck.Front())
-							}
-							continue mainLoop
-						} else if 0 == frame.nr {
-							if segmentsNoAck.Len() > int(htran.modulus) {
-								panic("assertion failed")
-							}
-							// all window acknowledged
-							segmentsNoAck = list.New()
-						} else {
-							// peer acknowledged sequence number which is ahead of our current sequnece number
-							panic("assertion failed")
 						}
+
 					} else {
 						// see: ISO/IEC 13239 - 6.11.4.2.3 Reception of incorrect frames
 						// ignore segment but reuse the P/F, nr
-						if frame.nr-1 <= vs {
-							// acknowledge received frames
-							if segmentsNoAck.Len() > int(htran.modulus) {
-								panic("assertion failed")
+
+						// this frame with correct sequence number frame.nr, it may just arrive faster ahead in sequnce or arrive deleayed in sequnce
+
+						// acknowledge received frames
+						for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
+							if e.Value.(HdlcFrame).ns <= frame.nr-1 {
+								segmentsNoAck.Remove(e)
 							}
-							n := segmentsNoAck.Len() - int(vs-frame.nr+1) // (vs - frame.nr + 1) is number of unacknowledged frames
-							if n < 0 {
-								panic("assertion failed")
-							}
-							for i := 0; i < n; i++ {
-								segmentsNoAck.Remove(segmentsNoAck.Front())
-							}
-							continue mainLoop
-						} else if 0 == frame.nr {
-							if segmentsNoAck.Len() > int(htran.modulus) {
-								panic("assertion failed")
-							}
-							// all window acknowledged
-							segmentsNoAck = list.New()
-						} else {
-							// peer acknowledged sequence number which is ahead of our current sequnece number
-							panic("assertion failed")
 						}
 
 					}
@@ -2226,56 +2221,70 @@ mainLoop:
 
 			} else if HDLC_CONTROL_RR == frame.control {
 				if STATE_CONNECTED == state {
-					if frame.nr-1 <= vs {
-						// acknowledge received frames
-						if segmentsNoAck.Len() > int(htran.modulus) {
-							panic("assertion failed")
-						}
-						n := segmentsNoAck.Len() - int(vs-frame.nr+1) // (vs - frame.nr + 1) is number of unacknowledged frames
-						if n < 0 {
-							panic("assertion failed")
-						}
-						for i := 0; i < n; i++ {
-							segmentsNoAck.Remove(segmentsNoAck.Front())
-						}
-						continue mainLoop
-					} else if 0 == frame.nr {
-						if segmentsNoAck.Len() > int(htran.modulus) {
-							panic("assertion failed")
-						}
-						// all window acknowledged
-						segmentsNoAck = list.New()
-					} else {
+					// check for any reason to reject received frame
+
+					var reasonForReject []byte
+					if frame.nr-1 > vs {
 						// peer acknowledged sequence number which is ahead of our current sequnece number
-						panic("assertion failed")
+						// reject frame
+						reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
+					}
+					if frame.nr-1 < segmentsNoAck.Front().Value.(HdlcFrame).ns {
+						reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+					}
+					if nil != reasonForReject {
+						frame = new(HdlcFrame)
+						if client {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						} else {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						}
+						frame.control = HDLC_CONTROL_FRMR
+						frame.infoField = reasonForReject
+						framesToSend.PushBack(frame)
+						continue mainLoop
+					}
+
+					// acknowledge received frames
+					for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
+						if e.Value.(HdlcFrame).ns <= frame.nr-1 {
+							segmentsNoAck.Remove(e)
+						}
 					}
 				} else {
 					// ignore frame
 				}
 			} else if HDLC_CONTROL_RNR == frame.control {
 				if STATE_CONNECTED == state {
-					if frame.nr-1 <= vs {
-						// acknowledge received frames
-						if segmentsNoAck.Len() > int(htran.modulus) {
-							panic("assertion failed")
-						}
-						n := segmentsNoAck.Len() - int(vs-frame.nr+1) // (vs - frame.nr + 1) is number of unacknowledged frames
-						if n < 0 {
-							panic("assertion failed")
-						}
-						for i := 0; i < n; i++ {
-							segmentsNoAck.Remove(segmentsNoAck.Front())
-						}
-						continue mainLoop
-					} else if 0 == frame.nr {
-						if segmentsNoAck.Len() > int(htran.modulus) {
-							panic("assertion failed")
-						}
-						// all window acknowledged
-						segmentsNoAck = list.New()
-					} else {
+					// check for any reason to reject received frame
+
+					var reasonForReject []byte
+					if frame.nr-1 > vs {
 						// peer acknowledged sequence number which is ahead of our current sequnece number
-						panic("assertion failed")
+						// reject frame
+						reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
+					}
+					if frame.nr-1 < segmentsNoAck.Front().Value.(HdlcFrame).ns {
+						reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+					}
+					if nil != reasonForReject {
+						frame = new(HdlcFrame)
+						if client {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						} else {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						}
+						frame.control = HDLC_CONTROL_FRMR
+						frame.infoField = reasonForReject
+						framesToSend.PushBack(frame)
+						continue mainLoop
+					}
+
+					// acknowledge received frames
+					for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
+						if e.Value.(HdlcFrame).ns <= frame.nr-1 {
+							segmentsNoAck.Remove(e)
+						}
 					}
 				} else {
 					// ignore frame
