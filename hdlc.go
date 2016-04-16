@@ -42,7 +42,6 @@ type HdlcTransport struct {
 	maxInfoFieldLengthTransmit uint8
 	maxInfoFieldLengthReceive  uint8
 
-	//TODO: use these values
 	windowSizeTransmit uint32
 	windowSizeReceive  uint32
 
@@ -58,8 +57,6 @@ type HdlcTransport struct {
 	controlQueue    *list.List // list of *HdlcControlCommand
 	controlAck      chan map[string]interface{}
 	controlQueueMtx *sync.Mutex
-	closedAck       chan bool
-	errCh           chan error
 }
 
 type HdlcClientConnection struct {
@@ -202,6 +199,7 @@ var HdlcErrorInfoFieldFormat = errors.New("wrong info field format")
 var HdlcErrorParameterGroupId = errors.New("wrong parameter group id")
 var HdlcErrorParameterValue = errors.New("wrong parameter value")
 var HdlcErrorNoInfo = errors.New("frame contains no info field")
+var HdlcErrorFrameRejected = errors.New("frame rejected")
 
 func NewHdlcTransport(rw io.ReadWriter) *HdlcTransport {
 	htran := new(HdlcTransport)
@@ -2420,12 +2418,22 @@ mainLoop:
 				} else {
 					// ignore frame
 				}
+			} else if HDLC_CONTROL_UI == frame.control {
+				if STATE_CONNECTED == state {
+					panic("handling of UI frames is not implementd")
+				} else {
+					// ignore frame
+				}
+			} else if HDLC_CONTROL_FRMR == frame.control {
+				errorLog("frame rejected, reason: %s", string(frame.infoField))
+				err = HdlcErrorFrameRejected
+				break mainLoop
 			} else {
 				// ignore frame
 			}
 		}
 	}
 	if nil != err {
-		htran.errCh <- err
+		//TODO: notify
 	}
 }
