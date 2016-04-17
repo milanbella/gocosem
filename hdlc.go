@@ -337,6 +337,13 @@ func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
 	return n, nil
 }
 
+func (htran *HdlcTransport) Close() (err error) {
+	htran.controlQueueMtx.Lock()
+	htran.closed = true
+	htran.controlQueueMtx.Unlock()
+	return nil
+}
+
 func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n int) {
 	var r io.Reader = htran.rw
 	n = 0
