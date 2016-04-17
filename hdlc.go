@@ -57,6 +57,8 @@ type HdlcTransport struct {
 	controlQueue    *list.List // list of *HdlcControlCommand
 	controlAck      chan map[string]interface{}
 	controlQueueMtx *sync.Mutex
+	closed          bool
+	closedMtx       *sync.Mutex
 }
 
 type HdlcClientConnection struct {
@@ -209,6 +211,10 @@ func NewHdlcTransport(rw io.ReadWriter) *HdlcTransport {
 	htran.maxInfoFieldLengthReceive = 128
 	htran.windowSizeTransmit = 7
 	htran.windowSizeReceive = 7
+	htran.writeQueueMtx = new(sync.Mutex)
+	htran.readQueueMtx = new(sync.Mutex)
+	htran.controlQueueMtx = new(sync.Mutex)
+	htran.closedMtx = new(sync.Mutex)
 	return htran
 }
 
@@ -1920,6 +1926,12 @@ func (htran *HdlcTransport) handleHdlc(listen bool) {
 
 mainLoop:
 	for {
+		htran.controlQueueMtx.Lock()
+		if htran.closed {
+			break mainLoop
+		}
+		htran.controlQueueMtx.Unlock()
+
 		if sending {
 
 			// flush any frames waiting for next poll
@@ -2434,6 +2446,17 @@ mainLoop:
 		}
 	}
 	if nil != err {
-		//TODO: notify
+		go func() {
+			htran.writeAck <- map[string]interface{}{"err": err}
+			close(htran.writeAck)
+		}()
+		go func() {
+			htran.readAck <- map[string]interface{}{"err": err}
+			close(htran.readAck)
+		}()
+		go func() {
+			htran.controlAck <- map[string]interface{}{"err": err}
+			close(htran.controlAck)
+		}()
 	}
 }
