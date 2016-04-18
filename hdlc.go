@@ -94,6 +94,7 @@ type HdlcFrame struct {
 	infoField             []byte // information
 	infoFieldFormat       uint8
 	callingPhysicalDevice bool
+	content               *bytes.Buffer
 }
 
 type HdlcSegment struct {
@@ -374,6 +375,9 @@ func (htran *HdlcTransport) Close() (err error) {
 
 func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n int) {
 	var r io.Reader = htran.rw
+	if hdlcDebug {
+		r = frame.content
+	}
 	n = 0
 
 	var b0, b1, b2, b3 byte
@@ -679,6 +683,9 @@ func (htran *HdlcTransport) lengthServerAddress(frame *HdlcFrame) (n int) {
 
 func (htran *HdlcTransport) decodeClientAddress(frame *HdlcFrame) (err error, n int) {
 	var r io.Reader = htran.rw
+	if hdlcDebug {
+		r = frame.content
+	}
 	n = 0
 	var b0 byte
 	p := make([]byte, 1)
@@ -694,9 +701,11 @@ func (htran *HdlcTransport) decodeClientAddress(frame *HdlcFrame) (err error, n 
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
 	b0 = p[0]
 
+	fmt.Printf("@@@@@@@@@@@@@@@@@@ cp 100: %02X\n", b0)
 	if b0&0x01 > 0 {
 		frame.clientId = (uint8(b0) & 0xFE) >> 1
 	} else {
+		fmt.Printf("@@@@@@@@@@@@@@@@@@ cp 110: %02X\n", frame.content.Bytes())
 		errorLog("long client address")
 		return HdlcErrorMalformedSegment, n
 	}
@@ -734,6 +743,9 @@ func (htran *HdlcTransport) lengthClientAddress(frame *HdlcFrame) int {
 
 func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error, n int) {
 	var r io.Reader = htran.rw
+	if hdlcDebug {
+		r = frame.content
+	}
 	p := make([]byte, 1)
 
 	// HCS - header control sum
@@ -1157,6 +1169,9 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 
 func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, n int) {
 	var r io.Reader = htran.rw
+	if hdlcDebug {
+		r = frame.content
+	}
 	n = 0
 	var b0 byte
 	var nn int
@@ -1521,20 +1536,20 @@ func (htran *HdlcTransport) encodeFrameACI(frame *HdlcFrame) (err error) {
 	// dst and src address
 
 	if (HDLC_FRAME_DIRECTION_SERVER_OUTBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_CLIENT_INBOUND == frame.direction) {
-		err = htran.encodeServerAddress(frame)
+		err = htran.encodeClientAddress(frame)
 		if nil != err {
 			return err
 		}
-		err = htran.encodeClientAddress(frame)
+		err = htran.encodeServerAddress(frame)
 		if nil != err {
 			return err
 		}
 	} else if (HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND == frame.direction) || (HDLC_FRAME_DIRECTION_SERVER_INBOUND == frame.direction) {
-		err = htran.encodeClientAddress(frame)
+		err = htran.encodeServerAddress(frame)
 		if nil != err {
 			return err
 		}
-		err = htran.encodeServerAddress(frame)
+		err = htran.encodeClientAddress(frame)
 		if nil != err {
 			return err
 		}
@@ -1858,6 +1873,18 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		}
 
 		frame.length = int((uint16(b0&0x07) << 8) + uint16(b1))
+		if hdlcDebug {
+			p := make([]byte, frame.length)
+			_, err = io.ReadFull(htran.rw, p)
+			if nil != err {
+				if !isTimeOutErr(err) {
+					errorLog("io.ReadFull() failed: %v", err)
+				}
+				return err, n
+			}
+			fmt.Printf("frame content: %0X\n", p)
+			frame.content = bytes.NewBuffer(p)
+		}
 
 		err, nn := htran.decodeFrameACI(frame, l+n)
 		n += nn
@@ -2029,7 +2056,7 @@ func (htran *HdlcTransport) printFrame(frame *HdlcFrame, heading string) {
 
 	if frame.poll {
 		if nil != frame.infoField {
-			fmt.Printf("%s: frame(%s, %s, P, info(%d))\n", heading, direction, control, len(frame.infoField))
+			fmt.Printf("%s: frame(%s, %s, P, info(%d)) %02X\n", heading, direction, control, len(frame.infoField))
 		} else {
 			fmt.Printf("%s: frame(%s, %s, P)\n", heading, direction, control)
 		}
