@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"sync"
 	"time"
 )
@@ -39,7 +40,7 @@ const (
 )
 
 type HdlcTransport struct {
-	rw                         io.ReadWriter
+	rw                         net.Conn
 	responseTimeout            time.Duration
 	modulus                    uint8
 	maxInfoFieldLengthTransmit uint8
@@ -164,6 +165,14 @@ func pppfcs16(fcs16 uint16, p []byte) uint16 {
 	return fcs16
 }
 
+func isTimeOutErr(err error) bool {
+	if nerr, ok := err.(net.Error); ok && nerr.Timeout() {
+		return true
+	} else {
+		return false
+	}
+}
+
 /*
     // How to use the fcs
 
@@ -208,25 +217,29 @@ var HdlcErrorParameterGroupId = errors.New("wrong parameter group id")
 var HdlcErrorParameterValue = errors.New("wrong parameter value")
 var HdlcErrorNoInfo = errors.New("frame contains no info field")
 var HdlcErrorFrameRejected = errors.New("frame rejected")
+var HdlcErrorNotClient = errors.New("not a client")
 
-func NewHdlcTransport(rw io.ReadWriter, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
+func NewHdlcTransport(conn net.Conn, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
 	htran := new(HdlcTransport)
-	htran.rw = rw
+	htran.rw = conn
 	htran.modulus = 8
 	htran.maxInfoFieldLengthTransmit = 128
 	htran.maxInfoFieldLengthReceive = 128
 	htran.windowSizeTransmit = 7
 	htran.windowSizeReceive = 7
+	htran.writeQueue = list.New()
 	htran.writeQueueMtx = new(sync.Mutex)
+	htran.readQueue = list.New()
 	htran.readQueueMtx = new(sync.Mutex)
+	htran.controlQueue = list.New()
 	htran.controlQueueMtx = new(sync.Mutex)
 	htran.closedMtx = new(sync.Mutex)
-	htran.responseTimeout = time.Duration(1) * time.Microsecond //TODO: set it to network rount trip time
+	htran.responseTimeout = time.Duration(1) * time.Second //TODO: set it to network round trip time
 	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_4
 	htran.clientId = clientId
 	htran.logicalDeviceId = logicalDeviceId
 	htran.physicalDeviceId = physicalDeviceId
-	go htran.handleHdlc()
+	go htran.handleHdlc(client)
 	return htran
 }
 
@@ -262,6 +275,9 @@ func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoF
 	}
 
 	htran.controlQueueMtx.Lock()
+	if hdlcDebug {
+		fmt.Printf("htran.SendSNRM(): sending command: %d\n", command.control)
+	}
 	htran.controlQueue.PushBack(command)
 	htran.controlQueueMtx.Unlock()
 
@@ -369,7 +385,9 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 
 	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("io.ReadFull() failed: %v", err)
+		if !isTimeOutErr(err) {
+			errorLog("io.ReadFull() failed: %v", err)
+		}
 		return err, n
 	}
 	n += 1
@@ -387,7 +405,9 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 	} else {
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
@@ -434,7 +454,9 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 
 			_, err = io.ReadFull(r, p)
 			if nil != err {
-				errorLog("io.ReadFull() failed: %v", err)
+				if !isTimeOutErr(err) {
+					errorLog("io.ReadFull() failed: %v", err)
+				}
 				return err, n
 			}
 			n += 1
@@ -663,7 +685,9 @@ func (htran *HdlcTransport) decodeClientAddress(frame *HdlcFrame) (err error, n 
 
 	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("io.ReadFull() failed: %v", err)
+		if !isTimeOutErr(err) {
+			errorLog("io.ReadFull() failed: %v", err)
+		}
 		return err, n
 	}
 	n += 1
@@ -716,7 +740,9 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 
 	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("io.ReadFull() failed: %v", err)
+		if !isTimeOutErr(err) {
+			errorLog("io.ReadFull() failed: %v", err)
+		}
 		return err, n
 	}
 	n += 1
@@ -724,7 +750,9 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
 	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("io.ReadFull() failed: %v", err)
+		if !isTimeOutErr(err) {
+			errorLog("io.ReadFull() failed: %v", err)
+		}
 		return err, n
 	}
 	n += 1
@@ -750,7 +778,9 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 		p = make([]byte, infoFieldLength)
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += len(p)
@@ -845,7 +875,9 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 
 	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("io.ReadFull() failed: %v", err)
+		if !isTimeOutErr(err) {
+			errorLog("io.ReadFull() failed: %v", err)
+		}
 		return err, nil, nil, nil, nil
 	}
 	infoFieldFormat := uint8(p[0])
@@ -858,7 +890,9 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 
 	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("io.ReadFull() failed: %v", err)
+		if !isTimeOutErr(err) {
+			errorLog("io.ReadFull() failed: %v", err)
+		}
 		return err, nil, nil, nil, nil
 	}
 	groupId := uint8(p[0])
@@ -874,7 +908,9 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 		if io.EOF == err {
 			return nil, nil, nil, nil, nil
 		} else {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, nil, nil, nil, nil
 		}
 	}
@@ -886,7 +922,9 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 	pp := make([]byte, length)
 	_, err = io.ReadFull(r, pp)
 	if nil != err {
-		errorLog("io.ReadFull() failed: %v", err)
+		if !isTimeOutErr(err) {
+			errorLog("io.ReadFull() failed: %v", err)
+		}
 		return err, nil, nil, nil, nil
 	}
 	rr := bytes.NewBuffer(pp)
@@ -900,14 +938,18 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 			if io.EOF == err {
 				break
 			}
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, nil, nil, nil, nil
 		}
 		parameterId := uint8(p[0])
 
 		_, err = io.ReadFull(rr, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, nil, nil, nil, nil
 		}
 		length = uint8(p[0])
@@ -915,7 +957,9 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 		pp = make([]byte, length)
 		_, err = io.ReadFull(rr, pp)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, nil, nil, nil, nil
 		}
 		parameterValue := pp
@@ -943,7 +987,9 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 			buf = new(bytes.Buffer)
 			err = binary.Read(buf, binary.BigEndian, windowSizeTransmit)
 			if nil != err {
-				errorLog("binary.Read() failed: %v", err)
+				if !isTimeOutErr(err) {
+					errorLog("binary.Read() failed: %v", err)
+				}
 				return err, nil, nil, nil, nil
 			}
 		} else if 0x08 == parameterId {
@@ -955,7 +1001,9 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 			buf = new(bytes.Buffer)
 			err = binary.Read(buf, binary.BigEndian, windowSizeReceive)
 			if nil != err {
-				errorLog("binary.Read() failed: %v", err)
+				if !isTimeOutErr(err) {
+					errorLog("binary.Read() failed: %v", err)
+				}
 				return err, nil, nil, nil, nil
 			}
 		} else {
@@ -1147,7 +1195,9 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("io.ReadFull() failed: %v", err)
+		if !isTimeOutErr(err) {
+			errorLog("io.ReadFull() failed: %v", err)
+		}
 		return err, n
 	}
 	n += 1
@@ -1176,14 +1226,18 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
@@ -1201,14 +1255,18 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
@@ -1225,14 +1283,18 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
@@ -1257,14 +1319,18 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 			_, err = io.ReadFull(r, p)
 			if nil != err {
-				errorLog("io.ReadFull() failed: %v", err)
+				if !isTimeOutErr(err) {
+					errorLog("io.ReadFull() failed: %v", err)
+				}
 				return err, n
 			}
 			n += 1
 			frame.fcs16 = pppfcs16(frame.fcs16, p)
 			_, err = io.ReadFull(r, p)
 			if nil != err {
-				errorLog("io.ReadFull() failed: %v", err)
+				if !isTimeOutErr(err) {
+					errorLog("io.ReadFull() failed: %v", err)
+				}
 				return err, n
 			}
 			n += 1
@@ -1283,14 +1349,18 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
@@ -1314,14 +1384,18 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 			_, err = io.ReadFull(r, p)
 			if nil != err {
-				errorLog("io.ReadFull() failed: %v", err)
+				if !isTimeOutErr(err) {
+					errorLog("io.ReadFull() failed: %v", err)
+				}
 				return err, n
 			}
 			n += 1
 			frame.fcs16 = pppfcs16(frame.fcs16, p)
 			_, err = io.ReadFull(r, p)
 			if nil != err {
-				errorLog("io.ReadFull() failed: %v", err)
+				if !isTimeOutErr(err) {
+					errorLog("io.ReadFull() failed: %v", err)
+				}
 				return err, n
 			}
 			n += 1
@@ -1339,14 +1413,18 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
@@ -1369,14 +1447,18 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
@@ -1399,14 +1481,18 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n += 1
@@ -1738,7 +1824,9 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 	// expect first byte of format field
 	_, err = io.ReadFull(r, p)
 	if nil != err {
-		errorLog("io.ReadFull() failed: %v", err)
+		if !isTimeOutErr(err) {
+			errorLog("io.ReadFull() failed: %v", err)
+		}
 		return err, n
 	}
 	n++
@@ -1751,7 +1839,9 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		// expect last second byte of format field
 		_, err = io.ReadFull(r, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, n
 		}
 		n++
@@ -1822,13 +1912,14 @@ func (htran *HdlcTransport) encodeFrameFACI(frame *HdlcFrame) (err error) {
 }
 
 func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFrame) {
-	var r io.Reader = htran.rw
 	p := make([]byte, 1)
 	for {
 		// expect opening flag
-		_, err = io.ReadFull(r, p)
+		_, err = io.ReadFull(htran.rw, p)
 		if nil != err {
-			errorLog("io.ReadFull() failed: %v", err)
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
 			return err, nil
 		}
 		if 0x7E == p[0] { // flag
@@ -1842,11 +1933,13 @@ func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFram
 					// ignore malformed segment and try read next segment
 					continue
 				} else {
-					if hdlcDebug {
-						htran.printFrame(frame)
-					}
-					return nil, frame
+					return err, nil
 				}
+			} else {
+				if hdlcDebug {
+					htran.printFrame(frame, "read")
+				}
+				return nil, frame
 			}
 
 		} else {
@@ -1856,31 +1949,11 @@ func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFram
 	}
 }
 
-func (htran *HdlcTransport) readFrameAsync(direction int) <-chan map[string]interface{} {
-	ch := make(chan map[string]interface{})
-	func() {
-		err, frame := htran.readFrame(direction)
-		ch <- map[string]interface{}{"err": err, "frame": frame}
-	}()
-	return ch
-}
-
-func (htran *HdlcTransport) readFrameAsyncWithTimeout(direction int, timeout time.Duration) <-chan map[string]interface{} {
-	ch := make(chan map[string]interface{})
-	go func(ch chan map[string]interface{}) {
-		select {
-		case _ = <-time.After(time.Duration(htran.responseTimeout) * time.Millisecond):
-			errorLog("SNRM response timeout")
-			ch <- map[string]interface{}{"err": HdlcErrorTimeout}
-		case msg := <-htran.readFrameAsync(direction):
-			ch <- msg
-		}
-	}(ch)
-	return ch
-}
-
 func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 	var w io.Writer = htran.rw
+	if hdlcDebug {
+		htran.printFrame(frame, "write...")
+	}
 
 	if 0 == frame.direction {
 		errorLog("frame direction not specified")
@@ -1907,14 +1980,14 @@ func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 		return err
 	}
 	if hdlcDebug {
-		htran.printFrame(frame)
+		htran.printFrame(frame, "write ok")
 	}
 
 	return nil
 
 }
 
-func (htran *HdlcTransport) printFrame(frame *HdlcFrame) {
+func (htran *HdlcTransport) printFrame(frame *HdlcFrame, heading string) {
 
 	var direction string
 	switch frame.direction {
@@ -1925,7 +1998,7 @@ func (htran *HdlcTransport) printFrame(frame *HdlcFrame) {
 	case HDLC_FRAME_DIRECTION_SERVER_INBOUND:
 		direction = "server_inbound"
 	case HDLC_FRAME_DIRECTION_SERVER_OUTBOUND:
-		direction = "server_outbounD"
+		direction = "server_outboun"
 	default:
 		panic("unknown value")
 	}
@@ -1956,15 +2029,15 @@ func (htran *HdlcTransport) printFrame(frame *HdlcFrame) {
 
 	if frame.poll {
 		if nil != frame.infoField {
-			fmt.Printf("frame(%s, %s, P, info(%d))\n", direction, control, len(frame.infoField))
+			fmt.Printf("%s: frame(%s, %s, P, info(%d))\n", heading, direction, control, len(frame.infoField))
 		} else {
-			fmt.Printf("frame(%s, %s, P)\n", direction, control)
+			fmt.Printf("%s: frame(%s, %s, P)\n", heading, direction, control)
 		}
 	} else {
 		if nil != frame.infoField {
-			fmt.Printf("frame(%s, %s, info(%d))\n", direction, control, len(frame.infoField))
+			fmt.Printf("%s: frame(%s, %s, info(%d))\n", heading, direction, control, len(frame.infoField))
 		} else {
-			fmt.Printf("frame(%s, %s)\n", direction, control)
+			fmt.Printf("%s: frame(%s, %s)\n", heading, direction, control)
 		}
 	}
 }
@@ -1978,18 +2051,17 @@ func (htran *HdlcTransport) writeFrameAsync(frame *HdlcFrame) <-chan map[string]
 	return ch
 }
 
-func (htran *HdlcTransport) handleHdlc() {
+func (htran *HdlcTransport) handleHdlc(client bool) {
 	var frame *HdlcFrame
 	var segment *HdlcSegment
 	var command *HdlcControlCommand
-	var client bool
 	var sending bool
-	var msg map[string]interface{}
 	var err error
 	var vs uint8
 	var vr uint8
 	var transmittedFramesCnt uint32
 	var receivedFramesCnt uint32
+	var snrmCommand *HdlcControlCommand
 
 	const (
 		STATE_CONNECTING = iota
@@ -1997,7 +2069,7 @@ func (htran *HdlcTransport) handleHdlc() {
 		STATE_DISCONNECTING
 		STATE_DISCONNECTED
 	)
-	var state int
+	var state int = STATE_DISCONNECTED
 
 	segmentsNoAck := list.New() // unacknowledged segments
 	framesToSend := list.New()  // frames scheduled to send in next poll
@@ -2028,6 +2100,10 @@ mainLoop:
 			htran.controlQueueMtx.Lock()
 			if htran.controlQueue.Len() > 0 {
 				command = htran.controlQueue.Front().Value.(*HdlcControlCommand)
+				if hdlcDebug {
+					fmt.Printf("htran.handleHdlc(): command: %d\n", command.control)
+				}
+				htran.controlQueue.Remove(htran.controlQueue.Front())
 			} else {
 				command = nil
 			}
@@ -2059,10 +2135,17 @@ mainLoop:
 
 			if (nil != command) && (HDLC_CONTROL_SNRM == command.control) {
 				if STATE_DISCONNECTED == state {
+					if hdlcDebug {
+						fmt.Printf("hdlc.handleHdlc(): connecting\n")
+					}
+					snrmCommand = command
+					if !client {
+						htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotDisconnected}
+						continue mainLoop
+					}
 					frame = new(HdlcFrame)
 					frame.poll = true
 					receivedFramesCnt = 0
-					client = true // Only client may connect the line therefore if line is disconnected line side initiating connection  becomes client.
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					frame.control = HDLC_CONTROL_SNRM
 
@@ -2152,7 +2235,7 @@ mainLoop:
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					frame.control = HDLC_CONTROL_SNRM
 
-					snrm := command.snrm
+					snrm := snrmCommand.snrm
 					err = htran.encodeLinkParameters(frame, &snrm.maxInfoFieldLengthTransmit, &snrm.maxInfoFieldLengthReceive, &snrm.windowSizeTransmit, &snrm.windowSizeTransmit)
 					if nil != err {
 						break mainLoop
@@ -2202,30 +2285,25 @@ mainLoop:
 		} else {
 			// receiving
 
-			if STATE_DISCONNECTED == state {
-				time.Sleep(time.Duration(1) * time.Microsecond)
-				sending = true
+			htran.rw.SetReadDeadline(time.Now().Add(htran.responseTimeout))
+			if client {
+				err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_CLIENT_INBOUND)
 			} else {
+				err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_SERVER_INBOUND)
+			}
+			if isTimeOutErr(err) { // timeout occured
 				if client {
-					msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_CLIENT_INBOUND, htran.responseTimeout)
+					// According ISO 13239 standard it is responsibility of client to do time-out no-reply recovery.
+					// Per standard it is responsibility of client to do time-out no-reply recovery and
+					// in case of timeout client may transmit  even if it did not receive the poll.
+					sending = true
+					continue mainLoop
 				} else {
-					msg = <-htran.readFrameAsyncWithTimeout(HDLC_FRAME_DIRECTION_SERVER_INBOUND, htran.responseTimeout)
+					// If server try to receive frame again (if frame does not arrive client is going to time out and must send us frame)
+					continue mainLoop
 				}
-				err = msg["err"].(error)
-				if nil != err {
-					if HdlcErrorTimeout == err {
-						if client {
-							// Per standard it is responsibility of client to do time-out no-reply recovery and
-							// in case of timeout client may transmit  even if it did not receive the poll.
-							sending = true
-						} else {
-							// Try to receive frame again (if frame does not arrive client is going to time out and must send us frame)
-							continue mainLoop
-						}
-					} else {
-						break mainLoop
-					}
-				}
+			} else {
+				break mainLoop
 			}
 
 			// Proccess received frame.
