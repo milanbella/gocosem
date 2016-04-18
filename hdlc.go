@@ -48,8 +48,11 @@ type HdlcTransport struct {
 	windowSizeTransmit uint32
 	windowSizeReceive  uint32
 
-	//TODO: init this value
 	serverAddrLength int // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
+
+	logicalDeviceId  uint16
+	physicalDeviceId *uint16 // may not be present
+	clientId         uint8
 
 	writeQueue      *list.List // list of *HdlcSegment
 	writeQueueMtx   *sync.Mutex
@@ -206,7 +209,7 @@ var HdlcErrorParameterValue = errors.New("wrong parameter value")
 var HdlcErrorNoInfo = errors.New("frame contains no info field")
 var HdlcErrorFrameRejected = errors.New("frame rejected")
 
-func NewHdlcTransport(rw io.ReadWriter) *HdlcTransport {
+func NewHdlcTransport(rw io.ReadWriter, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
 	htran := new(HdlcTransport)
 	htran.rw = rw
 	htran.modulus = 8
@@ -220,6 +223,9 @@ func NewHdlcTransport(rw io.ReadWriter) *HdlcTransport {
 	htran.closedMtx = new(sync.Mutex)
 	htran.responseTimeout = time.Duration(1) * time.Microsecond //TODO: set it to network rount trip time
 	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_4
+	htran.clientId = clientId
+	htran.logicalDeviceId = logicalDeviceId
+	htran.physicalDeviceId = physicalDeviceId
 	go htran.handleHdlc()
 	return htran
 }
@@ -497,7 +503,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 
 		// logicalDeviceId
 
-		logicalDeviceId := frame.logicalDeviceId
+		logicalDeviceId := htran.logicalDeviceId
 		if logicalDeviceId&0xFF80 > 0 {
 			errorLog("logicalDeviceId exceeds limit")
 			return HdlcErrorInvalidValue
@@ -515,7 +521,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 
 		// physicalDeviceId
 
-		if nil != frame.physicalDeviceId {
+		if nil != htran.physicalDeviceId {
 			errorLog("physicalDeviceId specified (expected to be nil)")
 			return HdlcErrorInvalidValue
 		}
@@ -524,7 +530,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 
 		// logicalDeviceId
 
-		logicalDeviceId := frame.logicalDeviceId
+		logicalDeviceId := htran.logicalDeviceId
 		if logicalDeviceId&0xFF80 > 0 {
 			errorLog("logicalDeviceId exceeds limit")
 			return HdlcErrorInvalidValue
@@ -547,7 +553,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 			return HdlcErrorInvalidValue
 		}
 
-		physicalDeviceId := *frame.physicalDeviceId
+		physicalDeviceId := *htran.physicalDeviceId
 		if physicalDeviceId&0xFF80 > 0 {
 			errorLog("physicalDeviceId exceeds limit")
 			return HdlcErrorInvalidValue
@@ -567,7 +573,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 
 		// logicalDeviceId
 
-		logicalDeviceId := frame.logicalDeviceId
+		logicalDeviceId := htran.logicalDeviceId
 		if logicalDeviceId&0x1000 > 0 {
 			errorLog("logicalDeviceId exceeds limit")
 			return HdlcErrorInvalidValue
@@ -593,12 +599,12 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 
 		// physicalDeviceId
 
-		if nil == frame.physicalDeviceId {
+		if nil == htran.physicalDeviceId {
 			errorLog("physicalDeviceId not specified")
 			return HdlcErrorInvalidValue
 		}
 
-		physicalDeviceId := *frame.physicalDeviceId
+		physicalDeviceId := *htran.physicalDeviceId
 		if physicalDeviceId&0x1000 > 0 {
 			errorLog("physicalDeviceId exceeds limit")
 			return HdlcErrorInvalidValue
@@ -679,7 +685,7 @@ func (htran *HdlcTransport) encodeClientAddress(frame *HdlcFrame) (err error) {
 	var b0 byte
 	p := make([]byte, 1)
 
-	clientId := frame.clientId
+	clientId := htran.clientId
 	if clientId&0x80 > 0 {
 		errorLog("clientId exceeds limit")
 		return HdlcErrorInvalidValue
