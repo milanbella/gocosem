@@ -1,6 +1,7 @@
 package gocosem
 
 import (
+	"bytes"
 	"io"
 	"net"
 	"strings"
@@ -56,6 +57,45 @@ func TestX__hdlcPipe(t *testing.T) {
 		t.Fatalf("no match")
 	}
 
+}
+
+func TestX__pppfcs16(t *testing.T) {
+	var buf bytes.Buffer
+	var b []byte = []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}
+	var fcs16 uint16
+
+	_, err := buf.Write(b)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	fcs16 = pppfcs16(PPPINITFCS16, b)
+	t.Logf("fcs16: %02X", fcs16)
+
+	_, err = buf.Write(b)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	fcs16 = pppfcs16(fcs16, b)
+
+	p := make([]byte, 1)
+
+	fcs16 ^= 0xFFFF
+	p[0] = byte(fcs16 & 0x00FF)
+	_, err = buf.Write(p)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+
+	p[0] = byte(fcs16 & 0xFF00 >> 8)
+	_, err = buf.Write(p)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+
+	fcs16 = pppfcs16(PPPINITFCS16, buf.Bytes())
+	if PPPGOODFCS16 != fcs16 {
+		t.Fatalf("wrong checksum")
+	}
 }
 
 func TestX__SendSNRM(t *testing.T) {

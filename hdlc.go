@@ -562,7 +562,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 			return HdlcErrorInvalidValue
 		}
 
-		v16 = (logicalDeviceId << 1) | 0x0001
+		v16 = logicalDeviceId
 
 		p[0] = byte(v16 & 0x00FF)
 		_, err = w.Write(p)
@@ -605,7 +605,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 			return HdlcErrorInvalidValue
 		}
 
-		v16 = (logicalDeviceId << 1) | 0x0001
+		v16 = logicalDeviceId
 
 		p[0] = byte((v16 & 0xFF00) >> 8)
 		_, err = w.Write(p)
@@ -701,11 +701,9 @@ func (htran *HdlcTransport) decodeClientAddress(frame *HdlcFrame) (err error, n 
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
 	b0 = p[0]
 
-	fmt.Printf("@@@@@@@@@@@@@@@@@@ cp 100: %02X\n", b0)
 	if b0&0x01 > 0 {
 		frame.clientId = (uint8(b0) & 0xFE) >> 1
 	} else {
-		fmt.Printf("@@@@@@@@@@@@@@@@@@ cp 110: %02X\n", frame.content.Bytes())
 		errorLog("long client address")
 		return HdlcErrorMalformedSegment, n
 	}
@@ -1882,7 +1880,7 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 				}
 				return err, n
 			}
-			fmt.Printf("frame content: %0X\n", p)
+			fmt.Printf("received frame: %0X\n", p)
 			frame.content = bytes.NewBuffer(p)
 		}
 
@@ -2056,7 +2054,7 @@ func (htran *HdlcTransport) printFrame(frame *HdlcFrame, heading string) {
 
 	if frame.poll {
 		if nil != frame.infoField {
-			fmt.Printf("%s: frame(%s, %s, P, info(%d)) %02X\n", heading, direction, control, len(frame.infoField))
+			fmt.Printf("%s: frame(%s, %s, P, info(%d))\n", heading, direction, control, len(frame.infoField))
 		} else {
 			fmt.Printf("%s: frame(%s, %s, P)\n", heading, direction, control)
 		}
@@ -2067,15 +2065,6 @@ func (htran *HdlcTransport) printFrame(frame *HdlcFrame, heading string) {
 			fmt.Printf("%s: frame(%s, %s)\n", heading, direction, control)
 		}
 	}
-}
-
-func (htran *HdlcTransport) writeFrameAsync(frame *HdlcFrame) <-chan map[string]interface{} {
-	ch := make(chan map[string]interface{})
-	go func() {
-		err := htran.writeFrame(frame)
-		ch <- map[string]interface{}{"err": err}
-	}()
-	return ch
 }
 
 func (htran *HdlcTransport) handleHdlc(client bool) {
@@ -2171,6 +2160,7 @@ mainLoop:
 						continue mainLoop
 					}
 					frame = new(HdlcFrame)
+					frame.fcs16 = PPPINITFCS16
 					frame.poll = true
 					receivedFramesCnt = 0
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2195,6 +2185,7 @@ mainLoop:
 				if client { // only client may disconnect the line.
 					if STATE_CONNECTED == state {
 						frame = new(HdlcFrame)
+						frame.fcs16 = PPPINITFCS16
 						frame.poll = true
 						receivedFramesCnt = 0
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2213,6 +2204,7 @@ mainLoop:
 				}
 			} else if nil != segment {
 				frame = new(HdlcFrame)
+				frame.fcs16 = PPPINITFCS16
 				if client {
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 				} else {
@@ -2257,6 +2249,7 @@ mainLoop:
 				// received whole response from peer
 				if STATE_CONNECTING == state {
 					frame = new(HdlcFrame)
+					frame.fcs16 = PPPINITFCS16
 					frame.poll = true
 					receivedFramesCnt = 0
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2275,6 +2268,7 @@ mainLoop:
 					sending = false
 				} else if STATE_CONNECTED == state {
 					frame = new(HdlcFrame)
+					frame.fcs16 = PPPINITFCS16
 					if client {
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					} else {
@@ -2292,6 +2286,7 @@ mainLoop:
 					sending = false
 				} else if STATE_DISCONNECTING == state {
 					frame = new(HdlcFrame)
+					frame.fcs16 = PPPINITFCS16
 					frame.poll = true
 					receivedFramesCnt = 0
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2357,6 +2352,7 @@ mainLoop:
 					}
 					if nil != reasonForReject {
 						frame = new(HdlcFrame)
+						frame.fcs16 = PPPINITFCS16
 						if client {
 							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 						} else {
@@ -2428,6 +2424,7 @@ mainLoop:
 					}
 					if nil != reasonForReject {
 						frame = new(HdlcFrame)
+						frame.fcs16 = PPPINITFCS16
 						if client {
 							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 						} else {
@@ -2463,6 +2460,7 @@ mainLoop:
 					}
 					if nil != reasonForReject {
 						frame = new(HdlcFrame)
+						frame.fcs16 = PPPINITFCS16
 						if client {
 							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 						} else {
@@ -2492,6 +2490,7 @@ mainLoop:
 					}
 
 					frame = new(HdlcFrame)
+					frame.fcs16 = PPPINITFCS16
 					frame.poll = true
 					frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND // only client may send SNRM
 					frame.control = HDLC_CONTROL_UA
@@ -2552,6 +2551,7 @@ mainLoop:
 
 				if STATE_CONNECTED == state {
 					frame = new(HdlcFrame)
+					frame.fcs16 = PPPINITFCS16
 					frame.poll = true
 					frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND // only client may send DISC
 					frame.control = HDLC_CONTROL_UA
@@ -2559,6 +2559,7 @@ mainLoop:
 					framesToSend.PushBack(frame)
 				} else if STATE_DISCONNECTED == state {
 					frame = new(HdlcFrame)
+					frame.fcs16 = PPPINITFCS16
 					frame.poll = true
 					frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND // only client may send DISC
 					frame.control = HDLC_CONTROL_DM
