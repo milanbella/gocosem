@@ -798,6 +798,8 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 
 		frame.infoField = p
 
+		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@ decode infoField: %02X\n", frame.infoField)
+
 	} else {
 		frame.infoField = nil
 	}
@@ -845,6 +847,8 @@ func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
 		} else {
 			panic("assertion failed")
 		}
+
+		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@ encode infoField: %02X\n", frame.infoField)
 
 		p = frame.infoField
 		err = binary.Write(w, binary.BigEndian, p)
@@ -1818,6 +1822,7 @@ func (htran *HdlcTransport) lengthOfFrame(frame *HdlcFrame) (n int) {
 	n += 2
 
 	if (nil != frame.infoField) && len(frame.infoField) > 0 {
+		n += len(frame.infoField)
 		// FCS - frame control sum
 		n += 2
 	}
@@ -1880,7 +1885,7 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 				}
 				return err, n
 			}
-			fmt.Printf("received frame: %0X\n", p)
+			fmt.Printf("received frame: %0X%0X %0X\n", b0, b1, p)
 			frame.content = bytes.NewBuffer(p)
 		}
 
@@ -2313,19 +2318,21 @@ mainLoop:
 			} else {
 				err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_SERVER_INBOUND)
 			}
-			if isTimeOutErr(err) { // timeout occured
-				if client {
-					// According ISO 13239 standard it is responsibility of client to do time-out no-reply recovery.
-					// Per standard it is responsibility of client to do time-out no-reply recovery and
-					// in case of timeout client may transmit  even if it did not receive the poll.
-					sending = true
-					continue mainLoop
+			if nil != err {
+				if isTimeOutErr(err) { // timeout occured
+					if client {
+						// According ISO 13239 standard it is responsibility of client to do time-out no-reply recovery.
+						// Per standard it is responsibility of client to do time-out no-reply recovery and
+						// in case of timeout client may transmit  even if it did not receive the poll.
+						sending = true
+						continue mainLoop
+					} else {
+						// If server try to receive frame again (if frame does not arrive client is going to time out and must send us frame)
+						continue mainLoop
+					}
 				} else {
-					// If server try to receive frame again (if frame does not arrive client is going to time out and must send us frame)
-					continue mainLoop
+					break mainLoop
 				}
-			} else {
-				break mainLoop
 			}
 
 			// Proccess received frame.
@@ -2545,6 +2552,7 @@ mainLoop:
 					vs = 0
 					vr = 0
 					client = false
+					fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@ cp 200\n")
 					framesToSend.PushBack(frame)
 				}
 			} else if HDLC_CONTROL_DISC == frame.control {
