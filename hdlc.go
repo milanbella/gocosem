@@ -228,10 +228,13 @@ func NewHdlcTransport(conn net.Conn, client bool, clientId uint8, logicalDeviceI
 	htran.maxInfoFieldLengthReceive = 128
 	htran.windowSizeTransmit = 7
 	htran.windowSizeReceive = 7
+
 	htran.writeQueue = list.New()
 	htran.writeQueueMtx = new(sync.Mutex)
+
 	htran.readQueue = list.New()
 	htran.readQueueMtx = new(sync.Mutex)
+
 	htran.controlQueue = list.New()
 	htran.controlQueueMtx = new(sync.Mutex)
 	htran.closedMtx = new(sync.Mutex)
@@ -282,7 +285,9 @@ func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoF
 	htran.controlQueue.PushBack(command)
 	htran.controlQueueMtx.Unlock()
 
+	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 10\n")
 	msg := <-htran.controlAck
+	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 20\n")
 	return msg["err"].(error)
 }
 
@@ -798,8 +803,6 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 
 		frame.infoField = p
 
-		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@ decode infoField: %02X\n", frame.infoField)
-
 	} else {
 		frame.infoField = nil
 	}
@@ -848,15 +851,12 @@ func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
 			panic("assertion failed")
 		}
 
-		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@ encode infoField: %02X\n", frame.infoField)
-
-		p = frame.infoField
-		err = binary.Write(w, binary.BigEndian, p)
+		err = binary.Write(w, binary.BigEndian, frame.infoField)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
 			return err
 		}
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
+		frame.fcs16 = pppfcs16(frame.fcs16, frame.infoField)
 
 		// FCS - frame control sum
 
@@ -1877,7 +1877,9 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 
 		frame.length = int((uint16(b0&0x07) << 8) + uint16(b1))
 		if hdlcDebug {
-			p := make([]byte, frame.length)
+			frame.content = new(bytes.Buffer)
+
+			p := make([]byte, frame.length-2)
 			_, err = io.ReadFull(htran.rw, p)
 			if nil != err {
 				if !isTimeOutErr(err) {
@@ -1885,8 +1887,14 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 				}
 				return err, n
 			}
-			fmt.Printf("received frame: %0X%0X %0X\n", b0, b1, p)
-			frame.content = bytes.NewBuffer(p)
+
+			_, err = frame.content.Write(p)
+			if nil != err {
+				errorLog("Buffer.Write() failed: %v", err)
+				return err, n
+			}
+
+			fmt.Printf("received frame: %0X%0X%0X\n", b0, b1, p)
 		}
 
 		err, nn := htran.decodeFrameACI(frame, l+n)
@@ -2363,7 +2371,7 @@ mainLoop:
 						if client {
 							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 						}
 						frame.control = HDLC_CONTROL_FRMR
 						frame.infoField = reasonForReject
@@ -2435,7 +2443,7 @@ mainLoop:
 						if client {
 							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 						}
 						frame.control = HDLC_CONTROL_FRMR
 						frame.infoField = reasonForReject
@@ -2471,7 +2479,7 @@ mainLoop:
 						if client {
 							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 						}
 						frame.control = HDLC_CONTROL_FRMR
 						frame.infoField = reasonForReject
@@ -2493,7 +2501,17 @@ mainLoop:
 
 					err, maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive, windowSizeTransmit, windowSizeReceive := htran.decodeLinkParameters(frame)
 					if nil != err {
-						break mainLoop
+						frame = new(HdlcFrame)
+						frame.fcs16 = PPPINITFCS16
+						if client {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						} else {
+							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+						}
+						frame.control = HDLC_CONTROL_FRMR
+						frame.infoField = []byte("malformed linked parameters")
+						framesToSend.PushBack(frame)
+						continue mainLoop
 					}
 
 					frame = new(HdlcFrame)
@@ -2552,7 +2570,6 @@ mainLoop:
 					vs = 0
 					vr = 0
 					client = false
-					fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@ cp 200\n")
 					framesToSend.PushBack(frame)
 				}
 			} else if HDLC_CONTROL_DISC == frame.control {
@@ -2631,14 +2648,16 @@ mainLoop:
 				}
 			} else if HDLC_CONTROL_FRMR == frame.control {
 				errorLog("frame rejected, reason: %s", string(frame.infoField))
-				err = HdlcErrorFrameRejected
+				err = errors.New(fmt.Sprintf("frame rejected, reason: %s", string(frame.infoField)))
 				break mainLoop
 			} else {
 				// ignore frame
 			}
 		}
 	}
+	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 80\n")
 	if nil != err {
+		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 90\n")
 		go func() {
 			htran.writeAck <- map[string]interface{}{"err": err}
 			close(htran.writeAck)
@@ -2648,7 +2667,9 @@ mainLoop:
 			close(htran.readAck)
 		}()
 		go func() {
+			fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 100\n")
 			htran.controlAck <- map[string]interface{}{"err": err}
+			fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 110\n")
 			close(htran.controlAck)
 		}()
 	}
