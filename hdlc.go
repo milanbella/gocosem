@@ -1306,7 +1306,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 	} else if (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 == 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_RR
 
-		// FCS - frame control sum
+		// HCS - header control sum
 
 		_, err = io.ReadFull(r, p)
 		if nil != err {
@@ -1334,7 +1334,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 	} else if (b0&0x08 == 0) && (b0&0x04 > 0) && (b0&0x02 == 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_RNR
 
-		// FCS - frame control sum
+		// HCS - header control sum
 
 		_, err = io.ReadFull(r, p)
 		if nil != err {
@@ -1400,7 +1400,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 	} else if (b0&0x80 == 0) && (b0&0x40 > 0) && (b0&0x20 == 0) && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_DISC
 
-		// FCS - frame control sum
+		// HCS - header control sum
 
 		_, err = io.ReadFull(r, p)
 		if nil != err {
@@ -1434,7 +1434,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		}
 		n += nn
 
-		if nil == frame.infoField {
+		if nil != frame.infoField {
 			// FCS - frame control sum
 
 			_, err = io.ReadFull(r, p)
@@ -1498,30 +1498,32 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		}
 		n += nn
 
-		// FCS - frame control sum
+		if nil != frame.infoField {
+			// FCS - frame control sum
 
-		_, err = io.ReadFull(r, p)
-		if nil != err {
-			if !isTimeOutErr(err) {
-				errorLog("io.ReadFull() failed: %v", err)
+			_, err = io.ReadFull(r, p)
+			if nil != err {
+				if !isTimeOutErr(err) {
+					errorLog("io.ReadFull() failed: %v", err)
+				}
+				return err, n
 			}
-			return err, n
-		}
-		n += 1
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
-		_, err = io.ReadFull(r, p)
-		if nil != err {
-			if !isTimeOutErr(err) {
-				errorLog("io.ReadFull() failed: %v", err)
+			n += 1
+			frame.fcs16 = pppfcs16(frame.fcs16, p)
+			_, err = io.ReadFull(r, p)
+			if nil != err {
+				if !isTimeOutErr(err) {
+					errorLog("io.ReadFull() failed: %v", err)
+				}
+				return err, n
 			}
-			return err, n
-		}
-		n += 1
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
+			n += 1
+			frame.fcs16 = pppfcs16(frame.fcs16, p)
 
-		if PPPGOODFCS16 != frame.fcs16 {
-			warnLog("wrong FCS")
-			return HdlcErrorMalformedSegment, n
+			if PPPGOODFCS16 != frame.fcs16 {
+				warnLog("wrong FCS")
+				return HdlcErrorMalformedSegment, n
+			}
 		}
 	} else if (b0&0x80 == 0) && (b0&0x40 == 0) && (b0&0x20 == 0) && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_UI
@@ -1531,6 +1533,10 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 			return err, n
 		}
 		n += nn
+
+		if nil == frame.infoField {
+			return HdlcErrorNoInfo, n
+		}
 
 		// FCS - frame control sum
 
@@ -2150,7 +2156,6 @@ mainLoop:
 		if sending {
 
 			// flush any frames waiting for next poll
-
 			for framesToSend.Len() > 0 {
 				frame = framesToSend.Front().Value.(*HdlcFrame)
 				err = htran.writeFrame(frame)
