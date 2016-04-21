@@ -123,7 +123,7 @@ func TestX__SendSNRM(t *testing.T) {
 
 	err := client.SendSNRM(nil, nil, nil, nil)
 	if nil != err {
-		t.Fatal("%v", err)
+		t.Fatalf("%v", err)
 	}
 	client.SendDISC()
 }

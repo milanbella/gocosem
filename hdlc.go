@@ -231,12 +231,16 @@ func NewHdlcTransport(conn net.Conn, client bool, clientId uint8, logicalDeviceI
 
 	htran.writeQueue = list.New()
 	htran.writeQueueMtx = new(sync.Mutex)
+	htran.writeAck = make(chan map[string]interface{})
 
 	htran.readQueue = list.New()
 	htran.readQueueMtx = new(sync.Mutex)
+	htran.readAck = make(chan map[string]interface{})
 
 	htran.controlQueue = list.New()
 	htran.controlQueueMtx = new(sync.Mutex)
+	htran.controlAck = make(chan map[string]interface{})
+
 	htran.closedMtx = new(sync.Mutex)
 	htran.responseTimeout = time.Duration(1) * time.Second //TODO: set it to network round trip time
 	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_4
@@ -285,10 +289,14 @@ func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoF
 	htran.controlQueue.PushBack(command)
 	htran.controlQueueMtx.Unlock()
 
-	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 10\n")
 	msg := <-htran.controlAck
-	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 20\n")
-	return msg["err"].(error)
+	if nil == msg["err"] {
+		err = nil
+	} else {
+		err = msg["err"].(error)
+	}
+
+	return err
 }
 
 func (htran *HdlcTransport) SendDISC() (err error) {
@@ -301,7 +309,13 @@ func (htran *HdlcTransport) SendDISC() (err error) {
 	htran.controlQueueMtx.Unlock()
 
 	msg := <-htran.controlAck
-	return msg["err"].(error)
+	if nil == msg["err"] {
+		err = nil
+	} else {
+		err = msg["err"].(error)
+	}
+
+	return err
 }
 
 func (htran *HdlcTransport) Write(p []byte) (n int, err error) {
@@ -326,14 +340,25 @@ func (htran *HdlcTransport) Write(p []byte) (n int, err error) {
 	}
 
 	msg := <-htran.readAck
-	return n, msg["err"].(error)
+	if nil == msg["err"] {
+		err = nil
+	} else {
+		err = msg["err"].(error)
+	}
+
+	return n, err
 }
 
 func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
 	var segment *HdlcSegment
 
 	msg := <-htran.writeAck
-	err = msg["err"].(error)
+	if nil == msg["err"] {
+		err = nil
+	} else {
+		err = msg["err"].(error)
+	}
+
 	if nil != err {
 		return 0, err
 	}
@@ -408,7 +433,7 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 			frame.logicalDeviceId = (uint16(b0) & 0x00FE) >> 1
 			frame.physicalDeviceId = nil
 		} else {
-			errorLog("short server address")
+			warnLog("short server address")
 			return HdlcErrorMalformedSegment, n
 		}
 	} else {
@@ -436,7 +461,7 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 					frame.logicalDeviceId = lowerMAC
 					frame.physicalDeviceId = nil
 				} else {
-					errorLog("long server address")
+					warnLog("long server address")
 					return HdlcErrorMalformedSegment, n
 				}
 			} else if HDLC_ADDRESS_LENGTH_4 == htran.serverAddrLength {
@@ -457,7 +482,7 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 			b2 = p[0]
 
 			if b2&0x01 > 0 {
-				errorLog("short server address")
+				warnLog("short server address")
 				return HdlcErrorMalformedSegment, n
 			}
 
@@ -489,7 +514,7 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 						frame.physicalDeviceId = new(uint16)
 						*frame.physicalDeviceId = 0x3FFF
 					} else {
-						errorLog("long server address")
+						warnLog("long server address")
 						return HdlcErrorMalformedSegment, n
 					}
 				} else if HDLC_ADDRESS_LENGTH_2 == htran.serverAddrLength {
@@ -504,14 +529,14 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 						frame.physicalDeviceId = new(uint16)
 						*frame.physicalDeviceId = lowerMAC
 					} else {
-						errorLog("long server address")
+						warnLog("long server address")
 						return HdlcErrorMalformedSegment, n
 					}
 				} else {
 					panic("assertion failed")
 				}
 			} else {
-				errorLog("long server address")
+				warnLog("long server address")
 				return HdlcErrorMalformedSegment, n
 			}
 		}
@@ -709,7 +734,7 @@ func (htran *HdlcTransport) decodeClientAddress(frame *HdlcFrame) (err error, n 
 	if b0&0x01 > 0 {
 		frame.clientId = (uint8(b0) & 0xFE) >> 1
 	} else {
-		errorLog("long client address")
+		warnLog("long client address")
 		return HdlcErrorMalformedSegment, n
 	}
 
@@ -775,7 +800,7 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 	if PPPGOODFCS16 != frame.fcs16 {
-		errorLog("wrong HCS")
+		warnLog("wrong HCS")
 		return HdlcErrorMalformedSegment, n
 	}
 
@@ -786,7 +811,7 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 	if infoFieldLength > 0 {
 
 		if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
-			errorLog("long info field")
+			warnLog("long info field")
 			return HdlcErrorMalformedSegment, n
 		}
 
@@ -885,6 +910,10 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 
 	p := make([]byte, 1)
 
+	if nil == frame.infoField {
+		return nil, nil, nil, nil, nil
+	}
+
 	// format (always present)
 
 	_, err = io.ReadFull(r, p)
@@ -896,7 +925,7 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 	}
 	infoFieldFormat := uint8(p[0])
 	if 0x81 != infoFieldFormat {
-		errorLog("wrong info field format")
+		warnLog("wrong info field format")
 		return HdlcErrorInfoFieldFormat, nil, nil, nil, nil
 	}
 
@@ -911,7 +940,7 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 	}
 	groupId := uint8(p[0])
 	if 0x80 != groupId {
-		errorLog("wrong parameter group id")
+		warnLog("wrong parameter group id")
 		return HdlcErrorParameterGroupId, nil, nil, nil, nil
 	}
 
@@ -980,25 +1009,25 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 
 		if 0x05 == parameterId {
 			if 1 != length {
-				errorLog("wrong parameter value length")
+				warnLog("wrong parameter value length")
 				return HdlcErrorParameterValue, nil, nil, nil, nil
 			}
 			maxInfoFieldLengthTransmit = new(uint8)
 			*maxInfoFieldLengthTransmit = uint8(parameterValue[0])
 		} else if 0x06 == parameterId {
 			if 1 != length {
-				errorLog("wrong parameter value length")
+				warnLog("wrong parameter value length")
 				return HdlcErrorParameterValue, nil, nil, nil, nil
 			}
 			maxInfoFieldLengthReceive = new(uint8)
 			*maxInfoFieldLengthReceive = uint8(parameterValue[0])
 		} else if 0x07 == parameterId {
 			if 4 != length {
-				errorLog("wrong parameter value length")
+				warnLog("wrong parameter value length")
 				return HdlcErrorParameterValue, nil, nil, nil, nil
 			}
 			windowSizeTransmit = new(uint32)
-			buf = new(bytes.Buffer)
+			buf = bytes.NewBuffer(parameterValue)
 			err = binary.Read(buf, binary.BigEndian, windowSizeTransmit)
 			if nil != err {
 				if !isTimeOutErr(err) {
@@ -1008,11 +1037,11 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 			}
 		} else if 0x08 == parameterId {
 			if 4 != length {
-				errorLog("wrong parameter value length")
+				warnLog("wrong parameter value length")
 				return HdlcErrorParameterValue, nil, nil, nil, nil
 			}
 			windowSizeReceive = new(uint32)
-			buf = new(bytes.Buffer)
+			buf = bytes.NewBuffer(parameterValue)
 			err = binary.Read(buf, binary.BigEndian, windowSizeReceive)
 			if nil != err {
 				if !isTimeOutErr(err) {
@@ -1049,18 +1078,27 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 		return err
 	}
 
+	// if no parameters
 	if (nil == maxInfoFieldLengthTransmit) && (nil == maxInfoFieldLengthReceive) && (nil == windowSizeTransmit) && (nil == windowSizeReceive) {
+
+		// group length
+		err = binary.Write(w, binary.BigEndian, uint8(0))
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+
 		frame.infoField = w.Bytes()
 		return nil
 	}
 
 	ww := new(bytes.Buffer)
 
+	// maxInfoFieldLengthTransmit
+
 	if nil == maxInfoFieldLengthTransmit {
 		maxInfoFieldLengthTransmit = new(uint8)
 		*maxInfoFieldLengthTransmit = 0
-	} else {
-		err = binary.Write(ww, binary.BigEndian, maxInfoFieldLengthTransmit)
 	}
 	err = binary.Write(ww, binary.BigEndian, uint8(0x05))
 	if nil != err {
@@ -1078,11 +1116,11 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 		return err
 	}
 
+	// maxInfoFieldLengthReceive
+
 	if nil == maxInfoFieldLengthReceive {
 		maxInfoFieldLengthReceive = new(uint8)
 		*maxInfoFieldLengthReceive = 0
-	} else {
-		err = binary.Write(ww, binary.BigEndian, maxInfoFieldLengthReceive)
 	}
 	err = binary.Write(ww, binary.BigEndian, uint8(0x06))
 	if nil != err {
@@ -1100,11 +1138,11 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 		return err
 	}
 
+	// windowSizeTransmit
+
 	if nil == windowSizeTransmit {
 		windowSizeTransmit = new(uint32)
 		*windowSizeTransmit = 0
-	} else {
-		err = binary.Write(ww, binary.BigEndian, windowSizeTransmit)
 	}
 	err = binary.Write(ww, binary.BigEndian, uint8(0x07))
 	if nil != err {
@@ -1122,11 +1160,11 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 		return err
 	}
 
+	// windowSizeReceive
+
 	if nil == windowSizeReceive {
 		windowSizeReceive = new(uint32)
 		*windowSizeReceive = 0
-	} else {
-		err = binary.Write(ww, binary.BigEndian, windowSizeReceive)
 	}
 	err = binary.Write(ww, binary.BigEndian, uint8(0x08))
 	if nil != err {
@@ -1261,7 +1299,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		if PPPGOODFCS16 != frame.fcs16 {
-			errorLog("wrong FCS")
+			warnLog("wrong FCS")
 			return HdlcErrorMalformedSegment, n
 		}
 
@@ -1290,7 +1328,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		if PPPGOODFCS16 != frame.fcs16 {
-			errorLog("wrong FCS")
+			warnLog("wrong FCS")
 			return HdlcErrorMalformedSegment, n
 		}
 	} else if (b0&0x08 == 0) && (b0&0x04 > 0) && (b0&0x02 == 0) && (b0&0x01 > 0) {
@@ -1318,7 +1356,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		if PPPGOODFCS16 != frame.fcs16 {
-			errorLog("wrong FCS")
+			warnLog("wrong FCS")
 			return HdlcErrorMalformedSegment, n
 		}
 	} else if (b0&0x80 > 0) && (b0&0x40 == 0) && (b0&0x20 == 0) && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
@@ -1354,7 +1392,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 			frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 			if PPPGOODFCS16 != frame.fcs16 {
-				errorLog("wrong FCS")
+				warnLog("wrong FCS")
 				return HdlcErrorMalformedSegment, n
 			}
 		}
@@ -1384,7 +1422,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		if PPPGOODFCS16 != frame.fcs16 {
-			errorLog("wrong FCS")
+			warnLog("wrong FCS")
 			return HdlcErrorMalformedSegment, n
 		}
 	} else if (b0&0x80 == 0) && (b0&0x40 > 0) && (b0&0x20 > 0) && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
@@ -1419,7 +1457,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 			frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 			if PPPGOODFCS16 != frame.fcs16 {
-				errorLog("wrong FCS")
+				warnLog("wrong FCS")
 				return HdlcErrorMalformedSegment, n
 			}
 		}
@@ -1448,7 +1486,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		if PPPGOODFCS16 != frame.fcs16 {
-			errorLog("wrong FCS")
+			warnLog("wrong FCS")
 			return HdlcErrorMalformedSegment, n
 		}
 	} else if (b0&0x80 > 0) && (b0&0x40 == 0) && (b0&0x20 == 0) && (b0&0x08 == 0) && (b0&0x04 > 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
@@ -1482,7 +1520,7 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		if PPPGOODFCS16 != frame.fcs16 {
-			errorLog("wrong FCS")
+			warnLog("wrong FCS")
 			return HdlcErrorMalformedSegment, n
 		}
 	} else if (b0&0x80 == 0) && (b0&0x40 == 0) && (b0&0x20 == 0) && (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 > 0) && (b0&0x01 > 0) {
@@ -1516,11 +1554,11 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
 		if PPPGOODFCS16 != frame.fcs16 {
-			errorLog("wrong FCS")
+			warnLog("wrong FCS")
 			return HdlcErrorMalformedSegment, n
 		}
 	} else {
-		errorLog("unknown control field value")
+		warnLog("unknown control field value")
 		return HdlcErrorMalformedSegment, n
 	}
 
@@ -1894,7 +1932,7 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 				return err, n
 			}
 
-			fmt.Printf("received frame: %0X%0X%0X\n", b0, b1, p)
+			fmt.Printf("inbound frame: %0X%0X%0X\n", b0, b1, p)
 		}
 
 		err, nn := htran.decodeFrameACI(frame, l+n)
@@ -1923,7 +1961,7 @@ func (htran *HdlcTransport) encodeFrameFACI(frame *HdlcFrame) (err error) {
 
 	length := uint16(htran.lengthOfFrame(frame))
 	if length > 0x07FF {
-		errorLog("frame length exceeds limt")
+		warnLog("frame length exceeds limt")
 		return HdlcErrorInvalidValue
 	}
 	b0 |= byte((0xFF00 & length) >> 8)
@@ -1975,7 +2013,7 @@ func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFram
 				}
 			} else {
 				if hdlcDebug {
-					htran.printFrame(frame, "read")
+					htran.printFrame(frame)
 				}
 				return nil, frame
 			}
@@ -1989,9 +2027,6 @@ func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFram
 
 func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 	var w io.Writer = htran.rw
-	if hdlcDebug {
-		htran.printFrame(frame, "write...")
-	}
 
 	if 0 == frame.direction {
 		errorLog("frame direction not specified")
@@ -2018,14 +2053,14 @@ func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 		return err
 	}
 	if hdlcDebug {
-		htran.printFrame(frame, "write ok")
+		htran.printFrame(frame)
 	}
 
 	return nil
 
 }
 
-func (htran *HdlcTransport) printFrame(frame *HdlcFrame, heading string) {
+func (htran *HdlcTransport) printFrame(frame *HdlcFrame) {
 
 	var direction string
 	switch frame.direction {
@@ -2036,7 +2071,7 @@ func (htran *HdlcTransport) printFrame(frame *HdlcFrame, heading string) {
 	case HDLC_FRAME_DIRECTION_SERVER_INBOUND:
 		direction = "server_inbound"
 	case HDLC_FRAME_DIRECTION_SERVER_OUTBOUND:
-		direction = "server_outboun"
+		direction = "server_outbound"
 	default:
 		panic("unknown value")
 	}
@@ -2067,15 +2102,15 @@ func (htran *HdlcTransport) printFrame(frame *HdlcFrame, heading string) {
 
 	if frame.poll {
 		if nil != frame.infoField {
-			fmt.Printf("%s: frame(%s, %s, P, info(%d))\n", heading, direction, control, len(frame.infoField))
+			fmt.Printf("frame(%s, %s, P, info(%d))\n", direction, control, len(frame.infoField))
 		} else {
-			fmt.Printf("%s: frame(%s, %s, P)\n", heading, direction, control)
+			fmt.Printf("frame(%s, %s, P)\n", direction, control)
 		}
 	} else {
 		if nil != frame.infoField {
-			fmt.Printf("%s: frame(%s, %s, info(%d))\n", heading, direction, control, len(frame.infoField))
+			fmt.Printf("frame(%s, %s, info(%d))\n", direction, control, len(frame.infoField))
 		} else {
-			fmt.Printf("%s: frame(%s, %s)\n", heading, direction, control)
+			fmt.Printf("frame(%s, %s)\n", direction, control)
 		}
 	}
 }
@@ -2090,6 +2125,7 @@ func (htran *HdlcTransport) handleHdlc(client bool) {
 	var vr uint8
 	var transmittedFramesCnt uint32
 	var receivedFramesCnt uint32
+	var transmittedAtLeastOneFrame bool
 	var snrmCommand *HdlcControlCommand
 
 	const (
@@ -2208,6 +2244,7 @@ mainLoop:
 							break mainLoop
 						}
 						state = STATE_DISCONNECTING
+						segmentsNoAck.Init() // since we are disconnecting there's no need to retransmit unacknowledged frame
 						sending = false
 					} else {
 						htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotConnected}
@@ -2255,6 +2292,7 @@ mainLoop:
 					vs += 1
 					transmittedFramesCnt += 1
 				}
+				transmittedAtLeastOneFrame = true
 			} else {
 				// nothing to transmit now
 
@@ -2285,7 +2323,7 @@ mainLoop:
 					if client {
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					} else {
-						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 					}
 					frame.poll = true
 					receivedFramesCnt = 0
@@ -2353,30 +2391,44 @@ mainLoop:
 
 			if HDLC_CONTROL_I == frame.control {
 				if STATE_CONNECTED == state {
+					var nr uint8
+					if frame.nr == 0 {
+						nr = htran.modulus - 1
+					} else {
+						nr = frame.nr - 1
+					}
 
 					// check for any reason to reject received frame
 
 					var reasonForReject []byte
-					if frame.nr-1 > vs {
-						// peer acknowledged sequence number which is ahead of our current sequnece number
-						// reject frame
-						reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
-					}
-					if frame.nr-1 < segmentsNoAck.Front().Value.(HdlcFrame).ns {
-						reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
-					}
-					if nil != reasonForReject {
-						frame = new(HdlcFrame)
-						frame.fcs16 = PPPINITFCS16
-						if client {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+					if transmittedAtLeastOneFrame {
+						if nr > vs {
+							// peer acknowledged sequence number which is ahead of our current sequnece number
+							// reject frame
+							reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
 						}
-						frame.control = HDLC_CONTROL_FRMR
-						frame.infoField = reasonForReject
-						framesToSend.PushBack(frame)
-						continue mainLoop
+						if nr < vs {
+							if segmentsNoAck.Len() > 0 {
+								if nr < segmentsNoAck.Front().Value.(HdlcFrame).ns {
+									reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+								}
+							} else {
+								reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+							}
+						}
+						if nil != reasonForReject {
+							frame = new(HdlcFrame)
+							frame.fcs16 = PPPINITFCS16
+							if client {
+								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+							} else {
+								frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+							}
+							frame.control = HDLC_CONTROL_FRMR
+							frame.infoField = reasonForReject
+							framesToSend.PushBack(frame)
+							continue mainLoop
+						}
 					}
 
 					if frame.ns == vr {
@@ -2401,7 +2453,7 @@ mainLoop:
 
 						// acknowledge received frames
 						for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-							if e.Value.(HdlcFrame).ns <= frame.nr-1 {
+							if e.Value.(HdlcFrame).ns <= nr {
 								segmentsNoAck.Remove(e)
 							}
 						}
@@ -2410,11 +2462,11 @@ mainLoop:
 						// see: ISO/IEC 13239 - 6.11.4.2.3 Reception of incorrect frames
 						// ignore segment but reuse the P/F, nr
 
-						// this frame with correct sequence number frame.nr, it may just arrive faster ahead in sequnce or arrive deleayed in sequnce
+						// this is frame with correct sequence number frame.nr, it may just arrive faster ahead in sequnce or arrive deleayed in sequnce
 
 						// acknowledge received frames
 						for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-							if e.Value.(HdlcFrame).ns <= frame.nr-1 {
+							if e.Value.(HdlcFrame).ns <= nr {
 								segmentsNoAck.Remove(e)
 							}
 						}
@@ -2426,34 +2478,49 @@ mainLoop:
 
 			} else if HDLC_CONTROL_RR == frame.control {
 				if STATE_CONNECTED == state {
+					var nr uint8
+					if frame.nr == 0 {
+						nr = htran.modulus - 1
+					} else {
+						nr = frame.nr - 1
+					}
+
 					// check for any reason to reject received frame
 
 					var reasonForReject []byte
-					if frame.nr-1 > vs {
-						// peer acknowledged sequence number which is ahead of our current sequnece number
-						// reject frame
-						reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
-					}
-					if frame.nr-1 < segmentsNoAck.Front().Value.(HdlcFrame).ns {
-						reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
-					}
-					if nil != reasonForReject {
-						frame = new(HdlcFrame)
-						frame.fcs16 = PPPINITFCS16
-						if client {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+					if transmittedAtLeastOneFrame {
+						if nr > vs {
+							// peer acknowledged sequence number which is ahead of our current sequnece number
+							// reject frame
+							reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
 						}
-						frame.control = HDLC_CONTROL_FRMR
-						frame.infoField = reasonForReject
-						framesToSend.PushBack(frame)
-						continue mainLoop
+						if nr < vs {
+							if segmentsNoAck.Len() > 0 {
+								if nr < segmentsNoAck.Front().Value.(HdlcFrame).ns {
+									reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+								}
+							} else {
+								reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+							}
+						}
+						if nil != reasonForReject {
+							frame = new(HdlcFrame)
+							frame.fcs16 = PPPINITFCS16
+							if client {
+								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+							} else {
+								frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+							}
+							frame.control = HDLC_CONTROL_FRMR
+							frame.infoField = reasonForReject
+							framesToSend.PushBack(frame)
+							continue mainLoop
+						}
 					}
 
 					// acknowledge received frames
 					for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-						if e.Value.(HdlcFrame).ns <= frame.nr-1 {
+						if e.Value.(HdlcFrame).ns <= nr {
 							segmentsNoAck.Remove(e)
 						}
 					}
@@ -2462,34 +2529,49 @@ mainLoop:
 				}
 			} else if HDLC_CONTROL_RNR == frame.control {
 				if STATE_CONNECTED == state {
+					var nr uint8
+					if frame.nr == 0 {
+						nr = htran.modulus - 1
+					} else {
+						nr = frame.nr - 1
+					}
+
 					// check for any reason to reject received frame
 
 					var reasonForReject []byte
-					if frame.nr-1 > vs {
-						// peer acknowledged sequence number which is ahead of our current sequnece number
-						// reject frame
-						reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
-					}
-					if frame.nr-1 < segmentsNoAck.Front().Value.(HdlcFrame).ns {
-						reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
-					}
-					if nil != reasonForReject {
-						frame = new(HdlcFrame)
-						frame.fcs16 = PPPINITFCS16
-						if client {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+					if transmittedAtLeastOneFrame {
+						if nr > vs {
+							// peer acknowledged sequence number which is ahead of our current sequnece number
+							// reject frame
+							reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
 						}
-						frame.control = HDLC_CONTROL_FRMR
-						frame.infoField = reasonForReject
-						framesToSend.PushBack(frame)
-						continue mainLoop
+						if nr < vs {
+							if segmentsNoAck.Len() > 0 {
+								if nr < segmentsNoAck.Front().Value.(HdlcFrame).ns {
+									reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+								}
+							} else {
+								reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+							}
+						}
+						if nil != reasonForReject {
+							frame = new(HdlcFrame)
+							frame.fcs16 = PPPINITFCS16
+							if client {
+								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+							} else {
+								frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+							}
+							frame.control = HDLC_CONTROL_FRMR
+							frame.infoField = reasonForReject
+							framesToSend.PushBack(frame)
+							continue mainLoop
+						}
 					}
 
 					// acknowledge received frames
 					for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-						if e.Value.(HdlcFrame).ns <= frame.nr-1 {
+						if e.Value.(HdlcFrame).ns <= nr {
 							segmentsNoAck.Remove(e)
 						}
 					}
@@ -2567,10 +2649,13 @@ mainLoop:
 						break mainLoop
 					}
 
+					state = STATE_CONNECTED
 					vs = 0
 					vr = 0
-					client = false
+					transmittedAtLeastOneFrame = false
 					framesToSend.PushBack(frame)
+				} else {
+					// ignore frame
 				}
 			} else if HDLC_CONTROL_DISC == frame.control {
 
@@ -2581,6 +2666,7 @@ mainLoop:
 					frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND // only client may send DISC
 					frame.control = HDLC_CONTROL_UA
 					state = STATE_DISCONNECTED
+					segmentsNoAck.Init() // since we are disconnected there's no need to retransmit unacknowledged frame
 					framesToSend.PushBack(frame)
 				} else if STATE_DISCONNECTED == state {
 					frame = new(HdlcFrame)
@@ -2592,7 +2678,6 @@ mainLoop:
 				} else {
 					// ignore frame
 				}
-				framesToSend.PushBack(frame)
 			} else if HDLC_CONTROL_DM == frame.control {
 				if STATE_DISCONNECTING == state {
 					state = STATE_DISCONNECTED
@@ -2635,7 +2720,7 @@ mainLoop:
 					state = STATE_CONNECTED
 					vs = 0
 					vr = 0
-					client = true
+					transmittedAtLeastOneFrame = false
 					htran.controlAck <- map[string]interface{}{"err": nil}
 				} else {
 					// ignore frame
@@ -2647,17 +2732,15 @@ mainLoop:
 					// ignore frame
 				}
 			} else if HDLC_CONTROL_FRMR == frame.control {
-				errorLog("frame rejected, reason: %s", string(frame.infoField))
-				err = errors.New(fmt.Sprintf("frame rejected, reason: %s", string(frame.infoField)))
-				break mainLoop
+				warnLog("frame rejected, reason: %s", string(frame.infoField))
+				//err = errors.New(fmt.Sprintf("frame rejected, reason: %s", string(frame.infoField)))
+				//break mainLoop
 			} else {
 				// ignore frame
 			}
 		}
 	}
-	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 80\n")
 	if nil != err {
-		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 90\n")
 		go func() {
 			htran.writeAck <- map[string]interface{}{"err": err}
 			close(htran.writeAck)
@@ -2667,9 +2750,7 @@ mainLoop:
 			close(htran.readAck)
 		}()
 		go func() {
-			fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 100\n")
 			htran.controlAck <- map[string]interface{}{"err": err}
-			fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@ cp 110\n")
 			close(htran.controlAck)
 		}()
 	}
