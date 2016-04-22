@@ -339,7 +339,9 @@ func (htran *HdlcTransport) Write(p []byte) (n int, err error) {
 		htran.readQueueMtx.Unlock()
 	}
 
+	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cp 800\n")
 	msg := <-htran.readAck
+	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cp 810\n")
 	if nil == msg["err"] {
 		err = nil
 	} else {
@@ -352,26 +354,37 @@ func (htran *HdlcTransport) Write(p []byte) (n int, err error) {
 func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
 	var segment *HdlcSegment
 
-	msg := <-htran.writeAck
-	if nil == msg["err"] {
-		err = nil
-	} else {
-		err = msg["err"].(error)
-	}
-
-	if nil != err {
-		return 0, err
-	}
-
 	n = 0
+
 	var l int
 	for len(p) > 0 {
-		htran.writeQueueMtx.Lock()
-		segment = htran.writeQueue.Front().Value.(*HdlcSegment)
-		htran.writeQueueMtx.Unlock()
+
+		// get segment
+
+		segment = nil
+		for nil == segment {
+			htran.writeQueueMtx.Lock()
+			if nil != htran.writeQueue.Front() {
+				segment = htran.writeQueue.Front().Value.(*HdlcSegment)
+			}
+			htran.writeQueueMtx.Unlock()
+			if nil == segment {
+				msg := <-htran.writeAck
+				if nil == msg["err"] {
+					err = nil
+				} else {
+					err = msg["err"].(error)
+				}
+				if nil != err {
+					return n, err
+				}
+			}
+		}
+
+		// write segment
 
 		if len(p) >= len(segment.p) {
-			l = len(segment.p) - len(p)
+			l = len(segment.p)
 			copy(p, segment.p)
 			n += l
 			p = p[l:]
@@ -389,6 +402,7 @@ func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
 			htran.writeQueueMtx.Unlock()
 		}
 
+		// Do not wait untill all of data arrives. Just return segment length of data event if more data is requested.
 		if segment.last {
 			break
 		}
@@ -2131,7 +2145,6 @@ func (htran *HdlcTransport) handleHdlc(client bool) {
 	var vr uint8
 	var transmittedFramesCnt uint32
 	var receivedFramesCnt uint32
-	var transmittedAtLeastOneFrame bool
 	var snrmCommand *HdlcControlCommand
 
 	const (
@@ -2281,7 +2294,9 @@ mainLoop:
 					}
 					segmentsNoAck.PushBack(frame)
 					if segment.last {
-						htran.writeAck <- map[string]interface{}{"err": nil}
+						fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cp 700\n")
+						htran.readAck <- map[string]interface{}{"err": nil}
+						fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cp 710\n")
 					}
 					vs += 1
 					sending = false
@@ -2297,7 +2312,6 @@ mainLoop:
 					vs += 1
 					transmittedFramesCnt += 1
 				}
-				transmittedAtLeastOneFrame = true
 			} else {
 				// nothing to transmit now
 
@@ -2406,34 +2420,28 @@ mainLoop:
 					// check for any reason to reject received frame
 
 					var reasonForReject []byte
-					if transmittedAtLeastOneFrame {
-						if nr > vs {
-							// peer acknowledged sequence number which is ahead of our current sequnece number
-							// reject frame
-							reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
-						}
-						if nr < vs {
-							if segmentsNoAck.Len() > 0 {
-								if nr < segmentsNoAck.Front().Value.(HdlcFrame).ns {
-									reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
-								}
-							} else {
-								reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+					if frame.nr != vs {
+						// acknowledging already acknowledged frame or not yet transmitted frame
+						if segmentsNoAck.Len() > 0 {
+							if (nr < segmentsNoAck.Front().Value.(HdlcFrame).ns) || (nr > segmentsNoAck.Back().Value.(HdlcFrame).ns) {
+								reasonForReject = []byte("unexpected acknowledgement")
 							}
+						} else {
+							reasonForReject = []byte("unexpected acknowledgement")
 						}
-						if nil != reasonForReject {
-							frame = new(HdlcFrame)
-							frame.fcs16 = PPPINITFCS16
-							if client {
-								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-							} else {
-								frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
-							}
-							frame.control = HDLC_CONTROL_FRMR
-							frame.infoField = reasonForReject
-							framesToSend.PushBack(frame)
-							continue mainLoop
+					}
+					if nil != reasonForReject {
+						frame = new(HdlcFrame)
+						frame.fcs16 = PPPINITFCS16
+						if client {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						} else {
+							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 						}
+						frame.control = HDLC_CONTROL_FRMR
+						frame.infoField = reasonForReject
+						framesToSend.PushBack(frame)
+						continue mainLoop
 					}
 
 					if frame.ns == vr {
@@ -2483,6 +2491,7 @@ mainLoop:
 
 			} else if HDLC_CONTROL_RR == frame.control {
 				if STATE_CONNECTED == state {
+					fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cp 500\n")
 					var nr uint8
 					if frame.nr == 0 {
 						nr = htran.modulus - 1
@@ -2493,34 +2502,29 @@ mainLoop:
 					// check for any reason to reject received frame
 
 					var reasonForReject []byte
-					if transmittedAtLeastOneFrame {
-						if nr > vs {
-							// peer acknowledged sequence number which is ahead of our current sequnece number
-							// reject frame
-							reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
-						}
-						if nr < vs {
-							if segmentsNoAck.Len() > 0 {
-								if nr < segmentsNoAck.Front().Value.(HdlcFrame).ns {
-									reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
-								}
-							} else {
-								reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+					if frame.nr != vs {
+						fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cp 510: frame.nr %d, nr %d, vs %d\n", frame.nr, nr, vs)
+						// acknowledging already acknowledged frame or not yet transmitted frame
+						if segmentsNoAck.Len() > 0 {
+							if (nr < segmentsNoAck.Front().Value.(*HdlcFrame).ns) || (nr > segmentsNoAck.Back().Value.(*HdlcFrame).ns) {
+								reasonForReject = []byte("unexpected acknowledgement")
 							}
+						} else {
+							reasonForReject = []byte("unexpected acknowledgement")
 						}
-						if nil != reasonForReject {
-							frame = new(HdlcFrame)
-							frame.fcs16 = PPPINITFCS16
-							if client {
-								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-							} else {
-								frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
-							}
-							frame.control = HDLC_CONTROL_FRMR
-							frame.infoField = reasonForReject
-							framesToSend.PushBack(frame)
-							continue mainLoop
+					}
+					if nil != reasonForReject {
+						frame = new(HdlcFrame)
+						frame.fcs16 = PPPINITFCS16
+						if client {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						} else {
+							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 						}
+						frame.control = HDLC_CONTROL_FRMR
+						frame.infoField = reasonForReject
+						framesToSend.PushBack(frame)
+						continue mainLoop
 					}
 
 					// acknowledge received frames
@@ -2544,34 +2548,28 @@ mainLoop:
 					// check for any reason to reject received frame
 
 					var reasonForReject []byte
-					if transmittedAtLeastOneFrame {
-						if nr > vs {
-							// peer acknowledged sequence number which is ahead of our current sequnece number
-							// reject frame
-							reasonForReject = []byte("received acknowledgement for not yet tramsitted sequence number")
-						}
-						if nr < vs {
-							if segmentsNoAck.Len() > 0 {
-								if nr < segmentsNoAck.Front().Value.(HdlcFrame).ns {
-									reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
-								}
-							} else {
-								reasonForReject = []byte("received acknowledgement for already acknowledged sequence number")
+					if frame.nr != vs {
+						// acknowledging already acknowledged frame or not yet transmitted frame
+						if segmentsNoAck.Len() > 0 {
+							if (nr < segmentsNoAck.Front().Value.(HdlcFrame).ns) || (nr > segmentsNoAck.Back().Value.(HdlcFrame).ns) {
+								reasonForReject = []byte("unexpected acknowledgement")
 							}
+						} else {
+							reasonForReject = []byte("unexpected acknowledgement")
 						}
-						if nil != reasonForReject {
-							frame = new(HdlcFrame)
-							frame.fcs16 = PPPINITFCS16
-							if client {
-								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-							} else {
-								frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
-							}
-							frame.control = HDLC_CONTROL_FRMR
-							frame.infoField = reasonForReject
-							framesToSend.PushBack(frame)
-							continue mainLoop
+					}
+					if nil != reasonForReject {
+						frame = new(HdlcFrame)
+						frame.fcs16 = PPPINITFCS16
+						if client {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						} else {
+							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 						}
+						frame.control = HDLC_CONTROL_FRMR
+						frame.infoField = reasonForReject
+						framesToSend.PushBack(frame)
+						continue mainLoop
 					}
 
 					// acknowledge received frames
@@ -2657,7 +2655,6 @@ mainLoop:
 					state = STATE_CONNECTED
 					vs = 0
 					vr = 0
-					transmittedAtLeastOneFrame = false
 					framesToSend.PushBack(frame)
 				} else {
 					// ignore frame
@@ -2725,7 +2722,6 @@ mainLoop:
 					state = STATE_CONNECTED
 					vs = 0
 					vr = 0
-					transmittedAtLeastOneFrame = false
 					htran.controlAck <- map[string]interface{}{"err": nil}
 				} else {
 					// ignore frame

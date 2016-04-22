@@ -2,13 +2,14 @@ package gocosem
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net"
 	"strings"
 	"testing"
 )
 
-var hdlcTestServerSockName string = "/tmp/hdlcTestServer.sock"
+var hdlcTestServerSockName string = "./hdlcTestServer.sock"
 var hdlcTestServer net.Listener
 
 func createHdlcPipe(t *testing.T) (conn1 net.Conn, conn2 net.Conn) {
@@ -121,4 +122,60 @@ func TestX__SendSNRM(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	client.SendDISC()
+}
+
+func TestX__WriteRead(t *testing.T) {
+	hdlcTestInit(t)
+
+	crw, srw := createHdlcPipe(t)
+	defer crw.Close()
+	defer srw.Close()
+
+	clientId := uint8(1)
+	logicalDeviceId := uint16(2)
+	physicalDeviceId := new(uint16)
+	*physicalDeviceId = 3
+
+	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	defer client.Close()
+	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	defer server.Close()
+
+	err := client.SendSNRM(nil, nil, nil, nil)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	defer client.SendDISC()
+
+	bc := []byte{1, 2, 3, 4, 5}
+	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ 4000\n")
+	n, err := client.Write(bc)
+	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ 4010\n")
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	if n != len(bc) {
+		t.Fatalf("bad length", err)
+	}
+
+	bs := make([]byte, 5)
+	ch := make(chan bool)
+	go func(ch chan bool) {
+		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ 5000\n")
+		n, err = client.Read(bs)
+		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ 5010\n")
+		ch <- true
+	}(ch)
+	<-ch
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	if n != len(bs) {
+		t.Fatalf("bad length", err)
+	}
+
+	if 0 != bytes.Compare(bc, bs) {
+		t.Fatalf("bytes does not match")
+	}
+
 }
