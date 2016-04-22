@@ -162,7 +162,7 @@ func TestX__WriteRead(t *testing.T) {
 	ch := make(chan bool)
 	go func(ch chan bool) {
 		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ 5000\n")
-		n, err = client.Read(bs)
+		n, err = server.Read(bs)
 		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ 5010\n")
 		ch <- true
 	}(ch)
