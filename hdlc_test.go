@@ -2,7 +2,6 @@ package gocosem
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net"
 	"strings"
@@ -62,7 +61,8 @@ func TestX__hdlcPipe(t *testing.T) {
 
 func TestX__pppfcs16(t *testing.T) {
 	var buf bytes.Buffer
-	var b []byte = []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}
+	//var b []byte = []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}
+	var b []byte = []byte{0xA0, 0x11, 0x00, 0x02, 0x00, 0x07, 0x03, 0x10}
 	var fcs16 uint16
 
 	_, err := buf.Write(b)
@@ -70,12 +70,6 @@ func TestX__pppfcs16(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	fcs16 = pppfcs16(PPPINITFCS16, b)
-
-	_, err = buf.Write(b)
-	if nil != err {
-		t.Fatalf("%v", err)
-	}
-	fcs16 = pppfcs16(fcs16, b)
 
 	p := make([]byte, 1)
 
@@ -148,9 +142,7 @@ func TestX__WriteRead(t *testing.T) {
 	defer client.SendDISC()
 
 	bc := []byte{1, 2, 3, 4, 5}
-	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ 4000\n")
 	n, err := client.Write(bc)
-	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ 4010\n")
 	if nil != err {
 		t.Fatalf("%v", err)
 	}
@@ -161,9 +153,7 @@ func TestX__WriteRead(t *testing.T) {
 	bs := make([]byte, 5)
 	ch := make(chan bool)
 	go func(ch chan bool) {
-		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ 5000\n")
 		n, err = server.Read(bs)
-		fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@ 5010\n")
 		ch <- true
 	}(ch)
 	<-ch
