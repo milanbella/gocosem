@@ -49,6 +49,8 @@ type HdlcTransport struct {
 	windowSizeTransmit uint32
 	windowSizeReceive  uint32
 
+	client bool
+
 	serverAddrLength int // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
 
 	logicalDeviceId  uint16
@@ -247,7 +249,8 @@ func NewHdlcTransport(conn net.Conn, client bool, clientId uint8, logicalDeviceI
 	htran.clientId = clientId
 	htran.logicalDeviceId = logicalDeviceId
 	htran.physicalDeviceId = physicalDeviceId
-	go htran.handleHdlc(client)
+	htran.client = client
+	go htran.handleHdlc()
 	return htran
 }
 
@@ -1318,6 +1321,8 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 	} else if (b0&0x08 == 0) && (b0&0x04 == 0) && (b0&0x02 == 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_RR
 
+		frame.nr = b0 & 0xE0 >> 5
+
 		// HCS - header control sum
 
 		_, err = io.ReadFull(r, p)
@@ -1345,6 +1350,8 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		}
 	} else if (b0&0x08 == 0) && (b0&0x04 > 0) && (b0&0x02 == 0) && (b0&0x01 > 0) {
 		frame.control = HDLC_CONTROL_RNR
+
+		frame.nr = b0 & 0xE0 >> 5
 
 		// HCS - header control sum
 
@@ -1950,7 +1957,11 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 				return err, n
 			}
 
-			fmt.Printf("inbound frame: %0X%0X%0X\n", b0, b1, p)
+			if htran.client {
+				fmt.Printf("client_inbound: %0X%0X%0X\n", b0, b1, p)
+			} else {
+				fmt.Printf("server_inbound: %0X%0X%0X\n", b0, b1, p)
+			}
 		}
 
 		err, nn := htran.decodeFrameACI(frame, l+n)
@@ -2085,57 +2096,61 @@ func (htran *HdlcTransport) printFrame(frame *HdlcFrame) {
 	var direction string
 	switch frame.direction {
 	case HDLC_FRAME_DIRECTION_CLIENT_INBOUND:
-		direction = "client_inbound"
+		direction = "client_inbound, "
 	case HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND:
-		direction = "client_outbound"
+		direction = "client_outbound, "
 	case HDLC_FRAME_DIRECTION_SERVER_INBOUND:
-		direction = "server_inbound"
+		direction = "server_inbound, "
 	case HDLC_FRAME_DIRECTION_SERVER_OUTBOUND:
-		direction = "server_outbound"
+		direction = "server_outbound, "
 	default:
 		panic("unknown value")
 	}
 
 	var control string
+	var sequence string = ""
+
 	switch frame.control {
 	case HDLC_CONTROL_I:
-		control = "I"
+		control = "I, "
+		sequence = fmt.Sprintf("ns %d, nr %d, ", frame.ns, frame.nr)
+
 	case HDLC_CONTROL_RR:
-		control = "RR"
+		control = "RR, "
+		sequence = fmt.Sprintf("nr %d, ", frame.nr)
 	case HDLC_CONTROL_RNR:
-		control = "RNR"
+		control = "RNR, "
+		sequence = fmt.Sprintf("nr %d, ", frame.nr)
 	case HDLC_CONTROL_SNRM:
-		control = "SNRM"
+		control = "SNRM, "
 	case HDLC_CONTROL_DISC:
-		control = "DISC"
+		control = "DISC, "
 	case HDLC_CONTROL_UA:
-		control = "UA"
+		control = "UA, "
 	case HDLC_CONTROL_DM:
-		control = "DM"
+		control = "DM, "
 	case HDLC_CONTROL_FRMR:
-		control = "FRMR"
+		control = "FRMR, "
 	case HDLC_CONTROL_UI:
-		control = "UI"
+		control = "UI, "
 	default:
 		panic("unknown value")
 	}
 
+	var poll string = ""
 	if frame.poll {
-		if nil != frame.infoField {
-			fmt.Printf("%s, %s, P, info(%d)\n", direction, control, len(frame.infoField))
-		} else {
-			fmt.Printf("%s, %s, P\n", direction, control)
-		}
-	} else {
-		if nil != frame.infoField {
-			fmt.Printf("%s, %s, info(%d)\n", direction, control, len(frame.infoField))
-		} else {
-			fmt.Printf("%s, %s\n", direction, control)
-		}
+		poll = "P, "
 	}
+
+	var info string = ""
+	if nil != frame.infoField {
+		info = fmt.Sprintf("info(%d), ", len(frame.infoField))
+	}
+
+	fmt.Printf("%s%s%s%s%s\n", direction, control, poll, sequence, info)
 }
 
-func (htran *HdlcTransport) handleHdlc(client bool) {
+func (htran *HdlcTransport) handleHdlc() {
 	var frame *HdlcFrame
 	var segment *HdlcSegment
 	var command *HdlcControlCommand
@@ -2144,7 +2159,6 @@ func (htran *HdlcTransport) handleHdlc(client bool) {
 	var vs uint8
 	var vr uint8
 	var transmittedFramesCnt uint32
-	var receivedFramesCnt uint32
 	var snrmCommand *HdlcControlCommand
 
 	const (
@@ -2199,6 +2213,7 @@ mainLoop:
 					htran.readQueueMtx.Lock()
 					if htran.readQueue.Len() > 0 {
 						segment = htran.readQueue.Front().Value.(*HdlcSegment)
+						htran.readQueue.Remove(htran.readQueue.Front())
 					} else {
 						segment = nil
 					}
@@ -2225,13 +2240,12 @@ mainLoop:
 						fmt.Printf("hdlc.handleHdlc(): connecting\n")
 					}
 					snrmCommand = command
-					if !client {
+					if !htran.client {
 						go func() { htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotDisconnected} }()
 						continue mainLoop
 					}
 					frame = new(HdlcFrame)
 					frame.poll = true
-					receivedFramesCnt = 0
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					frame.control = HDLC_CONTROL_SNRM
 
@@ -2251,11 +2265,10 @@ mainLoop:
 					go func() { htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotDisconnected} }()
 				}
 			} else if (nil != command) && (HDLC_CONTROL_DISC == command.control) {
-				if client { // only client may disconnect the line.
+				if htran.client { // only client may disconnect the line.
 					if STATE_CONNECTED == state {
 						frame = new(HdlcFrame)
 						frame.poll = true
-						receivedFramesCnt = 0
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 						frame.control = HDLC_CONTROL_DISC
 						err = htran.writeFrame(frame)
@@ -2272,53 +2285,50 @@ mainLoop:
 					go func() { htran.controlAck <- map[string]interface{}{"err": HdlcErrorNoAllowed} }()
 				}
 			} else if nil != segment {
-				frame = new(HdlcFrame)
-				if client {
-					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-				} else {
-					frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
-				}
-				frame.segmentation = !segment.last
-				frame.control = HDLC_CONTROL_I
-				frame.ns = vs
-				frame.nr = vr
-				frame.infoField = segment.p
+				if STATE_CONNECTED == state {
+					frame = new(HdlcFrame)
+					if htran.client {
+						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+					} else {
+						frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+					}
+					frame.segmentation = !segment.last
+					frame.control = HDLC_CONTROL_I
+					frame.ns = vs
+					frame.nr = vr
+					frame.infoField = segment.p
 
-				if (vs+1 == htran.modulus-1) || (transmittedFramesCnt == htran.windowSizeTransmit) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
-					// ran out of available sequence numbers or exceeded transmit window or encountered segment boundary, therefore wait for acknowledgement of all segments we transmitted so far
-					frame.poll = true
-					receivedFramesCnt = 0
-					err = htran.writeFrame(frame)
-					if nil != err {
-						break mainLoop
-					}
-					segmentsNoAck.PushBack(frame)
-					if segment.last {
-						go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
-					}
-					vs += 1
-					sending = false
-					transmittedFramesCnt += 1
+					if (vs+1 == htran.modulus-1) || (transmittedFramesCnt == htran.windowSizeTransmit) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
+						// ran out of available sequence numbers or exceeded transmit window or encountered segment boundary, therefore wait for acknowledgement of all segments we transmitted so far
+						frame.poll = true
+						err = htran.writeFrame(frame)
+						if nil != err {
+							break mainLoop
+						}
+						segmentsNoAck.PushBack(frame)
+						vs += 1
+						sending = false
+						transmittedFramesCnt += 1
 
-				} else {
-					// just transmit frame without acknowledgement
-					err = htran.writeFrame(frame)
-					if nil != err {
-						break mainLoop
+					} else {
+						// just transmit frame without acknowledgement
+						err = htran.writeFrame(frame)
+						if nil != err {
+							break mainLoop
+						}
+						segmentsNoAck.PushBack(frame)
+						vs += 1
+						transmittedFramesCnt += 1
 					}
-					segmentsNoAck.PushBack(frame)
-					vs += 1
-					transmittedFramesCnt += 1
+				} else {
+					go func() { htran.readAck <- map[string]interface{}{"err": HdlcErrorNotConnected} }()
 				}
 			} else {
-				// nothing to transmit now
+				// nothing to transmit now, poll the peer (may be peer has someting to transmit now)
 
-				// must poll the peer to avoid deadlocking in case higher layer is not sending anything yet because it hasn't
-				// received whole response from peer
 				if STATE_CONNECTING == state {
 					frame = new(HdlcFrame)
 					frame.poll = true
-					receivedFramesCnt = 0
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					frame.control = HDLC_CONTROL_SNRM
 
@@ -2335,13 +2345,12 @@ mainLoop:
 					sending = false
 				} else if STATE_CONNECTED == state {
 					frame = new(HdlcFrame)
-					if client {
+					if htran.client {
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					} else {
 						frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 					}
 					frame.poll = true
-					receivedFramesCnt = 0
 					frame.control = HDLC_CONTROL_RR
 					frame.ns = vs
 					frame.nr = vr
@@ -2353,7 +2362,6 @@ mainLoop:
 				} else if STATE_DISCONNECTING == state {
 					frame = new(HdlcFrame)
 					frame.poll = true
-					receivedFramesCnt = 0
 					frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 					frame.control = HDLC_CONTROL_DISC
 					err = htran.writeFrame(frame)
@@ -2373,14 +2381,14 @@ mainLoop:
 			// receiving
 
 			htran.rw.SetReadDeadline(time.Now().Add(htran.responseTimeout))
-			if client {
+			if htran.client {
 				err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_CLIENT_INBOUND)
 			} else {
 				err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_SERVER_INBOUND)
 			}
 			if nil != err {
 				if isTimeOutErr(err) { // timeout occured
-					if client {
+					if htran.client {
 						// According ISO 13239 standard it is responsibility of client to do time-out no-reply recovery.
 						// Per standard it is responsibility of client to do time-out no-reply recovery and
 						// in case of timeout client may transmit  even if it did not receive the poll.
@@ -2427,7 +2435,7 @@ mainLoop:
 					}
 					if nil != reasonForReject {
 						frame = new(HdlcFrame)
-						if client {
+						if htran.client {
 							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 						} else {
 							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
@@ -2440,9 +2448,8 @@ mainLoop:
 					}
 
 					if frame.ns == vr {
-
 						// Accept in sequence frame.
-						receivedFramesCnt += 1
+
 						if htran.modulus-1 == vr {
 							vr = 0
 						} else {
@@ -2461,10 +2468,27 @@ mainLoop:
 
 						// acknowledge received frames
 						for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-							if e.Value.(HdlcFrame).ns <= nr {
+							if e.Value.(*HdlcFrame).ns <= nr {
+								if false == e.Value.(*HdlcFrame).segmentation {
+									// peer acknowledged receival of last segment
+									go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
+								}
 								segmentsNoAck.Remove(e)
 							}
 						}
+
+						// send to peer acknowledgement that we received in sequence frame
+						frame = new(HdlcFrame)
+						if htran.client {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						} else {
+							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+						}
+						frame.poll = true
+						frame.control = HDLC_CONTROL_RR
+						frame.ns = vs
+						frame.nr = vr
+						framesToSend.PushBack(frame)
 
 					} else {
 						// see: ISO/IEC 13239 - 6.11.4.2.3 Reception of incorrect frames
@@ -2474,7 +2498,11 @@ mainLoop:
 
 						// acknowledge received frames
 						for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-							if e.Value.(HdlcFrame).ns <= nr {
+							if e.Value.(*HdlcFrame).ns <= nr {
+								if false == e.Value.(*HdlcFrame).segmentation {
+									// peer acknowledged receival of last segment
+									go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
+								}
 								segmentsNoAck.Remove(e)
 							}
 						}
@@ -2507,22 +2535,16 @@ mainLoop:
 						}
 					}
 					if nil != reasonForReject {
-						frame = new(HdlcFrame)
-						if client {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
-						}
-						frame.poll = true
-						frame.control = HDLC_CONTROL_FRMR
-						frame.infoField = reasonForReject
-						framesToSend.PushBack(frame)
 						continue mainLoop
 					}
 
 					// acknowledge received frames
 					for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-						if e.Value.(HdlcFrame).ns <= nr {
+						if e.Value.(*HdlcFrame).ns <= nr {
+							if false == e.Value.(*HdlcFrame).segmentation {
+								// peer acknowledged receival of last segment
+								go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
+							}
 							segmentsNoAck.Remove(e)
 						}
 					}
@@ -2552,22 +2574,16 @@ mainLoop:
 						}
 					}
 					if nil != reasonForReject {
-						frame = new(HdlcFrame)
-						if client {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
-						}
-						frame.poll = true
-						frame.control = HDLC_CONTROL_FRMR
-						frame.infoField = reasonForReject
-						framesToSend.PushBack(frame)
 						continue mainLoop
 					}
 
 					// acknowledge received frames
 					for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-						if e.Value.(HdlcFrame).ns <= nr {
+						if e.Value.(*HdlcFrame).ns <= nr {
+							if false == e.Value.(*HdlcFrame).segmentation {
+								// peer acknowledged receival of last segment
+								go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
+							}
 							segmentsNoAck.Remove(e)
 						}
 					}
@@ -2580,7 +2596,7 @@ mainLoop:
 					err, maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive, windowSizeTransmit, windowSizeReceive := htran.decodeLinkParameters(frame)
 					if nil != err {
 						frame = new(HdlcFrame)
-						if client {
+						if htran.client {
 							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 						} else {
 							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
