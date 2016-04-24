@@ -2197,6 +2197,7 @@ mainLoop:
 					break mainLoop
 				}
 				framesToSend.Remove(framesToSend.Front())
+				continue mainLoop
 			}
 
 			// check for any pending priority command
