@@ -42,6 +42,7 @@ const (
 type HdlcTransport struct {
 	rw                         net.Conn
 	responseTimeout            time.Duration
+	rrDelayTime                time.Duration
 	modulus                    uint8
 	maxInfoFieldLengthTransmit uint8
 	maxInfoFieldLengthReceive  uint8
@@ -245,6 +246,7 @@ func NewHdlcTransport(conn net.Conn, client bool, clientId uint8, logicalDeviceI
 
 	htran.closedMtx = new(sync.Mutex)
 	htran.responseTimeout = time.Duration(1) * time.Second //TODO: set it to network round trip time
+	htran.rrDelayTime = 3 * htran.responseTimeout          //TODO: set it
 	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_4
 	htran.clientId = clientId
 	htran.logicalDeviceId = logicalDeviceId
@@ -2160,6 +2162,8 @@ func (htran *HdlcTransport) handleHdlc() {
 	var vr uint8
 	var transmittedFramesCnt uint32
 	var snrmCommand *HdlcControlCommand
+	var receivedFrame int
+	var noRRuntill time.Time = time.Now()
 
 	const (
 		STATE_CONNECTING = iota
@@ -2344,6 +2348,13 @@ mainLoop:
 					}
 					sending = false
 				} else if STATE_CONNECTED == state {
+					if htran.client {
+						if time.Now().Before(noRRuntill) {
+							// Do not send RR. Server has probably nothing to transmit yet. If we sent RR to server it would have replied back RR and we (client) would have replied RR because we have
+							// right now nothing transmit and thus we would be looping on RR untill either side has something to transmit.
+							continue mainLoop
+						}
+					}
 					frame = new(HdlcFrame)
 					if htran.client {
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2380,6 +2391,7 @@ mainLoop:
 		} else {
 			// receiving
 
+			receivedFrame = -1
 			htran.rw.SetReadDeadline(time.Now().Add(htran.responseTimeout))
 			if htran.client {
 				err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_CLIENT_INBOUND)
@@ -2389,17 +2401,23 @@ mainLoop:
 			if nil != err {
 				if isTimeOutErr(err) { // timeout occured
 					if htran.client {
-						// According ISO 13239 standard it is responsibility of client to do time-out no-reply recovery.
-						// Per standard it is responsibility of client to do time-out no-reply recovery and
+						// Per ISO 13239 it is responsibility of client to do time-out no-reply recovery and
 						// in case of timeout client may transmit  even if it did not receive the poll.
 						sending = true
 						continue mainLoop
 					} else {
-						// If server try to receive frame again (if frame does not arrive client is going to time out and must send us frame)
+						// If server try to receive frame again (if frame does not arrive client is going to time out and sends again)
 						continue mainLoop
 					}
 				} else {
 					break mainLoop
+				}
+			}
+			receivedFrame = frame.control
+			if htran.client && (STATE_CONNECTED == state) {
+				if (HDLC_CONTROL_RR == receivedFrame) || (HDLC_CONTROL_RNR == receivedFrame) {
+					// server may have nothing to transmit, delay client RR response until server has something to transmit to awoid sending RR between client and server in loop in case that neither client nor server has something to tramsit
+					noRRuntill = time.Now().Add(htran.rrDelayTime)
 				}
 			}
 

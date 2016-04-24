@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io"
 	"net"
+	"os"
 	"strings"
 	"testing"
 )
@@ -26,6 +27,7 @@ func createHdlcPipe(t *testing.T) (conn1 net.Conn, conn2 net.Conn) {
 
 func hdlcTestInit(t *testing.T) {
 	if nil == hdlcTestServer {
+		os.Remove(hdlcTestServerSockName)
 		ln, err := net.Listen("unixpacket", hdlcTestServerSockName)
 		if err != nil {
 			t.Fatalf("%v", err)
