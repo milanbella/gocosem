@@ -12,6 +12,14 @@ import (
 var hdlcTestServerSockName string = "./hdlcTestServer.sock"
 var hdlcTestServer net.Listener
 
+func generateBytes(len int) []byte {
+	b := make([]byte, len)
+	for i := 0; i < len; i++ {
+		b[i] = byte(i % 10)
+	}
+	return b
+}
+
 func createHdlcPipe(t *testing.T) (conn1 net.Conn, conn2 net.Conn) {
 	conn1, err := net.Dial("unixpacket", hdlcTestServerSockName)
 	if nil != err {
@@ -156,6 +164,63 @@ func TestX__WriteRead(t *testing.T) {
 	ch := make(chan bool)
 	go func(ch chan bool) {
 		n, err = server.Read(bs)
+		ch <- true
+	}(ch)
+	<-ch
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	if n != len(bs) {
+		t.Fatalf("bad length", err)
+	}
+
+	if 0 != bytes.Compare(bc, bs) {
+		t.Fatalf("bytes does not match")
+	}
+
+}
+
+func TestX__WriteRead_i50_w1(t *testing.T) {
+	hdlcTestInit(t)
+
+	crw, srw := createHdlcPipe(t)
+	defer crw.Close()
+	defer srw.Close()
+
+	clientId := uint8(1)
+	logicalDeviceId := uint16(2)
+	physicalDeviceId := new(uint16)
+	*physicalDeviceId = 3
+
+	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	defer client.Close()
+	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	defer server.Close()
+
+	maxInfoFieldLengthTransmit := uint8(50)
+	maxInfoFieldLengthReceive := uint8(50)
+	windowSizeTransmit := uint32(1)
+	windowSizeReceive := uint32(1)
+
+	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive, &windowSizeTransmit, &windowSizeReceive)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	defer client.SendDISC()
+
+	bc := generateBytes(150)
+	n, err := client.Write(bc)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	if n != len(bc) {
+		t.Fatalf("bad length", err)
+	}
+
+	bs := make([]byte, len(bc))
+	ch := make(chan bool)
+	go func(ch chan bool) {
+		n, err = io.ReadFull(server, bs)
 		ch <- true
 	}(ch)
 	<-ch

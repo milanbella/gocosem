@@ -331,7 +331,7 @@ func (htran *HdlcTransport) Write(p []byte) (n int, err error) {
 	n = len(p)
 	for len(p) > 0 {
 		segment = new(HdlcSegment)
-		if len(p) >= int(maxSegmentSize) {
+		if len(p) > int(maxSegmentSize) {
 			segment.p = p[0:maxSegmentSize]
 			p = p[len(segment.p):]
 		} else {
@@ -394,7 +394,7 @@ func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
 		} else {
 			// partially read segment and return it shortened back to queue
 
-			l = len(segment.p) - len(p)
+			l = len(p)
 			copy(p, segment.p[0:l])
 			n += l
 			p = p[l:]
@@ -2144,12 +2144,17 @@ func (htran *HdlcTransport) printFrame(frame *HdlcFrame) {
 		poll = "P, "
 	}
 
+	var segment string = ""
+	if frame.segmentation {
+		segment = "S, "
+	}
+
 	var info string = ""
 	if nil != frame.infoField {
 		info = fmt.Sprintf("info(%d), ", len(frame.infoField))
 	}
 
-	fmt.Printf("%s%s%s%s%s\n", direction, control, poll, sequence, info)
+	fmt.Printf("%s%s%s%s%s%s\n", direction, control, poll, sequence, segment, info)
 }
 
 func (htran *HdlcTransport) handleHdlc() {
@@ -2303,7 +2308,7 @@ mainLoop:
 					frame.nr = vr
 					frame.infoField = segment.p
 
-					if (vs+1 == htran.modulus-1) || (transmittedFramesCnt == htran.windowSizeTransmit) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
+					if (vs+1 == htran.modulus-1) || (transmittedFramesCnt+1 == htran.windowSizeTransmit) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
 						// ran out of available sequence numbers or exceeded transmit window or encountered segment boundary, therefore wait for acknowledgement of all segments we transmitted so far
 						frame.poll = true
 						err = htran.writeFrame(frame)
