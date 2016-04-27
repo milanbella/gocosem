@@ -69,6 +69,7 @@ type HdlcTransport struct {
 	controlQueueMtx *sync.Mutex
 	closed          bool
 	closedMtx       *sync.Mutex
+	closedAck       chan map[string]interface{}
 }
 
 type HdlcClientConnection struct {
@@ -229,8 +230,8 @@ func NewHdlcTransport(conn net.Conn, client bool, clientId uint8, logicalDeviceI
 	htran.modulus = 8
 	htran.maxInfoFieldLengthTransmit = 128
 	htran.maxInfoFieldLengthReceive = 128
-	htran.windowSizeTransmit = 7
-	htran.windowSizeReceive = 7
+	htran.windowSizeTransmit = 1
+	htran.windowSizeReceive = 1
 
 	htran.writeQueue = list.New()
 	htran.writeQueueMtx = new(sync.Mutex)
@@ -245,6 +246,8 @@ func NewHdlcTransport(conn net.Conn, client bool, clientId uint8, logicalDeviceI
 	htran.controlAck = make(chan map[string]interface{})
 
 	htran.closedMtx = new(sync.Mutex)
+	htran.closedAck = make(chan map[string]interface{})
+
 	htran.responseTimeout = time.Duration(1) * time.Second //TODO: set it to network round trip time
 	htran.rrDelayTime = 3 * htran.responseTimeout          //TODO: set it
 	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_4
@@ -417,6 +420,7 @@ func (htran *HdlcTransport) Close() (err error) {
 	htran.controlQueueMtx.Lock()
 	htran.closed = true
 	htran.controlQueueMtx.Unlock()
+	<-htran.closedAck
 	return nil
 }
 
@@ -829,6 +833,7 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 
 		if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
 			warnLog("long info field")
+			panic(fmt.Sprintf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ client: %t", htran.client))
 			return HdlcErrorMalformedSegment, n
 		}
 
@@ -2057,7 +2062,8 @@ func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFram
 }
 
 func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
-	var w io.Writer = htran.rw
+	var w io.Writer
+	w = htran.rw
 
 	frame.fcs16 = PPPINITFCS16
 
@@ -2162,6 +2168,7 @@ func (htran *HdlcTransport) handleHdlc() {
 	var segment *HdlcSegment
 	var command *HdlcControlCommand
 	var sending bool
+	var windowAckWait bool
 	var err error
 	var vs uint8
 	var vr uint8
@@ -2179,7 +2186,8 @@ func (htran *HdlcTransport) handleHdlc() {
 	var state int = STATE_DISCONNECTED
 
 	segmentsNoAck := list.New() // unacknowledged segments
-	framesToSend := list.New()  // frames scheduled to send in next poll
+	windowAckWait = false
+	framesToSend := list.New() // frames scheduled to send in next poll
 
 mainLoop:
 	for {
@@ -2219,7 +2227,7 @@ mainLoop:
 			// check for any pending segment to transmit
 
 			if nil == command {
-				if 0 == segmentsNoAck.Len() {
+				if !windowAckWait {
 					htran.readQueueMtx.Lock()
 					if htran.readQueue.Len() > 0 {
 						segment = htran.readQueue.Front().Value.(*HdlcSegment)
@@ -2308,6 +2316,8 @@ mainLoop:
 					frame.nr = vr
 					frame.infoField = segment.p
 
+					fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@ cp 100: client: %t, htran.windowSizeTransmit: %d, htran.windowSizeReceive: %d\n", htran.client, htran.windowSizeTransmit, htran.windowSizeReceive)
+
 					if (vs+1 == htran.modulus-1) || (transmittedFramesCnt+1 == htran.windowSizeTransmit) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
 						// ran out of available sequence numbers or exceeded transmit window or encountered segment boundary, therefore wait for acknowledgement of all segments we transmitted so far
 						frame.poll = true
@@ -2319,6 +2329,7 @@ mainLoop:
 						vs += 1
 						sending = false
 						transmittedFramesCnt += 1
+						windowAckWait = true
 
 					} else {
 						// just transmit frame without acknowledgement
@@ -2500,6 +2511,7 @@ mainLoop:
 								segmentsNoAck.Remove(e)
 							}
 						}
+						windowAckWait = segmentsNoAck.Len() > 0
 
 						// send to peer acknowledgement that we received in sequence frame
 						frame = new(HdlcFrame)
@@ -2530,6 +2542,7 @@ mainLoop:
 								segmentsNoAck.Remove(e)
 							}
 						}
+						windowAckWait = segmentsNoAck.Len() > 0
 
 					}
 				} else {
@@ -2572,6 +2585,7 @@ mainLoop:
 							segmentsNoAck.Remove(e)
 						}
 					}
+					windowAckWait = segmentsNoAck.Len() > 0
 				} else {
 					// ignore frame
 				}
@@ -2611,6 +2625,7 @@ mainLoop:
 							segmentsNoAck.Remove(e)
 						}
 					}
+					windowAckWait = segmentsNoAck.Len() > 0
 				} else {
 					// ignore frame
 				}
@@ -2642,8 +2657,6 @@ mainLoop:
 					if nil != maxInfoFieldLengthTransmit {
 						if *maxInfoFieldLengthTransmit > htran.maxInfoFieldLengthReceive {
 							*maxInfoFieldLengthTransmit = htran.maxInfoFieldLengthReceive
-						} else {
-							htran.maxInfoFieldLengthReceive = *maxInfoFieldLengthTransmit
 						}
 					} else {
 						*maxInfoFieldLengthTransmit = htran.maxInfoFieldLengthReceive
@@ -2652,8 +2665,6 @@ mainLoop:
 					if nil != maxInfoFieldLengthReceive {
 						if *maxInfoFieldLengthReceive > htran.maxInfoFieldLengthTransmit {
 							*maxInfoFieldLengthReceive = htran.maxInfoFieldLengthTransmit
-						} else {
-							htran.maxInfoFieldLengthTransmit = *maxInfoFieldLengthReceive
 						}
 					} else {
 						*maxInfoFieldLengthReceive = htran.maxInfoFieldLengthTransmit
@@ -2662,8 +2673,6 @@ mainLoop:
 					if nil != windowSizeTransmit {
 						if *windowSizeTransmit > htran.windowSizeTransmit {
 							*windowSizeTransmit = htran.windowSizeTransmit
-						} else {
-							htran.windowSizeTransmit = *windowSizeTransmit
 						}
 					} else {
 						*windowSizeTransmit = htran.windowSizeTransmit
@@ -2672,14 +2681,26 @@ mainLoop:
 					if nil != windowSizeReceive {
 						if *windowSizeReceive > htran.windowSizeReceive {
 							*windowSizeReceive = htran.windowSizeReceive
-						} else {
-							htran.windowSizeReceive = *windowSizeReceive
 						}
 					} else {
 						*windowSizeReceive = htran.windowSizeReceive
 					}
 
-					err = htran.encodeLinkParameters(frame, maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive, windowSizeTransmit, windowSizeTransmit)
+					if *windowSizeTransmit != *windowSizeReceive {
+						*windowSizeReceive = *windowSizeTransmit
+					}
+
+					// replace default parameters by negotiated parameters
+					htran.maxInfoFieldLengthTransmit = *maxInfoFieldLengthTransmit
+					htran.maxInfoFieldLengthReceive = *maxInfoFieldLengthReceive
+					htran.windowSizeTransmit = *windowSizeTransmit
+					htran.windowSizeReceive = *windowSizeReceive
+
+					err = htran.encodeLinkParameters(frame, maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive, windowSizeTransmit, windowSizeReceive)
+					if nil != err {
+						break mainLoop
+					}
+					err = htran.writeFrame(frame)
 					if nil != err {
 						break mainLoop
 					}
@@ -2749,6 +2770,10 @@ mainLoop:
 						htran.windowSizeReceive = 1
 					}
 
+					if htran.windowSizeTransmit != htran.windowSizeReceive {
+						panic("windowSizeTransmit != htran.windowSizeReceive")
+					}
+
 					state = STATE_CONNECTED
 					vs = 0
 					vr = 0
@@ -2773,7 +2798,7 @@ mainLoop:
 	}
 	if nil != err {
 		go func() {
-			go func() { htran.writeAck <- map[string]interface{}{"err": err} }()
+			htran.writeAck <- map[string]interface{}{"err": err}
 			close(htran.writeAck)
 		}()
 		go func() {
@@ -2785,4 +2810,5 @@ mainLoop:
 			close(htran.controlAck)
 		}()
 	}
+	htran.closedAck <- map[string]interface{}{"err": nil}
 }
