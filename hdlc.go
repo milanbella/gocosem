@@ -2519,18 +2519,34 @@ mainLoop:
 						}
 						windowAckWait = segmentsNoAck.Len() > 0
 
-						// send to peer acknowledgement that we received in sequence frame
-						frame = new(HdlcFrame)
-						if htran.client {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						var ackNow bool // anckowledge back received frame immediatelly ?
+						htran.readQueueMtx.Lock()
+						if windowAckWait {
+							// We are retransmitting unackowledged frames therefore no new I frame will be transmitted back now.
+							ackNow = true
+						} else if 0 == htran.readQueue.Len() {
+							// No  new I frame will be transmitted back now.
+							ackNow = true
 						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+							// New I frame will be tramitted right now in next poll and that I frame will do acknowledgement.
+							ackNow = false
 						}
-						frame.poll = true
-						frame.control = HDLC_CONTROL_RR
-						frame.ns = vs
-						frame.nr = vr
-						framesToSend.PushBack(frame)
+						htran.readQueueMtx.Unlock()
+
+						// send to peer acknowledgement that we received in sequence frame
+						if ackNow {
+							frame = new(HdlcFrame)
+							if htran.client {
+								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+							} else {
+								frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+							}
+							frame.poll = true
+							frame.control = HDLC_CONTROL_RR
+							frame.ns = vs
+							frame.nr = vr
+							framesToSend.PushBack(frame)
+						}
 
 					} else {
 						// see: ISO/IEC 13239 - 6.11.4.2.3 Reception of incorrect frames
