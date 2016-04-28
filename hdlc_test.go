@@ -294,7 +294,7 @@ func TestX__hdlc_WriteRead_i50_w7(t *testing.T) {
 
 }
 
-func noTestX__hdlc_WriteRead_i1_w7(t *testing.T) {
+func TestX__hdlc_WriteRead_i22_w7(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -311,8 +311,8 @@ func noTestX__hdlc_WriteRead_i1_w7(t *testing.T) {
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
 
-	maxInfoFieldLengthTransmit := uint8(1)
-	maxInfoFieldLengthReceive := uint8(1)
+	maxInfoFieldLengthTransmit := uint8(22)
+	maxInfoFieldLengthReceive := uint8(22)
 	windowSizeTransmit := uint32(7)
 	windowSizeReceive := uint32(7)
 
@@ -322,7 +322,7 @@ func noTestX__hdlc_WriteRead_i1_w7(t *testing.T) {
 	}
 	defer client.SendDISC()
 
-	bc := generateBytes(150)
+	bc := generateBytes(500)
 	n, err := client.Write(bc)
 	if nil != err {
 		t.Fatalf("%v", err)

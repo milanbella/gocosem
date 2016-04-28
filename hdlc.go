@@ -372,6 +372,7 @@ func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
 			htran.writeQueueMtx.Lock()
 			if nil != htran.writeQueue.Front() {
 				segment = htran.writeQueue.Front().Value.(*HdlcSegment)
+				htran.writeQueue.Remove(htran.writeQueue.Front())
 			}
 			htran.writeQueueMtx.Unlock()
 			if nil == segment {
@@ -833,7 +834,6 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 
 		if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
 			warnLog("long info field")
-			panic(fmt.Sprintf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ client: %t", htran.client))
 			return HdlcErrorMalformedSegment, n
 		}
 
@@ -2316,9 +2316,7 @@ mainLoop:
 					frame.nr = vr
 					frame.infoField = segment.p
 
-					fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@ cp 100: client: %t, htran.windowSizeTransmit: %d, htran.windowSizeReceive: %d\n", htran.client, htran.windowSizeTransmit, htran.windowSizeReceive)
-
-					if (vs+1 == htran.modulus-1) || (transmittedFramesCnt+1 == htran.windowSizeTransmit) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
+					if (vs == htran.modulus-1) || (transmittedFramesCnt == htran.windowSizeTransmit) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
 						// ran out of available sequence numbers or exceeded transmit window or encountered segment boundary, therefore wait for acknowledgement of all segments we transmitted so far
 						frame.poll = true
 						err = htran.writeFrame(frame)
@@ -2326,7 +2324,11 @@ mainLoop:
 							break mainLoop
 						}
 						segmentsNoAck.PushBack(frame)
-						vs += 1
+						if vs == htran.modulus-1 {
+							vs = 0
+						} else {
+							vs += 1
+						}
 						sending = false
 						transmittedFramesCnt += 1
 						windowAckWait = true
@@ -2338,7 +2340,11 @@ mainLoop:
 							break mainLoop
 						}
 						segmentsNoAck.PushBack(frame)
-						vs += 1
+						if vs == htran.modulus-1 {
+							vs = 0
+						} else {
+							vs += 1
+						}
 						transmittedFramesCnt += 1
 					}
 				} else {
