@@ -2237,7 +2237,7 @@ mainLoop:
 					}
 					htran.readQueueMtx.Unlock()
 				} else {
-					// transmit again all unacknowledged frames
+					// transmit unacknowledged frames
 					for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
 						frame = e.Value.(*HdlcFrame)
 						if frame.poll {
@@ -2467,11 +2467,11 @@ mainLoop:
 					if frame.nr != vs {
 						// acknowledging already acknowledged frame or not yet transmitted frame
 						if segmentsNoAck.Len() > 0 {
-							if (nr < segmentsNoAck.Front().Value.(HdlcFrame).ns) || (nr > segmentsNoAck.Back().Value.(HdlcFrame).ns) {
-								reasonForReject = []byte("unexpected acknowledgement")
+							if (nr < segmentsNoAck.Front().Value.(*HdlcFrame).ns) || (nr > segmentsNoAck.Back().Value.(*HdlcFrame).ns) {
+								reasonForReject = []byte("unexpected ack")
 							}
 						} else {
-							reasonForReject = []byte("unexpected acknowledgement")
+							reasonForReject = []byte("unexpected ack")
 						}
 					}
 					if nil != reasonForReject {
@@ -2587,10 +2587,10 @@ mainLoop:
 						// acknowledging already acknowledged frame or not yet transmitted frame
 						if segmentsNoAck.Len() > 0 {
 							if (nr < segmentsNoAck.Front().Value.(*HdlcFrame).ns) || (nr > segmentsNoAck.Back().Value.(*HdlcFrame).ns) {
-								reasonForReject = []byte("unexpected acknowledgement")
+								reasonForReject = []byte("unexpected ack")
 							}
 						} else {
-							reasonForReject = []byte("unexpected acknowledgement")
+							reasonForReject = []byte("unexpected ack")
 						}
 					}
 					if nil != reasonForReject {
@@ -2626,11 +2626,11 @@ mainLoop:
 					if frame.nr != vs {
 						// acknowledging already acknowledged frame or not yet transmitted frame
 						if segmentsNoAck.Len() > 0 {
-							if (nr < segmentsNoAck.Front().Value.(HdlcFrame).ns) || (nr > segmentsNoAck.Back().Value.(HdlcFrame).ns) {
-								reasonForReject = []byte("unexpected acknowledgement")
+							if (nr < segmentsNoAck.Front().Value.(*HdlcFrame).ns) || (nr > segmentsNoAck.Back().Value.(*HdlcFrame).ns) {
+								reasonForReject = []byte("unexpected ack")
 							}
 						} else {
-							reasonForReject = []byte("unexpected acknowledgement")
+							reasonForReject = []byte("unexpected ack")
 						}
 					}
 					if nil != reasonForReject {
@@ -2664,7 +2664,7 @@ mainLoop:
 						}
 						frame.poll = true
 						frame.control = HDLC_CONTROL_FRMR
-						frame.infoField = []byte("malformed linked parameters")
+						frame.infoField = []byte("malformed parameters")
 						framesToSend.PushBack(frame)
 						continue mainLoop
 					}
@@ -2719,10 +2719,6 @@ mainLoop:
 					htran.windowSizeReceive = *windowSizeReceive
 
 					err = htran.encodeLinkParameters(frame, maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive, windowSizeTransmit, windowSizeReceive)
-					if nil != err {
-						break mainLoop
-					}
-					err = htran.writeFrame(frame)
 					if nil != err {
 						break mainLoop
 					}

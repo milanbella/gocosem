@@ -163,21 +163,19 @@ func TestX__hdlc_WriteRead(t *testing.T) {
 	bs := make([]byte, 5)
 	ch := make(chan bool)
 	go func(ch chan bool) {
-		n, err = server.Read(bs)
+		n, err := server.Read(bs)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bs) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bc, bs) {
+			t.Fatalf("bytes does not match")
+		}
 		ch <- true
 	}(ch)
 	<-ch
-	if nil != err {
-		t.Fatalf("%v", err)
-	}
-	if n != len(bs) {
-		t.Fatalf("bad length", err)
-	}
-
-	if 0 != bytes.Compare(bc, bs) {
-		t.Fatalf("bytes does not match")
-	}
-
 }
 
 func TestX__hdlc_WriteRead_i50_w1(t *testing.T) {
@@ -208,7 +206,7 @@ func TestX__hdlc_WriteRead_i50_w1(t *testing.T) {
 	}
 	defer client.SendDISC()
 
-	bc := generateBytes(150)
+	bc := generateBytes(2500)
 	n, err := client.Write(bc)
 	if nil != err {
 		t.Fatalf("%v", err)
@@ -220,20 +218,19 @@ func TestX__hdlc_WriteRead_i50_w1(t *testing.T) {
 	bs := make([]byte, len(bc))
 	ch := make(chan bool)
 	go func(ch chan bool) {
-		n, err = io.ReadFull(server, bs)
+		n, err := server.Read(bs)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bs) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bc, bs) {
+			t.Fatalf("bytes does not match")
+		}
 		ch <- true
 	}(ch)
 	<-ch
-	if nil != err {
-		t.Fatalf("%v", err)
-	}
-	if n != len(bs) {
-		t.Fatalf("bad length", err)
-	}
-
-	if 0 != bytes.Compare(bc, bs) {
-		t.Fatalf("bytes does not match")
-	}
 
 }
 
@@ -265,7 +262,7 @@ func TestX__hdlc_WriteRead_i50_w7(t *testing.T) {
 	}
 	defer client.SendDISC()
 
-	bc := generateBytes(150)
+	bc := generateBytes(2500)
 	n, err := client.Write(bc)
 	if nil != err {
 		t.Fatalf("%v", err)
@@ -277,20 +274,19 @@ func TestX__hdlc_WriteRead_i50_w7(t *testing.T) {
 	bs := make([]byte, len(bc))
 	ch := make(chan bool)
 	go func(ch chan bool) {
-		n, err = io.ReadFull(server, bs)
+		n, err := server.Read(bs)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bs) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bc, bs) {
+			t.Fatalf("bytes does not match")
+		}
 		ch <- true
 	}(ch)
 	<-ch
-	if nil != err {
-		t.Fatalf("%v", err)
-	}
-	if n != len(bs) {
-		t.Fatalf("bad length", err)
-	}
-
-	if 0 != bytes.Compare(bc, bs) {
-		t.Fatalf("bytes does not match")
-	}
 
 }
 
@@ -322,7 +318,7 @@ func TestX__hdlc_WriteRead_i22_w7(t *testing.T) {
 	}
 	defer client.SendDISC()
 
-	bc := generateBytes(500)
+	bc := generateBytes(2500)
 	n, err := client.Write(bc)
 	if nil != err {
 		t.Fatalf("%v", err)
@@ -334,19 +330,566 @@ func TestX__hdlc_WriteRead_i22_w7(t *testing.T) {
 	bs := make([]byte, len(bc))
 	ch := make(chan bool)
 	go func(ch chan bool) {
-		n, err = io.ReadFull(server, bs)
+		n, err := server.Read(bs)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bs) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bc, bs) {
+			t.Fatalf("bytes does not match")
+		}
 		ch <- true
 	}(ch)
 	<-ch
+
+}
+
+func TestX__hdlc_WriteRead_i22_w3(t *testing.T) {
+	hdlcTestInit(t)
+
+	crw, srw := createHdlcPipe(t)
+	defer crw.Close()
+	defer srw.Close()
+
+	clientId := uint8(1)
+	logicalDeviceId := uint16(2)
+	physicalDeviceId := new(uint16)
+	*physicalDeviceId = 3
+
+	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	defer client.Close()
+	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	defer server.Close()
+
+	maxInfoFieldLengthTransmit := uint8(22)
+	maxInfoFieldLengthReceive := uint8(22)
+	windowSizeTransmit := uint32(3)
+	windowSizeReceive := uint32(3)
+
+	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive, &windowSizeTransmit, &windowSizeReceive)
 	if nil != err {
 		t.Fatalf("%v", err)
 	}
-	if n != len(bs) {
+	defer client.SendDISC()
+
+	bc := generateBytes(2500)
+	n, err := client.Write(bc)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	if n != len(bc) {
 		t.Fatalf("bad length", err)
 	}
 
-	if 0 != bytes.Compare(bc, bs) {
-		t.Fatalf("bytes does not match")
-	}
+	bs := make([]byte, len(bc))
+	ch := make(chan bool)
+	go func(ch chan bool) {
+		n, err := server.Read(bs)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bs) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bc, bs) {
+			t.Fatalf("bytes does not match")
+		}
+		ch <- true
+	}(ch)
+	<-ch
+}
 
+func TestX__hdlc_WriteRead_parallel_transmit(t *testing.T) {
+	hdlcTestInit(t)
+
+	crw, srw := createHdlcPipe(t)
+	defer crw.Close()
+	defer srw.Close()
+
+	clientId := uint8(1)
+	logicalDeviceId := uint16(2)
+	physicalDeviceId := new(uint16)
+	*physicalDeviceId = 3
+
+	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	defer client.Close()
+	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	defer server.Close()
+
+	err := client.SendSNRM(nil, nil, nil, nil)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	defer client.SendDISC()
+
+	bt := []byte{1, 2, 3, 4, 5}
+
+	// both server and client transmit at the same time
+
+	ch := make(chan string)
+	chf := make(chan string)
+
+	go func() {
+		<-ch
+		n, err := client.Write(bt)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		chf <- "1"
+	}()
+
+	go func() {
+		<-ch
+		n, err := server.Write(bt)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		chf <- "2"
+	}()
+
+	go func() {
+		<-ch
+		br := make([]byte, len(bt))
+		n, err := client.Read(br)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bt, br) {
+			t.Fatalf("bytes does not match")
+		}
+		chf <- "3"
+	}()
+
+	go func() {
+		<-ch
+		br := make([]byte, len(bt))
+		n, err := server.Read(br)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bt, br) {
+			t.Fatalf("bytes does not match")
+		}
+		chf <- "4"
+	}()
+
+	close(ch)
+
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+
+}
+
+func TestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
+	hdlcTestInit(t)
+
+	crw, srw := createHdlcPipe(t)
+	defer crw.Close()
+	defer srw.Close()
+
+	clientId := uint8(1)
+	logicalDeviceId := uint16(2)
+	physicalDeviceId := new(uint16)
+	*physicalDeviceId = 3
+
+	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	defer client.Close()
+	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	defer server.Close()
+
+	maxInfoFieldLengthTransmit := uint8(50)
+	maxInfoFieldLengthReceive := uint8(50)
+	windowSizeTransmit := uint32(1)
+	windowSizeReceive := uint32(1)
+
+	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive, &windowSizeTransmit, &windowSizeReceive)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	defer client.SendDISC()
+
+	bt := generateBytes(2500)
+
+	// both server and client transmit at the same time
+
+	ch := make(chan string)
+	chf := make(chan string)
+
+	go func() {
+		<-ch
+		n, err := client.Write(bt)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		chf <- "1"
+	}()
+
+	go func() {
+		<-ch
+		n, err := server.Write(bt)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		chf <- "2"
+	}()
+
+	go func() {
+		<-ch
+		br := make([]byte, len(bt))
+		n, err := client.Read(br)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bt, br) {
+			t.Fatalf("bytes does not match")
+		}
+		chf <- "3"
+	}()
+
+	go func() {
+		<-ch
+		br := make([]byte, len(bt))
+		n, err := server.Read(br)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bt, br) {
+			t.Fatalf("bytes does not match")
+		}
+		chf <- "4"
+	}()
+
+	close(ch)
+
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+
+}
+
+func TestX__hdlc_WriteRead_i50_w7_parallel_transmit(t *testing.T) {
+	hdlcTestInit(t)
+
+	crw, srw := createHdlcPipe(t)
+	defer crw.Close()
+	defer srw.Close()
+
+	clientId := uint8(1)
+	logicalDeviceId := uint16(2)
+	physicalDeviceId := new(uint16)
+	*physicalDeviceId = 3
+
+	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	defer client.Close()
+	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	defer server.Close()
+
+	maxInfoFieldLengthTransmit := uint8(50)
+	maxInfoFieldLengthReceive := uint8(50)
+	windowSizeTransmit := uint32(7)
+	windowSizeReceive := uint32(7)
+
+	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive, &windowSizeTransmit, &windowSizeReceive)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	defer client.SendDISC()
+
+	bt := generateBytes(2500)
+	// both server and client transmit at the same time
+
+	ch := make(chan string)
+	chf := make(chan string)
+
+	go func() {
+		<-ch
+		n, err := client.Write(bt)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		chf <- "1"
+	}()
+
+	go func() {
+		<-ch
+		n, err := server.Write(bt)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		chf <- "2"
+	}()
+
+	go func() {
+		<-ch
+		br := make([]byte, len(bt))
+		n, err := client.Read(br)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bt, br) {
+			t.Fatalf("bytes does not match")
+		}
+		chf <- "3"
+	}()
+
+	go func() {
+		<-ch
+		br := make([]byte, len(bt))
+		n, err := server.Read(br)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bt, br) {
+			t.Fatalf("bytes does not match")
+		}
+		chf <- "4"
+	}()
+
+	close(ch)
+
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+
+}
+
+func TestX__hdlc_WriteRead_i22_w7_parallel_transmit(t *testing.T) {
+	hdlcTestInit(t)
+
+	crw, srw := createHdlcPipe(t)
+	defer crw.Close()
+	defer srw.Close()
+
+	clientId := uint8(1)
+	logicalDeviceId := uint16(2)
+	physicalDeviceId := new(uint16)
+	*physicalDeviceId = 3
+
+	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	defer client.Close()
+	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	defer server.Close()
+
+	maxInfoFieldLengthTransmit := uint8(22)
+	maxInfoFieldLengthReceive := uint8(22)
+	windowSizeTransmit := uint32(7)
+	windowSizeReceive := uint32(7)
+
+	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive, &windowSizeTransmit, &windowSizeReceive)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	defer client.SendDISC()
+
+	bt := generateBytes(2500)
+
+	// both server and client transmit at the same time
+
+	ch := make(chan string)
+	chf := make(chan string)
+
+	go func() {
+		<-ch
+		n, err := client.Write(bt)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		chf <- "1"
+	}()
+
+	go func() {
+		<-ch
+		n, err := server.Write(bt)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		chf <- "2"
+	}()
+
+	go func() {
+		<-ch
+		br := make([]byte, len(bt))
+		n, err := client.Read(br)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bt, br) {
+			t.Fatalf("bytes does not match")
+		}
+		chf <- "3"
+	}()
+
+	go func() {
+		<-ch
+		br := make([]byte, len(bt))
+		n, err := server.Read(br)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bt, br) {
+			t.Fatalf("bytes does not match")
+		}
+		chf <- "4"
+	}()
+
+	close(ch)
+
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+
+}
+
+func TestX__hdlc_WriteRead_i22_w3_parallel_transmit(t *testing.T) {
+	hdlcTestInit(t)
+
+	crw, srw := createHdlcPipe(t)
+	defer crw.Close()
+	defer srw.Close()
+
+	clientId := uint8(1)
+	logicalDeviceId := uint16(2)
+	physicalDeviceId := new(uint16)
+	*physicalDeviceId = 3
+
+	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	defer client.Close()
+	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	defer server.Close()
+
+	maxInfoFieldLengthTransmit := uint8(22)
+	maxInfoFieldLengthReceive := uint8(22)
+	windowSizeTransmit := uint32(3)
+	windowSizeReceive := uint32(3)
+
+	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive, &windowSizeTransmit, &windowSizeReceive)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	defer client.SendDISC()
+
+	bt := generateBytes(2500)
+
+	// both server and client transmit at the same time
+
+	ch := make(chan string)
+	chf := make(chan string)
+
+	go func() {
+		<-ch
+		n, err := client.Write(bt)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		chf <- "1"
+	}()
+
+	go func() {
+		<-ch
+		n, err := server.Write(bt)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		chf <- "2"
+	}()
+
+	go func() {
+		<-ch
+		br := make([]byte, len(bt))
+		n, err := client.Read(br)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bt, br) {
+			t.Fatalf("bytes does not match")
+		}
+		chf <- "3"
+	}()
+
+	go func() {
+		<-ch
+		br := make([]byte, len(bt))
+		n, err := server.Read(br)
+		if nil != err {
+			t.Fatalf("%v", err)
+		}
+		if n != len(bt) {
+			t.Fatalf("bad length", err)
+		}
+		if 0 != bytes.Compare(bt, br) {
+			t.Fatalf("bytes does not match")
+		}
+		chf <- "4"
+	}()
+
+	close(ch)
+
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
 }
