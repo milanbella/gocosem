@@ -143,6 +143,8 @@ func TestX__hdlc_WriteRead(t *testing.T) {
 	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server.windowSizeTransmit = 7
+	server.windowSizeReceive = 7
 	defer server.Close()
 
 	err := client.SendSNRM(nil, nil, nil, nil)
@@ -193,6 +195,8 @@ func TestX__hdlc_WriteRead_i50_w1(t *testing.T) {
 	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server.windowSizeTransmit = 7
+	server.windowSizeReceive = 7
 	defer server.Close()
 
 	maxInfoFieldLengthTransmit := uint8(50)
@@ -249,6 +253,8 @@ func TestX__hdlc_WriteRead_i50_w7(t *testing.T) {
 	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server.windowSizeTransmit = 7
+	server.windowSizeReceive = 7
 	defer server.Close()
 
 	maxInfoFieldLengthTransmit := uint8(50)
@@ -305,6 +311,8 @@ func TestX__hdlc_WriteRead_i22_w7(t *testing.T) {
 	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server.windowSizeTransmit = 7
+	server.windowSizeReceive = 7
 	defer server.Close()
 
 	maxInfoFieldLengthTransmit := uint8(22)
@@ -361,6 +369,8 @@ func TestX__hdlc_WriteRead_i22_w3(t *testing.T) {
 	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server.windowSizeTransmit = 7
+	server.windowSizeReceive = 7
 	defer server.Close()
 
 	maxInfoFieldLengthTransmit := uint8(22)
@@ -416,6 +426,8 @@ func TestX__hdlc_WriteRead_parallel_transmit(t *testing.T) {
 	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server.windowSizeTransmit = 7
+	server.windowSizeReceive = 7
 	defer server.Close()
 
 	err := client.SendSNRM(nil, nil, nil, nil)
@@ -511,6 +523,8 @@ func TestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server.windowSizeTransmit = 7
+	server.windowSizeReceive = 7
 	defer server.Close()
 
 	maxInfoFieldLengthTransmit := uint8(50)
@@ -612,6 +626,8 @@ func TestX__hdlc_WriteRead_i50_w7_parallel_transmit(t *testing.T) {
 	defer client.Close()
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
+	server.windowSizeTransmit = 7
+	server.windowSizeReceive = 7
 
 	maxInfoFieldLengthTransmit := uint8(50)
 	maxInfoFieldLengthReceive := uint8(50)
@@ -711,6 +727,8 @@ func TestX__hdlc_WriteRead_i22_w7_parallel_transmit(t *testing.T) {
 	defer client.Close()
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
+	server.windowSizeTransmit = 7
+	server.windowSizeReceive = 7
 
 	maxInfoFieldLengthTransmit := uint8(22)
 	maxInfoFieldLengthReceive := uint8(22)
@@ -811,6 +829,8 @@ func TestX__hdlc_WriteRead_i22_w3_parallel_transmit(t *testing.T) {
 	defer client.Close()
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
+	server.windowSizeTransmit = 7
+	server.windowSizeReceive = 7
 
 	maxInfoFieldLengthTransmit := uint8(22)
 	maxInfoFieldLengthReceive := uint8(22)

@@ -2316,7 +2316,7 @@ mainLoop:
 					frame.nr = vr
 					frame.infoField = segment.p
 
-					if (vs == htran.modulus-1) || (transmittedFramesCnt == htran.windowSizeTransmit) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
+					if (vs == htran.modulus-1) || (transmittedFramesCnt == htran.windowSizeTransmit-1) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
 						// ran out of available sequence numbers or exceeded transmit window or encountered segment boundary, therefore wait for acknowledgement of all segments we transmitted so far
 						frame.poll = true
 						err = htran.writeFrame(frame)
