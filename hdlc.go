@@ -2481,7 +2481,7 @@ mainLoop:
 			delayRR = false
 			if htran.client {
 				htran.readQueueMtx.Lock()
-				if (HDLC_CONTROL_RR == frame.control) && frame.poll && (0 == framesToSend.Len()) && (0 == htran.readQueue.Len()) {
+				if (HDLC_CONTROL_RR == frame.control) && frame.poll && (0 == htran.readQueue.Len()) {
 					delayRR = true
 				}
 				htran.readQueueMtx.Unlock()
@@ -2496,7 +2496,7 @@ mainLoop:
 				if STATE_CONNECTED == state {
 					if /* received in sequence frame */ (frame.ns == vr) && /* and received frame within ack window */ (frame.nr == vs) {
 
-						// Accept rame.
+						// Accept frame.
 
 						if htran.modulus-1 == vr {
 							vr = 0
