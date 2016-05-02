@@ -2225,6 +2225,7 @@ func (htran *HdlcTransport) printFrame(frame *HdlcFrame) {
 
 func (htran *HdlcTransport) handleHdlc() {
 	var frame *HdlcFrame
+	//var lastFrameTransmitted *HdlcFrame
 	var segment *HdlcSegment
 	var command *HdlcControlCommand
 	var sending bool

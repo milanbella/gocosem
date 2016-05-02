@@ -2,7 +2,6 @@ package gocosem
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"net"
 	"os"
@@ -277,12 +276,12 @@ func TestX__hdlc_WriteRead_parallel_transmit(t *testing.T) {
 		<-ch
 		n, err := client.Write(bt)
 		if nil != err {
-			chf <- "1"
+			close(chf)
 			t.Fatalf("%v", err)
 			return
 		}
 		if n != len(bt) {
-			chf <- "1"
+			close(chf)
 			t.Fatalf("bad length", err)
 			return
 		}
@@ -293,12 +292,12 @@ func TestX__hdlc_WriteRead_parallel_transmit(t *testing.T) {
 		<-ch
 		n, err := server.Write(bt)
 		if nil != err {
-			chf <- "2"
+			close(chf)
 			t.Fatalf("%v", err)
 			return
 		}
 		if n != len(bt) {
-			chf <- "2"
+			close(chf)
 			t.Fatalf("bad length", err)
 			return
 		}
@@ -310,17 +309,17 @@ func TestX__hdlc_WriteRead_parallel_transmit(t *testing.T) {
 		br := make([]byte, len(bt))
 		n, err := client.Read(br)
 		if nil != err {
-			chf <- "3"
+			close(chf)
 			t.Fatalf("%v", err)
 			return
 		}
 		if n != len(bt) {
-			chf <- "3"
+			close(chf)
 			t.Fatalf("bad length", err)
 			return
 		}
 		if 0 != bytes.Compare(bt, br) {
-			chf <- "3"
+			close(chf)
 			t.Fatalf("bytes does not match")
 			return
 		}
@@ -332,17 +331,17 @@ func TestX__hdlc_WriteRead_parallel_transmit(t *testing.T) {
 		br := make([]byte, len(bt))
 		n, err := server.Read(br)
 		if nil != err {
-			chf <- "4"
+			close(chf)
 			t.Fatalf("%v", err)
 			return
 		}
 		if n != len(bt) {
-			chf <- "4"
+			close(chf)
 			t.Fatalf("bad length")
 			return
 		}
 		if 0 != bytes.Compare(bt, br) {
-			chf <- "4"
+			close(chf)
 			t.Fatalf("bytes does not match")
 			return
 		}
@@ -358,7 +357,7 @@ func TestX__hdlc_WriteRead_parallel_transmit(t *testing.T) {
 
 }
 
-func noTestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
+func TestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -395,10 +394,14 @@ func noTestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 		<-ch
 		n, err := client.Write(bt)
 		if nil != err {
+			close(chf)
 			t.Fatalf("%v", err)
+			return
 		}
 		if n != len(bt) {
+			close(chf)
 			t.Fatalf("bad length", err)
+			return
 		}
 		chf <- "1"
 	}()
@@ -407,10 +410,14 @@ func noTestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 		<-ch
 		n, err := server.Write(bt)
 		if nil != err {
+			close(chf)
+			return
 			t.Fatalf("%v", err)
 		}
 		if n != len(bt) {
+			close(chf)
 			t.Fatalf("bad length", err)
+			return
 		}
 		chf <- "2"
 	}()
@@ -420,13 +427,19 @@ func noTestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 		br := make([]byte, len(bt))
 		n, err := client.Read(br)
 		if nil != err {
+			close(chf)
 			t.Fatalf("%v", err)
+			return
 		}
 		if n != len(bt) {
+			close(chf)
 			t.Fatalf("bad length", err)
+			return
 		}
 		if 0 != bytes.Compare(bt, br) {
+			close(chf)
 			t.Fatalf("bytes does not match")
+			return
 		}
 		chf <- "3"
 	}()
@@ -436,13 +449,19 @@ func noTestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 		br := make([]byte, len(bt))
 		n, err := server.Read(br)
 		if nil != err {
+			close(chf)
 			t.Fatalf("%v", err)
+			return
 		}
 		if n != len(bt) {
+			close(chf)
 			t.Fatalf("bad length", err)
+			return
 		}
 		if 0 != bytes.Compare(bt, br) {
+			close(chf)
 			t.Fatalf("bytes does not match")
+			return
 		}
 		chf <- "4"
 	}()
@@ -456,7 +475,7 @@ func noTestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 
 }
 
-func noTestX__hdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
+func TestX__hdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -493,10 +512,14 @@ func noTestX__hdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 		<-ch
 		n, err := client.Write(bt)
 		if nil != err {
+			close(chf)
 			t.Fatalf("%v", err)
+			return
 		}
 		if n != len(bt) {
+			close(chf)
 			t.Fatalf("bad length", err)
+			return
 		}
 		chf <- "1"
 	}()
@@ -505,10 +528,14 @@ func noTestX__hdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 		<-ch
 		n, err := server.Write(bt)
 		if nil != err {
+			close(chf)
 			t.Fatalf("%v", err)
+			return
 		}
 		if n != len(bt) {
+			close(chf)
 			t.Fatalf("bad length", err)
+			return
 		}
 		chf <- "2"
 	}()
@@ -518,13 +545,19 @@ func noTestX__hdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 		br := make([]byte, len(bt))
 		n, err := client.Read(br)
 		if nil != err {
+			close(chf)
 			t.Fatalf("%v", err)
+			return
 		}
 		if n != len(bt) {
+			close(chf)
 			t.Fatalf("bad length", err)
+			return
 		}
 		if 0 != bytes.Compare(bt, br) {
+			close(chf)
 			t.Fatalf("bytes does not match")
+			return
 		}
 		chf <- "3"
 	}()
@@ -537,10 +570,14 @@ func noTestX__hdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 			t.Fatalf("%v", err)
 		}
 		if n != len(bt) {
+			close(chf)
 			t.Fatalf("bad length", err)
+			return
 		}
 		if 0 != bytes.Compare(bt, br) {
+			close(chf)
 			t.Fatalf("bytes does not match")
+			return
 		}
 		chf <- "4"
 	}()
@@ -592,28 +629,32 @@ func noTestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_2nd_frame(t *te
 		<-ch
 		n, err := client.Write(bt)
 		if nil != err {
-			chf <- fmt.Sprintf("%v", err)
+			close(chf)
+			t.Fatalf("%v", err)
 			return
 		}
 		if n != len(bt) {
-			chf <- "bad length"
+			close(chf)
+			t.Fatalf("bad length")
 			return
 		}
-		chf <- "ok"
+		chf <- "1"
 	}()
 
 	go func() {
 		<-ch
 		n, err := server.Write(bt)
 		if nil != err {
-			chf <- fmt.Sprintf("%v", err)
+			close(chf)
+			t.Fatalf("%v", err)
 			return
 		}
 		if n != len(bt) {
-			chf <- "bad length"
+			close(chf)
+			t.Fatalf("bad length")
 			return
 		}
-		chf <- "ok"
+		chf <- "2"
 	}()
 
 	go func() {
@@ -621,19 +662,21 @@ func noTestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_2nd_frame(t *te
 		br := make([]byte, len(bt))
 		n, err := client.Read(br)
 		if nil != err {
-			chf <- fmt.Sprintf("%v", err)
+			close(chf)
+			t.Fatalf("%v", err)
 			return
 		}
 		if n != len(bt) {
-			chf <- "bad length"
+			close(chf)
+			t.Fatalf("bad length")
 			return
 		}
 		if 0 != bytes.Compare(bt, br) {
-			chf <- "bytes does not match"
+			close(chf)
+			t.Fatalf("bytes does not match")
 			return
 		}
-		fmt.Printf("%02X\n", br)
-		chf <- "ok"
+		chf <- "3"
 	}()
 
 	go func() {
@@ -641,51 +684,28 @@ func noTestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_2nd_frame(t *te
 		br := make([]byte, len(bt))
 		n, err := server.Read(br)
 		if nil != err {
-			chf <- fmt.Sprintf("%v", err)
+			close(chf)
+			t.Fatalf("%v", err)
 			return
 		}
 		if n != len(bt) {
-			chf <- "bad length"
+			close(chf)
+			t.Fatalf("bad length")
 			return
 		}
 		if 0 != bytes.Compare(bt, br) {
-			chf <- "bytes does not match"
+			close(chf)
+			t.Fatalf("bytes does not match")
 			return
 		}
-		chf <- "ok"
+		chf <- "4"
 	}()
 
 	close(ch)
 
-	ok := <-chf
-	if "ok" == ok {
-		t.Logf("%s\n", <-chf)
-	} else {
-		t.Fatalf("%v", ok)
-		return
-	}
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
+	t.Logf("%s\n", <-chf)
 
-	ok = <-chf
-	if "ok" == ok {
-		t.Logf("%s\n", <-chf)
-	} else {
-		t.Fatalf("%v", ok)
-		return
-	}
-
-	ok = <-chf
-	if "ok" == ok {
-		t.Logf("%s\n", <-chf)
-	} else {
-		t.Fatalf("%v", ok)
-		return
-	}
-
-	ok = <-chf
-	if "ok" == ok {
-		t.Logf("%s\n", <-chf)
-	} else {
-		t.Fatalf("%v", ok)
-		return
-	}
 }
