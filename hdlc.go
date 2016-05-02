@@ -2232,6 +2232,7 @@ func (htran *HdlcTransport) handleHdlc() {
 	var vs uint8
 	var vr uint8
 	var snrmCommand *HdlcControlCommand
+	var delayRR bool
 
 	const (
 		STATE_CONNECTING = iota
@@ -2403,6 +2404,9 @@ mainLoop:
 					}
 					sending = false
 				} else if STATE_CONNECTED == state {
+					if htran.client && delayRR {
+						<-time.After(htran.responseTimeout)
+					}
 					frame = new(HdlcFrame)
 					if htran.client {
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2473,6 +2477,16 @@ mainLoop:
 
 			// Proccess received frame.
 
+			// delay RR transmit if server has nothing to transmit to prevent closed loop on RR frames (neither side has anyting to transmit therefore client and server will be passing RR frame to and back in loop)
+			delayRR = false
+			if htran.client {
+				htran.readQueueMtx.Lock()
+				if (HDLC_CONTROL_RR == frame.control) && frame.poll && (0 == framesToSend.Len()) && (0 == htran.readQueue.Len()) {
+					delayRR = true
+				}
+				htran.readQueueMtx.Unlock()
+			}
+
 			// Transmit if received the poll.
 			if frame.poll {
 				sending = true
@@ -2480,38 +2494,15 @@ mainLoop:
 
 			if HDLC_CONTROL_I == frame.control {
 				if STATE_CONNECTED == state {
-					if /* received in sequence frame */ (frame.ns == vr) && /* and received frame within ack widow */ (frame.nr == vs) {
+					if /* received in sequence frame */ (frame.ns == vr) && /* and received frame within ack window */ (frame.nr == vs) {
 
 						// Accept rame.
-
-						if nil != segmentToAck {
-							// acknoledge transmitted segment
-							segmentToAck = nil
-							go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
-
-							// send to peer acknowledgement that we received in sequence frame
-
-							frame = new(HdlcFrame)
-							if htran.client {
-								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-							} else {
-								frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
-							}
-							frame.poll = true
-							frame.control = HDLC_CONTROL_RR
-							frame.ns = vs
-							frame.nr = vr
-							framesToSend.PushBack(frame)
-						}
 
 						if htran.modulus-1 == vr {
 							vr = 0
 						} else {
 							vr += 1
 						}
-
-						// enqueue received segment
-
 						segment = new(HdlcSegment)
 						segment.p = frame.infoField
 						segment.last = !frame.segmentation
@@ -2520,6 +2511,32 @@ mainLoop:
 						htran.writeQueueMtx.Unlock()
 						if segment.last {
 							go func() { htran.writeAck <- map[string]interface{}{"err": nil} }()
+						}
+
+						if nil != segmentToAck {
+							// acknoledge transmitted segment
+							segmentToAck = nil
+							go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
+
+							htran.readQueueMtx.Lock()
+							if 0 == htran.readQueue.Len() {
+								// send to peer acknowledgement that we received in sequence frame
+
+								frame = new(HdlcFrame)
+								if htran.client {
+									frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+								} else {
+									frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+								}
+								frame.poll = true
+								frame.control = HDLC_CONTROL_RR
+								frame.ns = vs
+								frame.nr = vr
+								framesToSend.PushBack(frame)
+							} else {
+								// acknowledgement will be sent in next I frame
+							}
+							htran.readQueueMtx.Unlock()
 						}
 
 					} else {
