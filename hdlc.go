@@ -67,9 +67,12 @@ type HdlcTransport struct {
 	controlQueue    *list.List // list of *HdlcControlCommand
 	controlAck      chan map[string]interface{}
 	controlQueueMtx *sync.Mutex
-	closed          bool
-	closedMtx       *sync.Mutex
 	closedAck       chan map[string]interface{}
+
+	finishedCh chan bool
+
+	readFrameImpl int
+	frameNum      uint64
 }
 
 type HdlcClientConnection struct {
@@ -245,8 +248,8 @@ func NewHdlcTransport(conn net.Conn, client bool, clientId uint8, logicalDeviceI
 	htran.controlQueueMtx = new(sync.Mutex)
 	htran.controlAck = make(chan map[string]interface{})
 
-	htran.closedMtx = new(sync.Mutex)
 	htran.closedAck = make(chan map[string]interface{})
+	htran.finishedCh = make(chan bool)
 
 	htran.responseTimeout = time.Duration(1) * time.Second //TODO: set it to network round trip time
 	htran.rrDelayTime = 3 * htran.responseTimeout          //TODO: set it
@@ -259,7 +262,7 @@ func NewHdlcTransport(conn net.Conn, client bool, clientId uint8, logicalDeviceI
 	return htran
 }
 
-func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoFieldLengthReceive *uint8, windowSizeTransmit *uint32, windowSizeReceive *uint32) (err error) {
+func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoFieldLengthReceive *uint8) (err error) {
 
 	command := new(HdlcControlCommand)
 	command.control = HDLC_CONTROL_SNRM
@@ -278,17 +281,8 @@ func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoF
 		command.snrm.maxInfoFieldLengthReceive = 128
 	}
 
-	if nil != windowSizeTransmit {
-		command.snrm.windowSizeTransmit = *windowSizeTransmit
-	} else {
-		command.snrm.windowSizeTransmit = 1
-	}
-
-	if nil != windowSizeReceive {
-		command.snrm.windowSizeReceive = *windowSizeReceive
-	} else {
-		command.snrm.windowSizeReceive = 1
-	}
+	command.snrm.windowSizeTransmit = 1
+	command.snrm.windowSizeReceive = 1
 
 	htran.controlQueueMtx.Lock()
 	if hdlcDebug {
@@ -418,11 +412,13 @@ func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
 }
 
 func (htran *HdlcTransport) Close() (err error) {
-	htran.controlQueueMtx.Lock()
-	htran.closed = true
-	htran.controlQueueMtx.Unlock()
-	<-htran.closedAck
-	return nil
+	close(htran.finishedCh)
+	msg := <-htran.closedAck
+	if nil == msg["err"] {
+		return nil
+	} else {
+		return msg["err"].(error)
+	}
 }
 
 func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n int) {
@@ -2023,7 +2019,7 @@ func (htran *HdlcTransport) encodeFrameFACI(frame *HdlcFrame) (err error) {
 
 }
 
-func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFrame) {
+func (htran *HdlcTransport) readFrameNormal(direction int) (err error, frame *HdlcFrame) {
 	p := make([]byte, 1)
 	for {
 		// expect opening flag
@@ -2058,6 +2054,70 @@ func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFram
 			// ignore everything until leading flag arrives
 			continue
 		}
+	}
+}
+
+// drop every second frame
+
+func (htran *HdlcTransport) readFrameTest1(direction int) (err error, frame *HdlcFrame) {
+	p := make([]byte, 1)
+	for {
+		// expect opening flag
+		_, err = io.ReadFull(htran.rw, p)
+		if nil != err {
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
+			return err, nil
+		}
+		if 0x7E == p[0] { // flag
+			frame := new(HdlcFrame)
+			frame.direction = direction
+			frame.fcs16 = PPPINITFCS16
+
+			err, _ = htran.decodeFrameFACI(frame, 0)
+			if nil != err {
+				if HdlcErrorMalformedSegment == err {
+					// ignore malformed segment and try read next segment
+					continue
+				} else {
+					return err, nil
+				}
+			} else {
+
+				htran.frameNum += 1
+				if 0 == htran.frameNum%2 {
+					if hdlcDebug {
+						fmt.Print("drop ")
+						htran.printFrame(frame)
+					}
+					// drop frame
+					continue
+				} else {
+					if hdlcDebug {
+						htran.printFrame(frame)
+					}
+				}
+
+				return nil, frame
+			}
+
+		} else {
+			// ignore everything until leading flag arrives
+			continue
+		}
+	}
+}
+
+func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFrame) {
+	var readFrameImpl int = htran.readFrameImpl
+	if 0 == readFrameImpl {
+		return htran.readFrameNormal(direction)
+	} else if 1 == readFrameImpl {
+		// drop every second packet
+		return htran.readFrameTest1(direction)
+	} else {
+		panic("unknow read frame implementation")
 	}
 }
 
@@ -2168,14 +2228,10 @@ func (htran *HdlcTransport) handleHdlc() {
 	var segment *HdlcSegment
 	var command *HdlcControlCommand
 	var sending bool
-	var windowAckWait bool
 	var err error
 	var vs uint8
 	var vr uint8
-	var transmittedFramesCnt uint32
 	var snrmCommand *HdlcControlCommand
-	var receivedFrame int
-	var noRRuntill time.Time = time.Now()
 
 	const (
 		STATE_CONNECTING = iota
@@ -2185,31 +2241,28 @@ func (htran *HdlcTransport) handleHdlc() {
 	)
 	var state int = STATE_DISCONNECTED
 
-	segmentsNoAck := list.New() // unacknowledged segments
-	windowAckWait = false
+	var segmentToAck *HdlcFrame = nil
 	framesToSend := list.New() // frames scheduled to send in next poll
+	rfCh := make(chan bool)
 
 mainLoop:
 	for {
-		htran.controlQueueMtx.Lock()
-		if htran.closed {
-			break mainLoop
-		}
-		htran.controlQueueMtx.Unlock()
-
 		if sending {
 
 			// flush any frames waiting for next poll
-			for framesToSend.Len() > 0 {
-				frame = framesToSend.Front().Value.(*HdlcFrame)
-				if frame.poll {
-					sending = false
+
+			if framesToSend.Len() > 0 {
+				for framesToSend.Len() > 0 {
+					frame = framesToSend.Front().Value.(*HdlcFrame)
+					if frame.poll {
+						sending = false
+					}
+					err = htran.writeFrame(frame)
+					if nil != err {
+						break mainLoop
+					}
+					framesToSend.Remove(framesToSend.Front())
 				}
-				err = htran.writeFrame(frame)
-				if nil != err {
-					break mainLoop
-				}
-				framesToSend.Remove(framesToSend.Front())
 				continue mainLoop
 			}
 
@@ -2224,10 +2277,10 @@ mainLoop:
 			}
 			htran.controlQueueMtx.Unlock()
 
-			// check for any pending segment to transmit
+			// check for any pending segment to transmit o retransmit unacknowledged segment
 
 			if nil == command {
-				if !windowAckWait {
+				if nil == segmentToAck {
 					htran.readQueueMtx.Lock()
 					if htran.readQueue.Len() > 0 {
 						segment = htran.readQueue.Front().Value.(*HdlcSegment)
@@ -2237,16 +2290,13 @@ mainLoop:
 					}
 					htran.readQueueMtx.Unlock()
 				} else {
-					// transmit unacknowledged frames
-					for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-						frame = e.Value.(*HdlcFrame)
-						if frame.poll {
-							sending = false
-						}
-						err = htran.writeFrame(frame)
-						if nil != err {
-							break mainLoop
-						}
+					// transmit unacknowledged segment
+					if segmentToAck.poll {
+						sending = false
+					}
+					err = htran.writeFrame(segmentToAck)
+					if nil != err {
+						break mainLoop
 					}
 					continue mainLoop
 				}
@@ -2293,8 +2343,8 @@ mainLoop:
 						if nil != err {
 							break mainLoop
 						}
+						segmentToAck = nil // no retransmitting anymore, we are disconnecting
 						state = STATE_DISCONNECTING
-						segmentsNoAck.Init() // since we are disconnecting there's no need to retransmit unacknowledged frame
 						sending = false
 					} else {
 						go func() { htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotConnected} }()
@@ -2310,43 +2360,25 @@ mainLoop:
 					} else {
 						frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 					}
+					frame.poll = true
 					frame.segmentation = !segment.last
 					frame.control = HDLC_CONTROL_I
 					frame.ns = vs
 					frame.nr = vr
 					frame.infoField = segment.p
 
-					if (vs == htran.modulus-1) || (transmittedFramesCnt == htran.windowSizeTransmit-1) || segment.last { // in modulo 8 mode available sequence numbers are in range 0..7
-						// ran out of available sequence numbers or exceeded transmit window or encountered segment boundary, therefore wait for acknowledgement of all segments we transmitted so far
-						frame.poll = true
-						err = htran.writeFrame(frame)
-						if nil != err {
-							break mainLoop
-						}
-						segmentsNoAck.PushBack(frame)
-						if vs == htran.modulus-1 {
-							vs = 0
-						} else {
-							vs += 1
-						}
-						sending = false
-						transmittedFramesCnt += 1
-						windowAckWait = true
-
-					} else {
-						// just transmit frame without acknowledgement
-						err = htran.writeFrame(frame)
-						if nil != err {
-							break mainLoop
-						}
-						segmentsNoAck.PushBack(frame)
-						if vs == htran.modulus-1 {
-							vs = 0
-						} else {
-							vs += 1
-						}
-						transmittedFramesCnt += 1
+					err = htran.writeFrame(frame)
+					if nil != err {
+						break mainLoop
 					}
+					segmentToAck = frame
+					if vs == htran.modulus-1 {
+						vs = 0
+					} else {
+						vs += 1
+					}
+					sending = false
+
 				} else {
 					go func() { htran.readAck <- map[string]interface{}{"err": HdlcErrorNotConnected} }()
 				}
@@ -2371,13 +2403,6 @@ mainLoop:
 					}
 					sending = false
 				} else if STATE_CONNECTED == state {
-					if htran.client {
-						if time.Now().Before(noRRuntill) {
-							// Do not send RR. Server has probably nothing to transmit yet. If we sent RR to server it would have replied back RR and we (client) would have replied RR because we have
-							// right now nothing transmit and thus we would be looping on RR untill either side has something to transmit.
-							continue mainLoop
-						}
-					}
 					frame = new(HdlcFrame)
 					if htran.client {
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2414,18 +2439,27 @@ mainLoop:
 		} else {
 			// receiving
 
-			receivedFrame = -1
-			htran.rw.SetReadDeadline(time.Now().Add(htran.responseTimeout))
-			if htran.client {
-				err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_CLIENT_INBOUND)
-			} else {
-				err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_SERVER_INBOUND)
+			go func() {
+				if htran.client {
+					htran.rw.SetReadDeadline(time.Now().Add(htran.responseTimeout))
+					err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_CLIENT_INBOUND)
+				} else {
+					err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_SERVER_INBOUND)
+				}
+				rfCh <- true
+			}()
+			select {
+			case <-rfCh:
+			case <-htran.finishedCh:
+				break mainLoop
 			}
+
 			if nil != err {
 				if isTimeOutErr(err) { // timeout occured
 					if htran.client {
 						// Per ISO 13239 it is responsibility of client to do time-out no-reply recovery and
 						// in case of timeout client may transmit  even if it did not receive the poll.
+
 						sending = true
 						continue mainLoop
 					} else {
@@ -2436,66 +2470,47 @@ mainLoop:
 					break mainLoop
 				}
 			}
-			receivedFrame = frame.control
-			if htran.client && (STATE_CONNECTED == state) {
-				if (HDLC_CONTROL_RR == receivedFrame) || (HDLC_CONTROL_RNR == receivedFrame) {
-					// server may have nothing to transmit, delay client RR response until server has something to transmit to awoid sending RR between client and server in loop in case that neither client nor server has something to tramsit
-					noRRuntill = time.Now().Add(htran.rrDelayTime)
-				}
-			}
 
 			// Proccess received frame.
 
 			// Transmit if received the poll.
 			if frame.poll {
 				sending = true
-				transmittedFramesCnt = 0
 			}
 
 			if HDLC_CONTROL_I == frame.control {
 				if STATE_CONNECTED == state {
-					var nr uint8
-					if frame.nr == 0 {
-						nr = htran.modulus - 1
-					} else {
-						nr = frame.nr - 1
-					}
+					if /* received in sequence frame */ (frame.ns == vr) && /* and received frame within ack widow */ (frame.nr == vs) {
 
-					// check for any reason to reject received frame
+						// Accept rame.
 
-					var reasonForReject []byte
-					if frame.nr != vs {
-						// acknowledging already acknowledged frame or not yet transmitted frame
-						if segmentsNoAck.Len() > 0 {
-							if (nr < segmentsNoAck.Front().Value.(*HdlcFrame).ns) || (nr > segmentsNoAck.Back().Value.(*HdlcFrame).ns) {
-								reasonForReject = []byte("unexpected ack")
+						if nil != segmentToAck {
+							// acknoledge transmitted segment
+							segmentToAck = nil
+							go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
+
+							// send to peer acknowledgement that we received in sequence frame
+
+							frame = new(HdlcFrame)
+							if htran.client {
+								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+							} else {
+								frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 							}
-						} else {
-							reasonForReject = []byte("unexpected ack")
+							frame.poll = true
+							frame.control = HDLC_CONTROL_RR
+							frame.ns = vs
+							frame.nr = vr
+							framesToSend.PushBack(frame)
 						}
-					}
-					if nil != reasonForReject {
-						frame = new(HdlcFrame)
-						if htran.client {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
-						}
-						frame.poll = true
-						frame.control = HDLC_CONTROL_FRMR
-						frame.infoField = reasonForReject
-						framesToSend.PushBack(frame)
-						continue mainLoop
-					}
-
-					if frame.ns == vr {
-						// Accept in sequence frame.
 
 						if htran.modulus-1 == vr {
 							vr = 0
 						} else {
 							vr += 1
 						}
+
+						// enqueue received segment
 
 						segment = new(HdlcSegment)
 						segment.p = frame.infoField
@@ -2507,34 +2522,38 @@ mainLoop:
 							go func() { htran.writeAck <- map[string]interface{}{"err": nil} }()
 						}
 
-						// acknowledge received frames
-						for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-							if e.Value.(*HdlcFrame).ns <= nr {
-								if false == e.Value.(*HdlcFrame).segmentation {
-									// peer acknowledged receival of last segment
-									go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
-								}
-								segmentsNoAck.Remove(e)
-							}
-						}
-						windowAckWait = segmentsNoAck.Len() > 0
+					} else {
 
-						var ackNow bool // anckowledge back received frame immediatelly ?
-						htran.readQueueMtx.Lock()
-						if windowAckWait {
-							// We are retransmitting unackowledged frames therefore no new I frame will be transmitted back now.
-							ackNow = true
-						} else if 0 == htran.readQueue.Len() {
-							// No  new I frame will be transmitted back now.
-							ackNow = true
+						// reject frame
+
+						frame = new(HdlcFrame)
+						if htran.client {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
 						} else {
-							// New I frame will be tramitted right now in next poll and that I frame will do acknowledgement.
-							ackNow = false
+							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 						}
-						htran.readQueueMtx.Unlock()
+						frame.poll = true
+						frame.control = HDLC_CONTROL_FRMR
+						frame.infoField = []byte("unexpected frame")
+						framesToSend.PushBack(frame)
+					}
 
-						// send to peer acknowledgement that we received in sequence frame
-						if ackNow {
+				} else {
+					// ignore frame
+				}
+
+			} else if HDLC_CONTROL_RR == frame.control {
+				if STATE_CONNECTED == state {
+
+					if /* received frame within ack widow */ frame.nr == vs {
+
+						if nil != segmentToAck {
+							// acknoledge transmitted segment
+							segmentToAck = nil
+							go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
+
+							// send to peer acknowledgement that we received in sequence frame
+
 							frame = new(HdlcFrame)
 							if htran.client {
 								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2549,105 +2568,40 @@ mainLoop:
 						}
 
 					} else {
-						// see: ISO/IEC 13239 - 6.11.4.2.3 Reception of incorrect frames
-						// ignore segment but reuse the P/F, nr
-
-						// this is frame with correct sequence number frame.nr, it may just arrive faster ahead in sequnce or arrive deleayed in sequnce
-
-						// acknowledge received frames
-						for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-							if e.Value.(*HdlcFrame).ns <= nr {
-								if false == e.Value.(*HdlcFrame).segmentation {
-									// peer acknowledged receival of last segment
-									go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
-								}
-								segmentsNoAck.Remove(e)
-							}
-						}
-						windowAckWait = segmentsNoAck.Len() > 0
-
+						// ignore frame with unexpected ucknowledgemnet
 					}
+
 				} else {
-					// ignore frame
-				}
-
-			} else if HDLC_CONTROL_RR == frame.control {
-				if STATE_CONNECTED == state {
-					var nr uint8
-					if frame.nr == 0 {
-						nr = htran.modulus - 1
-					} else {
-						nr = frame.nr - 1
-					}
-
-					// check for any reason to reject received frame
-
-					var reasonForReject []byte
-					if frame.nr != vs {
-						// acknowledging already acknowledged frame or not yet transmitted frame
-						if segmentsNoAck.Len() > 0 {
-							if (nr < segmentsNoAck.Front().Value.(*HdlcFrame).ns) || (nr > segmentsNoAck.Back().Value.(*HdlcFrame).ns) {
-								reasonForReject = []byte("unexpected ack")
-							}
-						} else {
-							reasonForReject = []byte("unexpected ack")
-						}
-					}
-					if nil != reasonForReject {
-						continue mainLoop
-					}
-
-					// acknowledge received frames
-					for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-						if e.Value.(*HdlcFrame).ns <= nr {
-							if false == e.Value.(*HdlcFrame).segmentation {
-								// peer acknowledged receival of last segment
-								go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
-							}
-							segmentsNoAck.Remove(e)
-						}
-					}
-					windowAckWait = segmentsNoAck.Len() > 0
-				} else {
-					// ignore frame
 				}
 			} else if HDLC_CONTROL_RNR == frame.control {
 				if STATE_CONNECTED == state {
-					var nr uint8
-					if frame.nr == 0 {
-						nr = htran.modulus - 1
+
+					if /* received frame within ack widow */ frame.nr == vs {
+
+						if nil != segmentToAck {
+							// acknoledge transmitted segment
+							segmentToAck = nil
+							go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
+
+							// send to peer acknowledgement that we received in sequence frame
+
+							frame = new(HdlcFrame)
+							if htran.client {
+								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+							} else {
+								frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+							}
+							frame.poll = true
+							frame.control = HDLC_CONTROL_RR
+							frame.ns = vs
+							frame.nr = vr
+							framesToSend.PushBack(frame)
+						}
+
 					} else {
-						nr = frame.nr - 1
+						// ignore frame with unexpected ucknowledgemnet
 					}
 
-					// check for any reason to reject received frame
-
-					var reasonForReject []byte
-					if frame.nr != vs {
-						// acknowledging already acknowledged frame or not yet transmitted frame
-						if segmentsNoAck.Len() > 0 {
-							if (nr < segmentsNoAck.Front().Value.(*HdlcFrame).ns) || (nr > segmentsNoAck.Back().Value.(*HdlcFrame).ns) {
-								reasonForReject = []byte("unexpected ack")
-							}
-						} else {
-							reasonForReject = []byte("unexpected ack")
-						}
-					}
-					if nil != reasonForReject {
-						continue mainLoop
-					}
-
-					// acknowledge received frames
-					for e := segmentsNoAck.Front(); e != nil; e = e.Next() {
-						if e.Value.(*HdlcFrame).ns <= nr {
-							if false == e.Value.(*HdlcFrame).segmentation {
-								// peer acknowledged receival of last segment
-								go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
-							}
-							segmentsNoAck.Remove(e)
-						}
-					}
-					windowAckWait = segmentsNoAck.Len() > 0
 				} else {
 					// ignore frame
 				}
@@ -2726,6 +2680,7 @@ mainLoop:
 					state = STATE_CONNECTED
 					vs = 0
 					vr = 0
+					segmentToAck = nil
 					framesToSend.PushBack(frame)
 				} else {
 					// ignore frame
@@ -2738,7 +2693,7 @@ mainLoop:
 					frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND // only client may send DISC
 					frame.control = HDLC_CONTROL_UA
 					state = STATE_DISCONNECTED
-					segmentsNoAck.Init() // since we are disconnected there's no need to retransmit unacknowledged frame
+					segmentToAck = nil // since we are disconnected there's no need to retransmit unacknowledged frame
 					framesToSend.PushBack(frame)
 				} else if STATE_DISCONNECTED == state {
 					frame = new(HdlcFrame)
@@ -2795,6 +2750,7 @@ mainLoop:
 					state = STATE_CONNECTED
 					vs = 0
 					vr = 0
+					segmentToAck = nil
 					go func() { htran.controlAck <- map[string]interface{}{"err": nil} }()
 				} else {
 					// ignore frame
@@ -2806,14 +2762,17 @@ mainLoop:
 					// ignore frame
 				}
 			} else if HDLC_CONTROL_FRMR == frame.control {
-				warnLog("frame rejected, reason: %s", string(frame.infoField))
-				//err = errors.New(fmt.Sprintf("frame rejected, reason: %s", string(frame.infoField)))
-				//break mainLoop
+				//warnLog("frame rejected, reason: %s", string(frame.infoField))
+				serr := fmt.Sprintf("frame rejected, reason: %s", string(frame.infoField))
+				errorLog(serr)
+				err = errors.New(fmt.Sprintf("frame rejected, reason: %s", string(frame.infoField)))
+				break mainLoop
 			} else {
 				// ignore frame
 			}
 		}
 	}
+
 	if nil != err {
 		go func() {
 			htran.writeAck <- map[string]interface{}{"err": err}
@@ -2828,5 +2787,9 @@ mainLoop:
 			close(htran.controlAck)
 		}()
 	}
-	htran.closedAck <- map[string]interface{}{"err": nil}
+
+	go func() {
+		htran.closedAck <- map[string]interface{}{"err": nil}
+		close(htran.closedAck)
+	}()
 }
