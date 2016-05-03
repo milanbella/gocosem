@@ -590,7 +590,7 @@ func TestX__hdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 	t.Logf("%s\n", <-chf)
 }
 
-func noTestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_2nd_frame(t *testing.T) {
+func noTestX__hdlc_WriteRead_i22_w3_parallel_transmit_random_drop(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
