@@ -2594,6 +2594,8 @@ mainLoop:
 
 						// reject frame
 
+						fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cp 900: FRMR\n")
+
 						frame = new(HdlcFrame)
 						if htran.client {
 							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2639,9 +2641,11 @@ mainLoop:
 							segmentToAck = nil
 							go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
 						}
-
 					} else {
-						// ignore frame with unexpected ucknowledgemnet
+						// retransmit all unacknowledged frames to insure that peer received frames we transmitted in last poll
+						if nil != segmentToAck {
+							framesToSend.PushBack(segmentToAck)
+						}
 					}
 
 				} else {
