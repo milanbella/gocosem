@@ -7,6 +7,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 )
 
 var hdlcTestServerSockName string = "./hdlcTestServer.sock"
@@ -15,7 +16,7 @@ var hdlcTestServer net.Listener
 func generateBytes(len int) []byte {
 	b := make([]byte, len)
 	for i := 0; i < len; i++ {
-		b[i] = byte(i % 10)
+		b[i] = byte(i)
 	}
 	return b
 }
@@ -590,7 +591,7 @@ func TestX__hdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 	t.Logf("%s\n", <-chf)
 }
 
-func noTestX__hdlc_WriteRead_i22_w3_parallel_transmit_random_drop(t *testing.T) {
+func TestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_5th_frame(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -604,6 +605,7 @@ func noTestX__hdlc_WriteRead_i22_w3_parallel_transmit_random_drop(t *testing.T) 
 
 	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
 	client.readFrameImpl = 1 // this read frame implementation drops every second frame
+	client.responseTimeout = time.Duration(1) * time.Millisecond
 	defer client.Close()
 	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
 	server.readFrameImpl = 1 // this read frame implementation drops every second frame
