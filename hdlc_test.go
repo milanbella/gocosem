@@ -2,7 +2,9 @@ package gocosem
 
 import (
 	"bytes"
+	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"os"
 	"strings"
@@ -117,11 +119,11 @@ func TestX__hdlc_SendSNRM(t *testing.T) {
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer func() {
 		client.Close()
 	}()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer func() {
 		server.Close()
 	}()
@@ -145,9 +147,9 @@ func TestX__hdlc_WriteRead(t *testing.T) {
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
 
 	err := client.SendSNRM(nil, nil)
@@ -195,9 +197,9 @@ func TestX__hdlc_WriteRead_i50(t *testing.T) {
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
 
 	maxInfoFieldLengthTransmit := uint8(50)
@@ -255,11 +257,10 @@ func TestX__hdlc_WriteRead_i30_drop_every_5th_frame(t *testing.T) {
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	client.readFrameImpl = 1 // this read frame implementation drops every 5th frame
-	client.responseTimeout = time.Duration(1) * time.Millisecond
 	defer client.Close()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	server.readFrameImpl = 1 // this read frame implementation drops every 5th frame
 	defer server.Close()
 
@@ -318,11 +319,10 @@ func TestX__hdlc_WriteRead_i30_drop_every_3rd_frame(t *testing.T) {
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	client.readFrameImpl = 2 // this read frame implementation drops every 3rd frame
-	client.responseTimeout = time.Duration(1) * time.Millisecond
 	defer client.Close()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	server.readFrameImpl = 2 // this read frame implementation drops every 3rd frame
 	defer server.Close()
 
@@ -372,6 +372,8 @@ func TestX__hdlc_WriteRead_i30_drop_every_3rd_frame(t *testing.T) {
 func TestX__hdlc_WriteRead_i30_drop_random_5(t *testing.T) {
 	hdlcTestInit(t)
 
+	rand.Seed(time.Now().UnixNano())
+
 	crw, srw := createHdlcPipe(t)
 	defer crw.Close()
 	defer srw.Close()
@@ -381,11 +383,10 @@ func TestX__hdlc_WriteRead_i30_drop_random_5(t *testing.T) {
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	client.readFrameImpl = 3 // this read frame implementation randomly drops every 1st, 2nd, 3rd, 4th or 5th frame
-	client.responseTimeout = time.Duration(1) * time.Millisecond
 	defer client.Close()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	client.readFrameImpl = 3 // this read frame implementation randomly drops every 1st, 2nd, 3rd, 4th or 5th frame
 	defer server.Close()
 
@@ -444,9 +445,9 @@ func TestX__hdlc_WriteRead_parallel_transmit(t *testing.T) {
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
 
 	err := client.SendSNRM(nil, nil)
@@ -559,9 +560,9 @@ func TestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
 
 	maxInfoFieldLengthTransmit := uint8(50)
@@ -677,9 +678,9 @@ func TestX__hdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	defer client.Close()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
 
 	maxInfoFieldLengthTransmit := uint8(22)
@@ -792,11 +793,10 @@ func TestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_5th_frame(t *test
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	client.readFrameImpl = 1 // this read frame implementation drops every 5th frame
-	client.responseTimeout = time.Duration(1) * time.Millisecond
 	defer client.Close()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	server.readFrameImpl = 1 // this read frame implementation drops every 5th frame
 	defer server.Close()
 
@@ -913,11 +913,10 @@ func TestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_3rd_frame(t *test
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	client.readFrameImpl = 2 // this read frame implementation drops every 3rd frame
-	client.responseTimeout = time.Duration(1) * time.Millisecond
 	defer client.Close()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	server.readFrameImpl = 2 // this read frame implementation drops every 3rd frame
 	defer server.Close()
 
@@ -1025,6 +1024,8 @@ func TestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_3rd_frame(t *test
 func TestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_random_5(t *testing.T) {
 	hdlcTestInit(t)
 
+	rand.Seed(time.Now().UnixNano())
+
 	crw, srw := createHdlcPipe(t)
 	defer crw.Close()
 	defer srw.Close()
@@ -1034,11 +1035,10 @@ func TestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_random_5(t *testing.T) 
 	physicalDeviceId := new(uint16)
 	*physicalDeviceId = 3
 
-	client := NewHdlcTransport(crw, true, clientId, logicalDeviceId, physicalDeviceId)
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
 	client.readFrameImpl = 3 // this read frame implementation randomly drops every 1st, 2nd, 3rd, 4th or 5th frame
-	client.responseTimeout = time.Duration(1) * time.Millisecond
 	defer client.Close()
-	server := NewHdlcTransport(srw, false, clientId, logicalDeviceId, physicalDeviceId)
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	server.readFrameImpl = 3 // this read frame implementation randomly drops every 1st, 2nd, 3rd, 4th or 5th frame
 	defer server.Close()
 

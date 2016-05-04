@@ -44,7 +44,6 @@ const (
 type HdlcTransport struct {
 	rw                         net.Conn
 	responseTimeout            time.Duration
-	rrDelayTime                time.Duration
 	modulus                    uint8
 	maxInfoFieldLengthTransmit uint8
 	maxInfoFieldLengthReceive  uint8
@@ -229,7 +228,7 @@ var HdlcErrorNoInfo = errors.New("frame contains no info field")
 var HdlcErrorFrameRejected = errors.New("frame rejected")
 var HdlcErrorNotClient = errors.New("not a client")
 
-func NewHdlcTransport(conn net.Conn, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
+func NewHdlcTransport(conn net.Conn, networkRoundtripTime time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
 	htran := new(HdlcTransport)
 	htran.rw = conn
 	htran.modulus = 8
@@ -254,7 +253,6 @@ func NewHdlcTransport(conn net.Conn, client bool, clientId uint8, logicalDeviceI
 	htran.finishedCh = make(chan bool)
 
 	htran.responseTimeout = time.Duration(1) * time.Second //TODO: set it to network round trip time
-	htran.rrDelayTime = 3 * htran.responseTimeout          //TODO: set it
 	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_4
 	htran.clientId = clientId
 	htran.logicalDeviceId = logicalDeviceId
@@ -405,7 +403,7 @@ func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
 			htran.writeQueueMtx.Unlock()
 		}
 
-		// Do not wait untill all of data arrives. Just return segment length of data event if more data is requested.
+		// Do not wait untill all of requested data length arrives. Just return as soon as end of segment is observed even if more data is requested.
 		if segment.last {
 			break
 		}
