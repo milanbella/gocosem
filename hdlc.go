@@ -2777,6 +2777,12 @@ mainLoop:
 					// ignore frame
 				}
 			} else if HDLC_CONTROL_SNRM == frame.control {
+				if STATE_CONNECTED == state {
+					// in case SRRM is retransmitted due to lost UA we go to disconnected state agian
+					framesToSend = list.New()
+					segmentToAck = nil
+					state = STATE_DISCONNECTED
+				}
 				if STATE_DISCONNECTED == state {
 
 					err, maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive, windowSizeTransmit, windowSizeReceive := htran.decodeLinkParameters(frame)
