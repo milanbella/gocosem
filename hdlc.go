@@ -2594,8 +2594,6 @@ mainLoop:
 
 						// reject frame
 
-						fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@ cp 900: FRMR\n")
-
 						frame = new(HdlcFrame)
 						if htran.client {
 							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
