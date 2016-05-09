@@ -14,8 +14,6 @@ import (
 	"time"
 )
 
-var hdlcDebug = true
-
 const (
 	HDLC_FRAME_DIRECTION_CLIENT_INBOUND  = 1
 	HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND = 2
@@ -2600,17 +2598,19 @@ mainLoop:
 				break mainLoop
 			}
 
-			if htran.client {
-				if nil != segmentToAck {
-					fmt.Printf("client: vs %d, vr %d, akcWait[vs %d, vr %d]\n", vs, vr, segmentToAck.ns, segmentToAck.nr)
+			if hdlcDebug {
+				if htran.client {
+					if nil != segmentToAck {
+						fmt.Printf("client: vs %d, vr %d, akcWait[vs %d, vr %d]\n", vs, vr, segmentToAck.ns, segmentToAck.nr)
+					} else {
+						fmt.Printf("client: vs %d, vr %d\n", vs, vr)
+					}
 				} else {
-					fmt.Printf("client: vs %d, vr %d\n", vs, vr)
-				}
-			} else {
-				if nil != segmentToAck {
-					fmt.Printf("server: vs %d, vr %d, akcWait[vs %d, vr %d]\n", vs, vr, segmentToAck.ns, segmentToAck.nr)
-				} else {
-					fmt.Printf("server: vs %d, vr %d\n", vs, vr)
+					if nil != segmentToAck {
+						fmt.Printf("server: vs %d, vr %d, akcWait[vs %d, vr %d]\n", vs, vr, segmentToAck.ns, segmentToAck.nr)
+					} else {
+						fmt.Printf("server: vs %d, vr %d\n", vs, vr)
+					}
 				}
 			}
 

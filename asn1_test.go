@@ -61,7 +61,7 @@ func uintEquals(t *testing.T, a []uint, b []uint, report bool) bool {
 	return true
 }
 
-func TestX_encode_AARQapdu(t *testing.T) {
+func TestAsn1_encode_AARQapdu(t *testing.T) {
 	t.Logf("TestX_encode_AARQapdu()")
 	/*
 
@@ -123,7 +123,7 @@ func TestX_encode_AARQapdu(t *testing.T) {
 	}
 }
 
-func TestX_decode_AAREapdu(t *testing.T) {
+func TestAsn1_decode_AAREapdu(t *testing.T) {
 	t.Logf("TestX_decode_AAREapdu()")
 	/*
 

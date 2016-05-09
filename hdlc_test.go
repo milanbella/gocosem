@@ -2,7 +2,6 @@ package gocosem
 
 import (
 	"bytes"
-	"fmt"
 	"io"
 	"math/rand"
 	"net"
@@ -47,7 +46,7 @@ func hdlcTestInit(t *testing.T) {
 	}
 }
 
-func TestX__hdlc_hdlcPipe(t *testing.T) {
+func TestHdlc_hdlcPipe(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -72,7 +71,7 @@ func TestX__hdlc_hdlcPipe(t *testing.T) {
 
 }
 
-func TestX__hdlc_pppfcs16(t *testing.T) {
+func TestHdlc_pppfcs16(t *testing.T) {
 	var buf bytes.Buffer
 	//var b []byte = []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09}
 	var b []byte = []byte{0xA0, 0x11, 0x00, 0x02, 0x00, 0x07, 0x03, 0x10}
@@ -107,7 +106,7 @@ func TestX__hdlc_pppfcs16(t *testing.T) {
 	}
 }
 
-func TestX__hdlc_SendSNRM(t *testing.T) {
+func TestHdlc_SendSNRM(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -135,7 +134,7 @@ func TestX__hdlc_SendSNRM(t *testing.T) {
 	client.SendDISC()
 }
 
-func TestX__hdlc_WriteRead(t *testing.T) {
+func TestHdlc_WriteRead(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -185,7 +184,7 @@ func TestX__hdlc_WriteRead(t *testing.T) {
 	<-ch
 }
 
-func TestX__hdlc_WriteRead_i50(t *testing.T) {
+func TestHdlc_WriteRead_i50(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -245,7 +244,7 @@ func TestX__hdlc_WriteRead_i50(t *testing.T) {
 
 }
 
-func TestX__hdlc_WriteRead_i30_drop_every_5th_frame(t *testing.T) {
+func TestHdlc_WriteRead_i30_drop_every_5th_frame(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -307,7 +306,7 @@ func TestX__hdlc_WriteRead_i30_drop_every_5th_frame(t *testing.T) {
 
 }
 
-func TestX__hdlc_WriteRead_i30_drop_every_3rd_frame(t *testing.T) {
+func TestHdlc_WriteRead_i30_drop_every_3rd_frame(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -369,7 +368,7 @@ func TestX__hdlc_WriteRead_i30_drop_every_3rd_frame(t *testing.T) {
 
 }
 
-func TestX__hdlc_WriteRead_i30_drop_random_5(t *testing.T) {
+func TestHdlc_WriteRead_i30_drop_random_5(t *testing.T) {
 	hdlcTestInit(t)
 
 	rand.Seed(time.Now().UnixNano())
@@ -433,7 +432,7 @@ func TestX__hdlc_WriteRead_i30_drop_random_5(t *testing.T) {
 
 }
 
-func TestX__hdlc_WriteRead_parallel_transmit(t *testing.T) {
+func TestHdlc_WriteRead_parallel_transmit(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -548,7 +547,7 @@ func TestX__hdlc_WriteRead_parallel_transmit(t *testing.T) {
 
 }
 
-func TestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
+func TestHdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -666,7 +665,7 @@ func TestX__hdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 
 }
 
-func TestX__hdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
+func TestHdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -781,7 +780,7 @@ func TestX__hdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 	t.Logf("%s\n", <-chf)
 }
 
-func TestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_5th_frame(t *testing.T) {
+func TestHdlc_WriteRead_i22_w3_parallel_transmit_drop_every_5th_frame(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -901,7 +900,7 @@ func TestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_5th_frame(t *test
 
 }
 
-func TestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_3rd_frame(t *testing.T) {
+func TestHdlc_WriteRead_i22_w3_parallel_transmit_drop_every_3rd_frame(t *testing.T) {
 	hdlcTestInit(t)
 
 	crw, srw := createHdlcPipe(t)
@@ -1021,7 +1020,7 @@ func TestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_every_3rd_frame(t *test
 
 }
 
-func TestX__hdlc_WriteRead_i22_w3_parallel_transmit_drop_random_5(t *testing.T) {
+func TestHdlc_WriteRead_i22_w3_parallel_transmit_drop_random_5(t *testing.T) {
 	hdlcTestInit(t)
 
 	rand.Seed(time.Now().UnixNano())

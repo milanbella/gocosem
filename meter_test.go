@@ -5,19 +5,6 @@ import (
 	"testing"
 )
 
-/*
-var (
-	realMeter bool
-	meterIp   string
-)
-
-func init() {
-	flag.BoolVar(&realMeter, "real", false, "test against real meter")
-	flag.StringVar(&meterIp, "ip", "172.16.123.182", "meter ip address")
-	flag.Parse()
-}
-*/
-
 func TestMeter_TcpConnect(t *testing.T) {
 	if !realMeter {
 		t.SkipNow()

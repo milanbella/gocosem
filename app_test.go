@@ -2,10 +2,11 @@ package gocosem
 
 import (
 	"bytes"
+	"sync"
 	"testing"
 )
 
-func TestX__TcpConnect(t *testing.T) {
+func TestApp_TcpConnect(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 	defer mockCosemServer.Close()
@@ -21,7 +22,7 @@ func TestX__TcpConnect(t *testing.T) {
 
 }
 
-func TestX_AppConnect(t *testing.T) {
+func TestApp_AppConnect(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 	defer mockCosemServer.Close()
@@ -49,7 +50,7 @@ func TestX_AppConnect(t *testing.T) {
 
 }
 
-func TestX_GetRequestNormal(t *testing.T) {
+func TestApp_app_GetRequestNormal(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 	defer mockCosemServer.Close()
@@ -97,7 +98,7 @@ func TestX_GetRequestNormal(t *testing.T) {
 	}
 }
 
-func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
+func TestApp_GetRequestNormal_blockTransfer(t *testing.T) {
 	ensureMockCosemServer(t)
 	mockCosemServer.Init()
 	defer mockCosemServer.Close()
@@ -147,7 +148,7 @@ func TestX_GetRequestNormal_blockTransfer(t *testing.T) {
 
 }
 
-func TestX_GetRequestWithList(t *testing.T) {
+func TestApp_GetRequestWithList(t *testing.T) {
 	ensureMockCosemServer(t)
 	defer mockCosemServer.Close()
 	mockCosemServer.Init()
@@ -213,7 +214,7 @@ func TestX_GetRequestWithList(t *testing.T) {
 	}
 }
 
-func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
+func TestApp_GetRequestWithList_blockTransfer(t *testing.T) {
 	ensureMockCosemServer(t)
 	defer mockCosemServer.Close()
 	mockCosemServer.Init()
@@ -280,7 +281,7 @@ func TestX_GetRequestWithList_blockTransfer(t *testing.T) {
 	}
 }
 
-func TestX_SetRequestNormal(t *testing.T) {
+func TestApp_SetRequestNormal(t *testing.T) {
 	ensureMockCosemServer(t)
 	defer mockCosemServer.Close()
 	mockCosemServer.Init()
@@ -375,7 +376,7 @@ func TestX_SetRequestNormal(t *testing.T) {
 	}
 }
 
-func TestX_SetRequestNormal_blockTransfer(t *testing.T) {
+func TestApp_SetRequestNormal_blockTransfer(t *testing.T) {
 	ensureMockCosemServer(t)
 	defer mockCosemServer.Close()
 	mockCosemServer.Init()
@@ -477,7 +478,7 @@ func TestX_SetRequestNormal_blockTransfer(t *testing.T) {
 	}
 }
 
-func TestX_SetRequestWithList(t *testing.T) {
+func TestApp_SetRequestWithList(t *testing.T) {
 	ensureMockCosemServer(t)
 	defer mockCosemServer.Close()
 	mockCosemServer.Init()
@@ -619,7 +620,7 @@ func TestX_SetRequestWithList(t *testing.T) {
 	}
 }
 
-func TestX_SetRequestWithList_blockTransfer(t *testing.T) {
+func TestApp_SetRequestWithList_blockTransfer(t *testing.T) {
 	ensureMockCosemServer(t)
 	defer mockCosemServer.Close()
 	mockCosemServer.Init()
@@ -768,7 +769,7 @@ func TestX_SetRequestWithList_blockTransfer(t *testing.T) {
 	}
 }
 
-func TestX_1000parallelRequests(t *testing.T) {
+func TestApp_1000parallelRequests(t *testing.T) {
 	ensureMockCosemServer(t)
 	defer mockCosemServer.Close()
 	mockCosemServer.Init()
@@ -807,15 +808,18 @@ func TestX_1000parallelRequests(t *testing.T) {
 
 	n1 := count
 	countSent := 0
+	countSentMtx := new(sync.Mutex)
 	for i := 0; i < count; i += 1 {
 		go func() {
 			ch := aconn.SendRequest(vals)
 			msg := <-ch
 			sink <- msg
+			countSentMtx.Lock()
 			countSent++
 			if countSent == n1 {
 				close(sink)
 			}
+			countSentMtx.Unlock()
 		}()
 	}
 

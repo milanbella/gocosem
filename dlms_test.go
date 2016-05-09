@@ -9,7 +9,7 @@ func oidEquals(oid1 *DlmsOid, oid2 *DlmsOid) bool {
 	return (oid1[0] == oid2[0]) || (oid1[1] == oid2[1]) || (oid1[2] == oid2[2]) || (oid1[3] == oid2[3]) || (oid1[4] == oid2[4]) || (oid1[5] == oid2[5])
 }
 
-func TestX_encode_decode_DlmsData_array(t *testing.T) {
+func TestDlms_encode_decode_DlmsData_array(t *testing.T) {
 
 	data := new(DlmsData)
 	data.Typ = DATA_TYPE_ARRAY
@@ -310,7 +310,7 @@ func TestX_encode_decode_DlmsData_array(t *testing.T) {
 
 }
 
-func TestX_print_DlmsData_array(t *testing.T) {
+func TestDlms_print_DlmsData_array(t *testing.T) {
 	var b = []byte{0x02, 0x04, 0x02, 0x04, 0x12, 0x00, 0x08, 0x09, 0x06, 0x00, 0x00, 0x01, 0x00, 0x00, 0xFF, 0x0F, 0x02, 0x12, 0x00, 0x00, 0x09, 0x0C, 0x07, 0xDF, 0x0A, 0x0D, 0x02, 0x10, 0x2D, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0x0C, 0x07, 0xDF, 0x0A, 0x0D, 0x02, 0x13,
 		0x0F, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00}
 
@@ -324,7 +324,7 @@ func TestX_print_DlmsData_array(t *testing.T) {
 
 }
 
-func TestX_print_DateTime(t *testing.T) {
+func TestDlms_print_DateTime(t *testing.T) {
 	var b = []byte{0x07, 0xDF, 0x0A, 0x0D, 0x02, 0x10, 0x2D, 0x00, 0x00, 0x00, 0x00, 0x00}
 
 	dateTime := DlmsDateTimeFromBytes(b)
@@ -336,7 +336,7 @@ func TestX_print_DateTime(t *testing.T) {
 	t.Logf("%s", dateTime.PrintDateTime())
 }
 
-func TestX_encode_GetRequestNormal(t *testing.T) {
+func TestDlms_encode_GetRequestNormal(t *testing.T) {
 	b := []byte{
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00}
 
@@ -352,7 +352,7 @@ func TestX_encode_GetRequestNormal(t *testing.T) {
 
 }
 
-func TestX_decode_GetRequestNormal(t *testing.T) {
+func TestDlms_decode_GetRequestNormal(t *testing.T) {
 	pdu := []byte{
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00}
 	buf := bytes.NewBuffer(pdu)
@@ -380,7 +380,7 @@ func TestX_decode_GetRequestNormal(t *testing.T) {
 
 }
 
-func TestX_encode_GetResponseNormal(t *testing.T) {
+func TestDlms_encode_GetResponseNormal(t *testing.T) {
 	b := []byte{
 		0x00,
 		0x09, 0x06,
@@ -400,7 +400,7 @@ func TestX_encode_GetResponseNormal(t *testing.T) {
 	}
 }
 
-func TestX_encode_GetResponseNormalBlock(t *testing.T) {
+func TestDlms_encode_GetResponseNormalBlock(t *testing.T) {
 	b := []byte{
 		0x09, 0x06,
 		0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
@@ -419,7 +419,7 @@ func TestX_encode_GetResponseNormalBlock(t *testing.T) {
 	}
 }
 
-func TestX_decode_GetResponseNormal(t *testing.T) {
+func TestDlms_decode_GetResponseNormal(t *testing.T) {
 	pdu := []byte{
 		0x00,
 		0x09, 0x06,
@@ -448,7 +448,7 @@ func TestX_decode_GetResponseNormal(t *testing.T) {
 	}
 }
 
-func TestX_decode_GetResponseNormalBlock(t *testing.T) {
+func TestDlms_decode_GetResponseNormalBlock(t *testing.T) {
 	pdu := []byte{
 		0x09, 0x06,
 		0x11, 0x22, 0x33, 0x44, 0x55, 0x66}
@@ -473,7 +473,7 @@ func TestX_decode_GetResponseNormalBlock(t *testing.T) {
 	}
 }
 
-func TestX_encode_GetRequestWithList(t *testing.T) {
+func TestDlms_encode_GetRequestWithList(t *testing.T) {
 
 	b := []byte{
 		0x02,
@@ -493,7 +493,7 @@ func TestX_encode_GetRequestWithList(t *testing.T) {
 	}
 }
 
-func TestX_decode_GetRequestWithList(t *testing.T) {
+func TestDlms_decode_GetRequestWithList(t *testing.T) {
 	b := []byte{
 		0x02,
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
@@ -542,7 +542,7 @@ func TestX_decode_GetRequestWithList(t *testing.T) {
 	}
 }
 
-func TestX_encode_GetResponseWithList(t *testing.T) {
+func TestDlms_encode_GetResponseWithList(t *testing.T) {
 	b := []byte{
 		0x02,
 		0x00,
@@ -578,7 +578,7 @@ func TestX_encode_GetResponseWithList(t *testing.T) {
 	}
 }
 
-func TestX_decode_GetResponseWithList(t *testing.T) {
+func TestDlms_decode_GetResponseWithList(t *testing.T) {
 	b := []byte{
 		0x02,
 		0x00,
@@ -617,7 +617,7 @@ func TestX_decode_GetResponseWithList(t *testing.T) {
 	}
 }
 
-func TestX_encode_GetResponsewithDataBlock(t *testing.T) {
+func TestDlms_encode_GetResponsewithDataBlock(t *testing.T) {
 	b := []byte{
 		0x00,
 		0x00, 0x00, 0x00, 0x01,
@@ -637,7 +637,7 @@ func TestX_encode_GetResponsewithDataBlock(t *testing.T) {
 	}
 }
 
-func TestX_decode_GetResponsewithDataBlock(t *testing.T) {
+func TestDlms_decode_GetResponsewithDataBlock(t *testing.T) {
 	b := []byte{
 		0x00,
 		0x00, 0x00, 0x00, 0x01,
@@ -666,7 +666,7 @@ func TestX_decode_GetResponsewithDataBlock(t *testing.T) {
 	}
 }
 
-func TestX_encode_GetRequestForNextDataBlock(t *testing.T) {
+func TestDlms_encode_GetRequestForNextDataBlock(t *testing.T) {
 	b := []byte{
 		0x00, 0x00, 0x00, 0x01}
 
@@ -682,7 +682,7 @@ func TestX_encode_GetRequestForNextDataBlock(t *testing.T) {
 
 }
 
-func TestX_decode_GetRequestForNextDataBlock(t *testing.T) {
+func TestDlms_decode_GetRequestForNextDataBlock(t *testing.T) {
 	b := []byte{
 		0x00, 0x00, 0x00, 0x01}
 	buf := bytes.NewBuffer(b)
@@ -697,7 +697,7 @@ func TestX_decode_GetRequestForNextDataBlock(t *testing.T) {
 	}
 }
 
-func TestX_encode_SetRequestNormal(t *testing.T) {
+func TestDlms_encode_SetRequestNormal(t *testing.T) {
 	b := []byte{
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
 		0x09, 0x32,
@@ -724,7 +724,7 @@ func TestX_encode_SetRequestNormal(t *testing.T) {
 
 }
 
-func TestX_decode_SetRequestNormal(t *testing.T) {
+func TestDlms_decode_SetRequestNormal(t *testing.T) {
 	pdu := []byte{
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
 		0x09, 0x32,
@@ -766,7 +766,7 @@ func TestX_decode_SetRequestNormal(t *testing.T) {
 
 }
 
-func TestX_encode_SetRequestWithList(t *testing.T) {
+func TestDlms_encode_SetRequestWithList(t *testing.T) {
 	b := []byte{
 		0x02,
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
@@ -818,7 +818,7 @@ func TestX_encode_SetRequestWithList(t *testing.T) {
 	}
 }
 
-func TestX_decode_SetRequestWithList(t *testing.T) {
+func TestDlms_decode_SetRequestWithList(t *testing.T) {
 	pdu := []byte{
 		0x02,
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
@@ -887,7 +887,7 @@ func TestX_decode_SetRequestWithList(t *testing.T) {
 
 }
 
-func TestX_encode_SetRequestNormalBlock(t *testing.T) {
+func TestDlms_encode_SetRequestNormalBlock(t *testing.T) {
 	b := []byte{
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
 		0x00,
@@ -912,7 +912,7 @@ func TestX_encode_SetRequestNormalBlock(t *testing.T) {
 
 }
 
-func TestX_decode_SetRequestNormalBlock(t *testing.T) {
+func TestDlms_decode_SetRequestNormalBlock(t *testing.T) {
 	pdu := []byte{
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
 		0x00,
@@ -954,7 +954,7 @@ func TestX_decode_SetRequestNormalBlock(t *testing.T) {
 	}
 }
 
-func TestX_encode_SetRequestWithListBlock(t *testing.T) {
+func TestDlms_encode_SetRequestWithListBlock(t *testing.T) {
 	b := []byte{
 		0x02,
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
@@ -996,7 +996,7 @@ func TestX_encode_SetRequestWithListBlock(t *testing.T) {
 	}
 }
 
-func TestX_decode_SetRequestWithListBlock(t *testing.T) {
+func TestDlms_decode_SetRequestWithListBlock(t *testing.T) {
 	pdu := []byte{
 		0x02,
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00,
@@ -1056,7 +1056,7 @@ func TestX_decode_SetRequestWithListBlock(t *testing.T) {
 
 }
 
-func TestX_encode_SetResponseNormal(t *testing.T) {
+func TestDlms_encode_SetResponseNormal(t *testing.T) {
 	b := []byte{0x01}
 
 	var buf bytes.Buffer
@@ -1070,7 +1070,7 @@ func TestX_encode_SetResponseNormal(t *testing.T) {
 	}
 }
 
-func TestX_decode_SetResponseNormal(t *testing.T) {
+func TestDlms_decode_SetResponseNormal(t *testing.T) {
 	pdu := []byte{0x01}
 	buf := bytes.NewBuffer(pdu)
 
@@ -1084,7 +1084,7 @@ func TestX_decode_SetResponseNormal(t *testing.T) {
 	}
 }
 
-func TestX_encode_SetResponseWithList(t *testing.T) {
+func TestDlms_encode_SetResponseWithList(t *testing.T) {
 	b := []byte{0x02, 0x00, 0x01}
 
 	var buf bytes.Buffer
@@ -1098,7 +1098,7 @@ func TestX_encode_SetResponseWithList(t *testing.T) {
 	}
 }
 
-func TestX_decode_SetResponseWithList(t *testing.T) {
+func TestDlms_decode_SetResponseWithList(t *testing.T) {
 	pdu := []byte{0x02, 0x00, 0x01}
 	buf := bytes.NewBuffer(pdu)
 
@@ -1118,7 +1118,7 @@ func TestX_decode_SetResponseWithList(t *testing.T) {
 	}
 }
 
-func TestX_encode_SetResponseForDataBlock(t *testing.T) {
+func TestDlms_encode_SetResponseForDataBlock(t *testing.T) {
 	b := []byte{0x00, 0x00, 0x00, 0x01}
 
 	var buf bytes.Buffer
@@ -1132,7 +1132,7 @@ func TestX_encode_SetResponseForDataBlock(t *testing.T) {
 	}
 }
 
-func TestX_decode_SetResponseForDataBlock(t *testing.T) {
+func TestDlms_decode_SetResponseForDataBlock(t *testing.T) {
 	pdu := []byte{0x00, 0x00, 0x00, 0x01}
 	buf := bytes.NewBuffer(pdu)
 
@@ -1146,7 +1146,7 @@ func TestX_decode_SetResponseForDataBlock(t *testing.T) {
 	}
 }
 
-func TestX_encode_SetResponseForLastDataBlock(t *testing.T) {
+func TestDlms_encode_SetResponseForLastDataBlock(t *testing.T) {
 	b := []byte{0x00, 0x00, 0x00, 0x00, 0x02}
 
 	var buf bytes.Buffer
@@ -1160,7 +1160,7 @@ func TestX_encode_SetResponseForLastDataBlock(t *testing.T) {
 	}
 }
 
-func TestX_decode_SetResponseForLastDataBlock(t *testing.T) {
+func TestDlms_decode_SetResponseForLastDataBlock(t *testing.T) {
 	pdu := []byte{0x00, 0x00, 0x00, 0x00, 0x01}
 	buf := bytes.NewBuffer(pdu)
 
@@ -1177,7 +1177,7 @@ func TestX_decode_SetResponseForLastDataBlock(t *testing.T) {
 	}
 }
 
-func TestX_encode_SetRequestWithDataBlock(t *testing.T) {
+func TestDlms_encode_SetRequestWithDataBlock(t *testing.T) {
 	b := []byte{
 		0x01,
 		0x00, 0x00, 0x00, 0x02,
@@ -1195,7 +1195,7 @@ func TestX_encode_SetRequestWithDataBlock(t *testing.T) {
 	}
 }
 
-func TestX_decode_SetRequestWithDataBlock(t *testing.T) {
+func TestDlms_decode_SetRequestWithDataBlock(t *testing.T) {
 	pdu := []byte{
 		0x01,
 		0x00, 0x00, 0x00, 0x02,
@@ -1220,7 +1220,7 @@ func TestX_decode_SetRequestWithDataBlock(t *testing.T) {
 	}
 }
 
-func TestX_encode_SetResponseForLastDataBlockWithList(t *testing.T) {
+func TestDlms_encode_SetResponseForLastDataBlockWithList(t *testing.T) {
 	b := []byte{
 		0x02,
 		0x00,
@@ -1238,7 +1238,7 @@ func TestX_encode_SetResponseForLastDataBlockWithList(t *testing.T) {
 	}
 }
 
-func TestX_decode_SetResponseForLastDataBlockWithList(t *testing.T) {
+func TestDlms_decode_SetResponseForLastDataBlockWithList(t *testing.T) {
 	pdu := []byte{
 		0x02,
 		0x00,
