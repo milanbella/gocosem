@@ -210,7 +210,7 @@ func TestHdlc_WriteRead_i50(t *testing.T) {
 	}
 	defer client.SendDISC()
 
-	bc := generateBytes(2500)
+	bc := generateBytes(1000)
 	n, err := client.Write(bc)
 	if nil != err {
 		t.Fatalf("%v", err)
@@ -272,7 +272,7 @@ func TestHdlc_WriteRead_i30_drop_every_5th_frame(t *testing.T) {
 	}
 	defer client.SendDISC()
 
-	bc := generateBytes(2500)
+	bc := generateBytes(1000)
 	n, err := client.Write(bc)
 	if nil != err {
 		t.Fatalf("%v", err)
@@ -334,7 +334,7 @@ func TestHdlc_WriteRead_i30_drop_every_3rd_frame(t *testing.T) {
 	}
 	defer client.SendDISC()
 
-	bc := generateBytes(2500)
+	bc := generateBytes(1000)
 	n, err := client.Write(bc)
 	if nil != err {
 		t.Fatalf("%v", err)
@@ -398,7 +398,7 @@ func TestHdlc_WriteRead_i30_drop_random_5(t *testing.T) {
 	}
 	defer client.SendDISC()
 
-	bc := generateBytes(2500)
+	bc := generateBytes(1000)
 	n, err := client.Write(bc)
 	if nil != err {
 		t.Fatalf("%v", err)
@@ -573,7 +573,7 @@ func TestHdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 	}
 	defer client.SendDISC()
 
-	bt := generateBytes(2500)
+	bt := generateBytes(1000)
 
 	// both server and client transmit at the same time
 
@@ -691,7 +691,7 @@ func TestHdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 	}
 	defer client.SendDISC()
 
-	bt := generateBytes(2500)
+	bt := generateBytes(1000)
 
 	// both server and client transmit at the same time
 
@@ -808,7 +808,7 @@ func TestHdlc_WriteRead_i22_w3_parallel_transmit_drop_every_5th_frame(t *testing
 	}
 	defer client.SendDISC()
 
-	bt := generateBytes(2500)
+	bt := generateBytes(1000)
 
 	// both server and client transmit at the same time
 
@@ -928,7 +928,7 @@ func TestHdlc_WriteRead_i22_w3_parallel_transmit_drop_every_3rd_frame(t *testing
 	}
 	defer client.SendDISC()
 
-	bt := generateBytes(2500)
+	bt := generateBytes(1000)
 
 	// both server and client transmit at the same time
 
@@ -1050,7 +1050,7 @@ func TestHdlc_WriteRead_i22_w3_parallel_transmit_drop_random_5(t *testing.T) {
 	}
 	defer client.SendDISC()
 
-	bt := generateBytes(2500)
+	bt := generateBytes(1000)
 
 	// both server and client transmit at the same time
 
