@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+var hdlcDebug bool
+
 const (
 	HDLC_FRAME_DIRECTION_CLIENT_INBOUND  = 1
 	HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND = 2

@@ -5,7 +5,6 @@ import "flag"
 var (
 	realMeter bool
 	meterIp   string
-	hdlcDebug bool
 )
 
 func init() {
