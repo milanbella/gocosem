@@ -2703,26 +2703,10 @@ mainLoop:
 						}
 					} else {
 
-						// reject frame
+						if /* received frame not within ack window */ frame.nr != vs {
 
-						frame = new(HdlcFrame)
-						if htran.client {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
-						}
-						frame.poll = false
-						frame.control = HDLC_CONTROL_FRMR
-						frame.infoField = []byte("unexpected frame")
-						framesToSend.PushBack(frame)
+							// reject frame
 
-						// resynchronize frames
-
-						if nil != segmentToAck {
-							// retransmit all unacknowledged frames to insure that peer received frames we transmitted in last poll
-							framesToSend.PushBack(segmentToAck)
-						} else {
-							// sent RR to insure that peer received last acknowledgement we sent
 							frame = new(HdlcFrame)
 							if htran.client {
 								frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2730,10 +2714,31 @@ mainLoop:
 								frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
 							}
 							frame.poll = false
-							frame.control = HDLC_CONTROL_RR
-							frame.ns = vs
-							frame.nr = vr
+							frame.control = HDLC_CONTROL_FRMR
+							frame.infoField = []byte("unexpected frame")
 							framesToSend.PushBack(frame)
+
+							// resynchronize frames
+
+							if nil != segmentToAck {
+								// retransmit all unacknowledged frames to insure that peer received frames we transmitted in last poll
+								framesToSend.PushBack(segmentToAck)
+							} else {
+								// sent RR to insure that peer received last acknowledgement we sent
+								frame = new(HdlcFrame)
+								if htran.client {
+									frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+								} else {
+									frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+								}
+								frame.poll = false
+								frame.control = HDLC_CONTROL_RR
+								frame.ns = vs
+								frame.nr = vr
+								framesToSend.PushBack(frame)
+							}
+						} else {
+							// ignore out of sequence frame
 						}
 					}
 
@@ -2943,7 +2948,7 @@ mainLoop:
 					// ignore frame
 				}
 			} else if HDLC_CONTROL_FRMR == frame.control {
-				//warnLog("frame rejected, reason: %s", string(frame.infoField))
+				warnLog("frame rejected, reason: %s", string(frame.infoField))
 				/*
 					serr := fmt.Sprintf("frame rejected, reason: %s", string(frame.infoField))
 					errorLog(serr)

@@ -3010,38 +3010,8 @@ func _TcpConnect(ch chan *DlmsMessage, ipAddr string, port int) {
 }
 
 func TcpConnect(ipAddr string, port int) <-chan *DlmsMessage {
-	/*
-		var (
-			conn net.Conn
-			err  error
-		)
-	*/
 
 	ch := make(chan *DlmsMessage)
-	/*
-		go func() {
-			defer close(ch)
-
-			dconn := new(DlmsConn)
-			dconn.closed = false
-			dconn.ch = make(chan *DlmsMessage)
-			dconn.transportType = Transport_TCP
-
-			debugLog("connecting tcp transport: %s:%d\n", ipAddr, port)
-			conn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", ipAddr, port))
-			if nil != err {
-				errorLog("net.Dial(%s:%d) failed, err: %v", ipAddr, port, err)
-				ch <- &DlmsMessage{err, nil}
-				return
-			}
-			dconn.rwc = conn
-
-			debugLog("tcp transport connected: %s:%d\n", ipAddr, port)
-			dconn.handleTransportRequests()
-			ch <- &DlmsMessage{nil, dconn}
-
-		}()
-	*/
 	go _TcpConnect(ch, ipAddr, port)
 	return ch
 }
