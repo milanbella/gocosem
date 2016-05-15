@@ -2887,7 +2887,7 @@ func _hdlcTransportReceive(ch chan *DlmsMessage, rwc io.ReadWriteCloser) {
 		ch <- &DlmsMessage{err, nil}
 		return
 	}
-	if !bytes.Equal(llcHeader, []byte{}) {
+	if !bytes.Equal(llcHeader, []byte{0xE6, 0xE7, 0x00}) {
 		err = fmt.Errorf("wrong LLC header")
 		errorLog("%s", err)
 		ch <- &DlmsMessage{err, nil}
