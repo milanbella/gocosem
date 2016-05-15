@@ -2677,16 +2677,16 @@ type DlmsConn struct {
 }
 
 type DlmsTransportSendRequest struct {
-	ch       chan *DlmsMessage // reply channel
-	srcWport uint16
-	dstWport uint16
-	pdu      []byte
+	ch  chan *DlmsMessage // reply channel
+	src uint16
+	dst uint16
+	pdu []byte
 }
 
 type DlmsTransportReceiveRequest struct {
-	ch       chan *DlmsMessage // reply channel
-	srcWport uint16
-	dstWport uint16
+	ch  chan *DlmsMessage // reply channel
+	src uint16
+	dst uint16
 }
 
 var ErrorDlmsTimeout = errors.New("ErrorDlmsTimeout")
@@ -2740,64 +2740,33 @@ func ipTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport uint
 // Never call this method directly or else you risk race condtitions on io.Writer() in case of paralell call.
 // Use instead proxy variant 'transportSend()' which queues this method call on sync channel.
 
-func (dconn *DlmsConn) doTransportSend(ch chan *DlmsMessage, srcWport uint16, dstWport uint16, pdu []byte) {
+func (dconn *DlmsConn) doTransportSend(ch chan *DlmsMessage, src uint16, dst uint16, pdu []byte) {
 	go func() {
-		debugLog("trnasport type: %d, srcWport: %d, dstWport: %d\n", dconn.transportType, srcWport, dstWport)
+		debugLog("trnasport type: %d, srcWport: %d, dstWport: %d\n", dconn.transportType, src, dst)
 
 		if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
-			ipTransportSend(ch, dconn.rwc, srcWport, dstWport, pdu)
+			ipTransportSend(ch, dconn.rwc, src, dst, pdu)
 		} else {
 			panic(fmt.Sprintf("unsupported transport type: %d", dconn.transportType))
 		}
 	}()
 }
 
-func (dconn *DlmsConn) transportSend(ch chan *DlmsMessage, srcWport uint16, dstWport uint16, pdu []byte) {
+func (dconn *DlmsConn) transportSend(ch chan *DlmsMessage, src uint16, dst uint16, pdu []byte) {
 	// enqueue send request
 	go func() {
 		msg := new(DlmsMessage)
 
 		data := new(DlmsTransportSendRequest)
 		data.ch = ch
-		data.srcWport = srcWport
-		data.dstWport = dstWport
+		data.src = src
+		data.dst = dst
 		data.pdu = pdu
 
 		msg.Data = data
 
 		dconn.ch <- msg
 	}()
-}
-
-func readLength(r io.Reader, length int) (err error, data []byte) {
-	var (
-		buf bytes.Buffer
-		n   int
-	)
-
-	p := make([]byte, length)
-	for {
-		n, err = r.Read(p[0 : length-buf.Len()])
-		if n > 0 {
-			buf.Write(p[0:n])
-			if length == buf.Len() {
-				return nil, buf.Bytes()
-			} else if length < buf.Len() {
-				panic("assertion failed")
-			} else {
-				continue
-			}
-		} else if 0 == n {
-			if nil != err {
-				errorLog("io.Read() failed, err: %v", err)
-				return err, data
-			} else {
-				panic("assertion failed")
-			}
-		} else {
-			panic("assertion failed")
-		}
-	}
 }
 
 func ipTransportReceiveForApp(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport uint16, dstWport uint16) {
@@ -2860,12 +2829,12 @@ func ipTransportReceive(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport *
 // Never call this method directly or else you risk race condtitions on io.Reader() in case of paralell call.
 // Use instead proxy variant 'transportReceive()' which queues this method call on sync channel.
 
-func (dconn *DlmsConn) doTransportReceive(ch chan *DlmsMessage, srcWport uint16, dstWport uint16) {
+func (dconn *DlmsConn) doTransportReceive(ch chan *DlmsMessage, src uint16, dst uint16) {
 	debugLog("trnascport type: %d\n", dconn.transportType)
 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 
-		ipTransportReceiveForApp(ch, dconn.rwc, srcWport, srcWport)
+		ipTransportReceiveForApp(ch, dconn.rwc, src, dst)
 
 	} else {
 		err := fmt.Errorf("unsupported transport type: %d", dconn.transportType)
@@ -2875,13 +2844,13 @@ func (dconn *DlmsConn) doTransportReceive(ch chan *DlmsMessage, srcWport uint16,
 	}
 }
 
-func (dconn *DlmsConn) transportReceive(ch chan *DlmsMessage, srcWport uint16, dstWport uint16) {
+func (dconn *DlmsConn) transportReceive(ch chan *DlmsMessage, src uint16, dst uint16) {
 	// enqueue receive request
 	go func() {
 		data := new(DlmsTransportReceiveRequest)
 		data.ch = ch
-		data.srcWport = srcWport
-		data.dstWport = dstWport
+		data.src = src
+		data.dst = dst
 		msg := new(DlmsMessage)
 		msg.Data = data
 		dconn.ch <- msg
@@ -2900,7 +2869,7 @@ func (dconn *DlmsConn) handleTransportRequests() {
 					errorLog("%s", err)
 					v.ch <- &DlmsMessage{err, nil}
 				}
-				dconn.doTransportSend(v.ch, v.srcWport, v.dstWport, v.pdu)
+				dconn.doTransportSend(v.ch, v.src, v.dst, v.pdu)
 			case *DlmsTransportReceiveRequest:
 				debugLog("receive request\n")
 				if dconn.closed {
@@ -2908,7 +2877,7 @@ func (dconn *DlmsConn) handleTransportRequests() {
 					errorLog("%s", err)
 					v.ch <- &DlmsMessage{err, nil}
 				}
-				dconn.doTransportReceive(v.ch, v.srcWport, v.dstWport)
+				dconn.doTransportReceive(v.ch, v.src, v.dst)
 			default:
 				panic(fmt.Sprintf("unknown request type: %T", v))
 			}
