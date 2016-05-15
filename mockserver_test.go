@@ -651,8 +651,8 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	}
 	m := msg.Data.(map[string]interface{})
 
-	logicalDevice := m["dstWport"].(uint16)
-	applicationClient := m["srcWport"].(uint16)
+	logicalDevice := m["dst"].(uint16)
+	applicationClient := m["src"].(uint16)
 
 	// reply with aare
 	ipTransportSend(ch, rwc, logicalDevice, applicationClient, aare)

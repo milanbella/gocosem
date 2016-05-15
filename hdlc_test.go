@@ -119,13 +119,9 @@ func TestHdlc_SendSNRM(t *testing.T) {
 	*physicalDeviceId = 3
 
 	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
-	defer func() {
-		client.Close()
-	}()
+	defer client.Close()
 	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
-	defer func() {
-		server.Close()
-	}()
+	defer server.Close()
 
 	err := client.SendSNRM(nil, nil)
 	if nil != err {

@@ -176,14 +176,14 @@ func (aconn *AppConn) handleAppLevelRequests() {
 				return
 			}
 			m := _msg.Data.(map[string]interface{})
-			if m["srcWport"] != aconn.logicalDevice {
-				err := fmt.Errorf("incorret srcWport in received pdu: %v", m["srcWport"])
+			if m["src"] != aconn.logicalDevice {
+				err := fmt.Errorf("incorret src address in received pdu: %v", m["src"])
 				errorLog("%s", err)
 				aconn.Close()
 				return
 			}
-			if m["dstWport"] != aconn.applicationClient {
-				err := fmt.Errorf("incorret dstWport in received pdu: %v", m["dstWport"])
+			if m["dst"] != aconn.applicationClient {
+				err := fmt.Errorf("incorret dst address in received pdu: %v", m["dst"])
 				errorLog("%s", err)
 				aconn.Close()
 				return

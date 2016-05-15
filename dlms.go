@@ -2678,15 +2678,15 @@ type DlmsConn struct {
 
 type DlmsTransportSendRequest struct {
 	ch  chan *DlmsMessage // reply channel
-	src uint16
-	dst uint16
+	src uint16            // source address
+	dst uint16            // destination address
 	pdu []byte
 }
 
 type DlmsTransportReceiveRequest struct {
 	ch  chan *DlmsMessage // reply channel
-	src uint16
-	dst uint16
+	src uint16            // source address
+	dst uint16            // destination address
 }
 
 var ErrorDlmsTimeout = errors.New("ErrorDlmsTimeout")
@@ -2741,15 +2741,17 @@ func ipTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport uint
 // Use instead proxy variant 'transportSend()' which queues this method call on sync channel.
 
 func (dconn *DlmsConn) doTransportSend(ch chan *DlmsMessage, src uint16, dst uint16, pdu []byte) {
-	go func() {
-		debugLog("trnasport type: %d, srcWport: %d, dstWport: %d\n", dconn.transportType, src, dst)
+	go dconn._doTransportSend(ch, src, dst, pdu)
+}
 
-		if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
-			ipTransportSend(ch, dconn.rwc, src, dst, pdu)
-		} else {
-			panic(fmt.Sprintf("unsupported transport type: %d", dconn.transportType))
-		}
-	}()
+func (dconn *DlmsConn) _doTransportSend(ch chan *DlmsMessage, src uint16, dst uint16, pdu []byte) {
+	debugLog("trnasport type: %d, srcWport: %d, dstWport: %d\n", dconn.transportType, src, dst)
+
+	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
+		ipTransportSend(ch, dconn.rwc, src, dst, pdu)
+	} else {
+		panic(fmt.Sprintf("unsupported transport type: %d", dconn.transportType))
+	}
 }
 
 func (dconn *DlmsConn) transportSend(ch chan *DlmsMessage, src uint16, dst uint16, pdu []byte) {
@@ -2814,8 +2816,8 @@ func _ipTransportReceive(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport 
 
 	// send reply
 	m := make(map[string]interface{})
-	m["srcWport"] = header.SrcWport
-	m["dstWport"] = header.DstWport
+	m["src"] = header.SrcWport
+	m["dst"] = header.DstWport
 	m["pdu"] = pdu
 	ch <- &DlmsMessage{nil, m}
 
@@ -2858,33 +2860,31 @@ func (dconn *DlmsConn) transportReceive(ch chan *DlmsMessage, src uint16, dst ui
 }
 
 func (dconn *DlmsConn) handleTransportRequests() {
-	go func() {
-		debugLog("start\n")
-		for msg := range dconn.ch {
-			switch v := msg.Data.(type) {
-			case *DlmsTransportSendRequest:
-				debugLog("send request\n")
-				if dconn.closed {
-					err := fmt.Errorf("tansport send request ignored, transport connection closed")
-					errorLog("%s", err)
-					v.ch <- &DlmsMessage{err, nil}
-				}
-				dconn.doTransportSend(v.ch, v.src, v.dst, v.pdu)
-			case *DlmsTransportReceiveRequest:
-				debugLog("receive request\n")
-				if dconn.closed {
-					err := fmt.Errorf("transport receive request ignored, transport connection closed")
-					errorLog("%s", err)
-					v.ch <- &DlmsMessage{err, nil}
-				}
-				dconn.doTransportReceive(v.ch, v.src, v.dst)
-			default:
-				panic(fmt.Sprintf("unknown request type: %T", v))
+	debugLog("start\n")
+	for msg := range dconn.ch {
+		switch v := msg.Data.(type) {
+		case *DlmsTransportSendRequest:
+			debugLog("send request\n")
+			if dconn.closed {
+				err := fmt.Errorf("tansport send request ignored, transport connection closed")
+				errorLog("%s", err)
+				v.ch <- &DlmsMessage{err, nil}
 			}
+			dconn.doTransportSend(v.ch, v.src, v.dst, v.pdu)
+		case *DlmsTransportReceiveRequest:
+			debugLog("receive request\n")
+			if dconn.closed {
+				err := fmt.Errorf("transport receive request ignored, transport connection closed")
+				errorLog("%s", err)
+				v.ch <- &DlmsMessage{err, nil}
+			}
+			dconn.doTransportReceive(v.ch, v.src, v.dst)
+		default:
+			panic(fmt.Sprintf("unknown request type: %T", v))
 		}
-		debugLog("finish\n")
-		dconn.rwc.Close()
-	}()
+	}
+	debugLog("finish\n")
+	dconn.rwc.Close()
 }
 
 func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalDevice uint16, password string) <-chan *DlmsMessage {
@@ -2916,14 +2916,14 @@ func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalD
 			return
 		}
 		m := msg.Data.(map[string]interface{})
-		if m["srcWport"] != logicalDevice {
-			err = fmt.Errorf("incorret srcWport in received pdu: %v", m["srcWport"])
+		if m["src"] != logicalDevice {
+			err = fmt.Errorf("incorret src address in received pdu: %v", m["srcWport"])
 			errorLog("%s", err)
 			ch <- &DlmsMessage{err, nil}
 			return
 		}
-		if m["dstWport"] != applicationClient {
-			err = fmt.Errorf("incorret dstWport in received pdu: %v", m["dstWport"])
+		if m["dst"] != applicationClient {
+			err = fmt.Errorf("incorret dst address in received pdu: %v", m["dstWport"])
 			errorLog("%s", err)
 			ch <- &DlmsMessage{err, nil}
 			return
@@ -2973,7 +2973,7 @@ func _TcpConnect(ch chan *DlmsMessage, ipAddr string, port int) {
 	dconn.rwc = conn
 
 	debugLog("tcp transport connected: %s:%d\n", ipAddr, port)
-	dconn.handleTransportRequests()
+	go dconn.handleTransportRequests()
 	ch <- &DlmsMessage{nil, dconn}
 
 }
