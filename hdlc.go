@@ -42,7 +42,7 @@ const (
 )
 
 type HdlcTransport struct {
-	rw                         net.Conn
+	rw                         io.ReadWriter
 	responseTimeout            time.Duration
 	modulus                    uint8
 	maxInfoFieldLengthTransmit uint8
@@ -228,9 +228,9 @@ var HdlcErrorNoInfo = errors.New("frame contains no info field")
 var HdlcErrorFrameRejected = errors.New("frame rejected")
 var HdlcErrorNotClient = errors.New("not a client")
 
-func NewHdlcTransport(conn net.Conn, networkRoundtripTime time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
+func NewHdlcTransport(rw io.ReadWriter, networkRoundtripTime time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
 	htran := new(HdlcTransport)
-	htran.rw = conn
+	htran.rw = rw
 	htran.modulus = 8
 	htran.maxInfoFieldLengthTransmit = 128
 	htran.maxInfoFieldLengthReceive = 128
@@ -257,6 +257,9 @@ func NewHdlcTransport(conn net.Conn, networkRoundtripTime time.Duration, client 
 	htran.clientId = clientId
 	htran.logicalDeviceId = logicalDeviceId
 	htran.physicalDeviceId = physicalDeviceId
+	if nil == htran.physicalDeviceId {
+		htran.serverAddrLength = HDLC_ADDRESS_LENGTH_1
+	}
 	htran.client = client
 	go htran.handleHdlc()
 	return htran
@@ -2587,7 +2590,12 @@ mainLoop:
 			timeout = false
 			go func() {
 				if htran.client {
-					htran.rw.SetReadDeadline(time.Now().Add(htran.responseTimeout))
+					// we need upcast to net.Conn so that we cat set read dealine (this should be only palce in entire code needing such upcasting)
+					conn, ok := htran.rw.(net.Conn)
+					if !ok {
+						panic("io.ReadWriter passed to hdlc transport constructor must be instance of net.Conn")
+					}
+					conn.SetReadDeadline(time.Now().Add(htran.responseTimeout))
 					err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_CLIENT_INBOUND)
 				} else {
 					err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_SERVER_INBOUND)

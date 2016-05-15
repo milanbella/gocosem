@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"time"
 	"unsafe"
 )
 
@@ -2648,6 +2649,7 @@ const (
 	Transport_HLDC = int(1)
 	Transport_UDP  = int(2)
 	Transport_TCP  = int(3)
+	Transport_HDLC = int(4)
 )
 
 type DlmsMessage struct {
@@ -2672,6 +2674,8 @@ type tWrapperHeader struct {
 type DlmsConn struct {
 	closed        bool
 	rwc           io.ReadWriteCloser
+	hdlcRwc       io.ReadWriteCloser // stream used by hdlc transport for sending and reading HDLC frames
+	hdlcClient    *HdlcTransport
 	transportType int
 	ch            chan *DlmsMessage // channel to handle transport level requests/replies
 }
@@ -2737,6 +2741,29 @@ func ipTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport uint
 	go _ipTransportSend(ch, rwc, srcWport, dstWport, pdu)
 }
 
+func _hdlcTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, pdu []byte) {
+	llcHeader := []byte{0xE6, 0xE6, 0x00} // LLC sublayer header
+	debugLog("sending: %02X%02X\n", llcHeader, pdu)
+	_, err := rwc.Write(llcHeader)
+	if nil != err {
+		errorLog("io.Write() failed, err: %v\n", err)
+		ch <- &DlmsMessage{err, nil}
+		return
+	}
+	_, err = rwc.Write(pdu)
+	if nil != err {
+		errorLog("io.Write() failed, err: %v\n", err)
+		ch <- &DlmsMessage{err, nil}
+		return
+	}
+	debugLog("sending: ok")
+	ch <- &DlmsMessage{nil, nil}
+}
+
+func hdlcTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, pdu []byte) {
+	go _hdlcTransportSend(ch, rwc, pdu)
+}
+
 // Never call this method directly or else you risk race condtitions on io.Writer() in case of paralell call.
 // Use instead proxy variant 'transportSend()' which queues this method call on sync channel.
 
@@ -2745,10 +2772,12 @@ func (dconn *DlmsConn) doTransportSend(ch chan *DlmsMessage, src uint16, dst uin
 }
 
 func (dconn *DlmsConn) _doTransportSend(ch chan *DlmsMessage, src uint16, dst uint16, pdu []byte) {
-	debugLog("trnasport type: %d, srcWport: %d, dstWport: %d\n", dconn.transportType, src, dst)
+	debugLog("trnasport type: %d, src: %d, dst: %d\n", dconn.transportType, src, dst)
 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 		ipTransportSend(ch, dconn.rwc, src, dst, pdu)
+	} else if Transport_HDLC == dconn.transportType {
+		hdlcTransportSend(ch, dconn.rwc, pdu)
 	} else {
 		panic(fmt.Sprintf("unsupported transport type: %d", dconn.transportType))
 	}
@@ -2828,6 +2857,59 @@ func ipTransportReceive(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport *
 	go _ipTransportReceive(ch, rwc, srcWport, dstWport)
 }
 
+func _hdlcTransportReceive(ch chan *DlmsMessage, rwc io.ReadWriteCloser) {
+	var (
+		err error
+	)
+
+	debugLog("receiving pdu ...\n")
+
+	//TODO: Set maxSegmnetSize to AARE.user-information.server-max-receive-pdu-size.
+	// AARE.user-information is of 'InitiateResponse' asn1 type and is A-XDR encoded.
+	maxSegmnetSize := 2048
+
+	p := make([]byte, maxSegmnetSize)
+
+	// hdlc ReadWriter read returns always whole segment into 'p' or full 'p' if 'p' is not long enough to fit in all segment
+	n, err := rwc.Read(p)
+	if nil != err {
+		errorLog("hdlc.Read() failed, err: %v\n", err)
+		ch <- &DlmsMessage{err, nil}
+		return
+	}
+
+	buf := bytes.NewBuffer(p[0:n])
+
+	llcHeader := make([]byte, 3) // LLC sublayer header
+	err = binary.Read(buf, binary.BigEndian, llcHeader)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v\n", err)
+		ch <- &DlmsMessage{err, nil}
+		return
+	}
+	if !bytes.Equal(llcHeader, []byte{}) {
+		err = fmt.Errorf("wrong LLC header")
+		errorLog("%s", err)
+		ch <- &DlmsMessage{err, nil}
+		return
+	}
+	debugLog("LLC header: ok\n")
+
+	pdu := buf.Bytes()
+	debugLog("received pdu: % 02X\n", pdu)
+
+	// send reply
+	m := make(map[string]interface{})
+	m["pdu"] = pdu
+	ch <- &DlmsMessage{nil, m}
+
+	return
+}
+
+func hdlcTransportReceive(ch chan *DlmsMessage, rwc io.ReadWriteCloser) {
+	go _hdlcTransportReceive(ch, rwc)
+}
+
 // Never call this method directly or else you risk race condtitions on io.Reader() in case of paralell call.
 // Use instead proxy variant 'transportReceive()' which queues this method call on sync channel.
 
@@ -2837,6 +2919,7 @@ func (dconn *DlmsConn) doTransportReceive(ch chan *DlmsMessage, src uint16, dst 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 
 		ipTransportReceiveForApp(ch, dconn.rwc, src, dst)
+	} else if Transport_HLDC == dconn.transportType {
 
 	} else {
 		err := fmt.Errorf("unsupported transport type: %d", dconn.transportType)
@@ -2884,7 +2967,20 @@ func (dconn *DlmsConn) handleTransportRequests() {
 		}
 	}
 	debugLog("finish\n")
-	dconn.rwc.Close()
+
+	// cleanup
+
+	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
+		dconn.rwc.Close()
+	} else if Transport_HDLC == dconn.transportType {
+		err := dconn.hdlcClient.SendDISC()
+		if nil != err {
+			errorLog("%s", err)
+		}
+		dconn.rwc.Close()
+	} else {
+		panic(fmt.Sprintf("unsupported transport type: %d", dconn.transportType))
+	}
 }
 
 func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalDevice uint16, password string) <-chan *DlmsMessage {
@@ -2982,6 +3078,51 @@ func TcpConnect(ipAddr string, port int) <-chan *DlmsMessage {
 
 	ch := make(chan *DlmsMessage)
 	go _TcpConnect(ch, ipAddr, port)
+	return ch
+}
+
+func _HdlcConnect(ch chan *DlmsMessage, ipAddr string, port int, applicationClient uint16, logicalDevice uint16, networkRoundtripTime time.Duration) {
+	var (
+		conn net.Conn
+		err  error
+	)
+
+	defer close(ch)
+
+	dconn := new(DlmsConn)
+	dconn.closed = false
+	dconn.ch = make(chan *DlmsMessage)
+	dconn.transportType = Transport_HDLC
+
+	debugLog("connecting hdlc transport over tcp: %s:%d\n", ipAddr, port)
+	conn, err = net.Dial("tcp", fmt.Sprintf("%s:%d", ipAddr, port))
+	if nil != err {
+		errorLog("net.Dial(%s:%d) failed, err: %v", ipAddr, port, err)
+		ch <- &DlmsMessage{err, nil}
+		return
+	}
+	dconn.hdlcRwc = conn
+
+	client := NewHdlcTransport(dconn.hdlcRwc, networkRoundtripTime, true, uint8(applicationClient), logicalDevice, nil)
+	err = client.SendSNRM(nil, nil)
+	if nil != err {
+		conn.Close()
+		ch <- &DlmsMessage{err, nil}
+		return
+	}
+	dconn.hdlcClient = client
+
+	debugLog("hdlc transport connected over tcp: %s:%d\n", ipAddr, port)
+
+	go dconn.handleTransportRequests()
+	ch <- &DlmsMessage{nil, dconn}
+
+}
+
+func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevice uint16, networkRoundtripTime time.Duration) <-chan *DlmsMessage {
+
+	ch := make(chan *DlmsMessage)
+	go _HdlcConnect(ch, ipAddr, port, applicationClient, logicalDevice, networkRoundtripTime)
 	return ch
 }
 
