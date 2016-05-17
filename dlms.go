@@ -2866,7 +2866,7 @@ func _hdlcTransportReceive(ch chan *DlmsMessage, rwc io.ReadWriteCloser) {
 
 	//TODO: Set maxSegmnetSize to AARE.user-information.server-max-receive-pdu-size.
 	// AARE.user-information is of 'InitiateResponse' asn1 type and is A-XDR encoded.
-	maxSegmnetSize := 2048
+	maxSegmnetSize := 3 * 1024
 
 	p := make([]byte, maxSegmnetSize)
 
@@ -2876,6 +2876,10 @@ func _hdlcTransportReceive(ch chan *DlmsMessage, rwc io.ReadWriteCloser) {
 		errorLog("hdlc.Read() failed, err: %v\n", err)
 		ch <- &DlmsMessage{err, nil}
 		return
+	}
+	// Guard against read buffer being shorter then maximum possible segment size.
+	if len(p) == n {
+		panic("short read suspected, increase buffer size!")
 	}
 
 	buf := bytes.NewBuffer(p[0:n])

@@ -197,8 +197,8 @@ func TestHdlc_WriteRead_i50(t *testing.T) {
 	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
 
-	maxInfoFieldLengthTransmit := uint8(50)
-	maxInfoFieldLengthReceive := uint8(50)
+	maxInfoFieldLengthTransmit := uint16(50)
+	maxInfoFieldLengthReceive := uint16(50)
 
 	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive)
 	if nil != err {
@@ -259,8 +259,8 @@ func TestHdlc_WriteRead_i30_drop_every_5th_frame(t *testing.T) {
 	server.readFrameImpl = 1 // this read frame implementation drops every 5th frame
 	defer server.Close()
 
-	maxInfoFieldLengthTransmit := uint8(30)
-	maxInfoFieldLengthReceive := uint8(30)
+	maxInfoFieldLengthTransmit := uint16(30)
+	maxInfoFieldLengthReceive := uint16(30)
 
 	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive)
 	if nil != err {
@@ -321,8 +321,8 @@ func TestHdlc_WriteRead_i30_drop_every_3rd_frame(t *testing.T) {
 	server.readFrameImpl = 2 // this read frame implementation drops every 3rd frame
 	defer server.Close()
 
-	maxInfoFieldLengthTransmit := uint8(30)
-	maxInfoFieldLengthReceive := uint8(30)
+	maxInfoFieldLengthTransmit := uint16(30)
+	maxInfoFieldLengthReceive := uint16(30)
 
 	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive)
 	if nil != err {
@@ -385,8 +385,8 @@ func TestHdlc_WriteRead_i30_drop_random_5(t *testing.T) {
 	client.readFrameImpl = 3 // this read frame implementation randomly drops every 1st, 2nd, 3rd, 4th or 5th frame
 	defer server.Close()
 
-	maxInfoFieldLengthTransmit := uint8(30)
-	maxInfoFieldLengthReceive := uint8(30)
+	maxInfoFieldLengthTransmit := uint16(30)
+	maxInfoFieldLengthReceive := uint16(30)
 
 	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive)
 	if nil != err {
@@ -560,8 +560,8 @@ func TestHdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
 
-	maxInfoFieldLengthTransmit := uint8(50)
-	maxInfoFieldLengthReceive := uint8(50)
+	maxInfoFieldLengthTransmit := uint16(50)
+	maxInfoFieldLengthReceive := uint16(50)
 
 	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive)
 	if nil != err {
@@ -678,8 +678,8 @@ func TestHdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
 	defer server.Close()
 
-	maxInfoFieldLengthTransmit := uint8(22)
-	maxInfoFieldLengthReceive := uint8(22)
+	maxInfoFieldLengthTransmit := uint16(22)
+	maxInfoFieldLengthReceive := uint16(22)
 
 	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive)
 	if nil != err {
@@ -795,8 +795,8 @@ func TestHdlc_WriteRead_i22_w3_parallel_transmit_drop_every_5th_frame(t *testing
 	server.readFrameImpl = 1 // this read frame implementation drops every 5th frame
 	defer server.Close()
 
-	maxInfoFieldLengthTransmit := uint8(22)
-	maxInfoFieldLengthReceive := uint8(22)
+	maxInfoFieldLengthTransmit := uint16(22)
+	maxInfoFieldLengthReceive := uint16(22)
 
 	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive)
 	if nil != err {
@@ -915,8 +915,8 @@ func TestHdlc_WriteRead_i22_w3_parallel_transmit_drop_every_3rd_frame(t *testing
 	server.readFrameImpl = 2 // this read frame implementation drops every 3rd frame
 	defer server.Close()
 
-	maxInfoFieldLengthTransmit := uint8(22)
-	maxInfoFieldLengthReceive := uint8(22)
+	maxInfoFieldLengthTransmit := uint16(22)
+	maxInfoFieldLengthReceive := uint16(22)
 
 	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive)
 	if nil != err {
@@ -1037,8 +1037,8 @@ func TestHdlc_WriteRead_i22_w3_parallel_transmit_drop_random_5(t *testing.T) {
 	server.readFrameImpl = 3 // this read frame implementation randomly drops every 1st, 2nd, 3rd, 4th or 5th frame
 	defer server.Close()
 
-	maxInfoFieldLengthTransmit := uint8(22)
-	maxInfoFieldLengthReceive := uint8(22)
+	maxInfoFieldLengthTransmit := uint16(22)
+	maxInfoFieldLengthReceive := uint16(22)
 
 	err := client.SendSNRM(&maxInfoFieldLengthTransmit, &maxInfoFieldLengthReceive)
 	if nil != err {

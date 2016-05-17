@@ -45,8 +45,8 @@ type HdlcTransport struct {
 	rw                         io.ReadWriter
 	responseTimeout            time.Duration
 	modulus                    uint8
-	maxInfoFieldLengthTransmit uint8
-	maxInfoFieldLengthReceive  uint8
+	maxInfoFieldLengthTransmit uint16
+	maxInfoFieldLengthReceive  uint16
 
 	windowSizeTransmit uint32
 	windowSizeReceive  uint32
@@ -116,8 +116,8 @@ type HdlcControlCommand struct {
 }
 
 type HdlcControlCommandSNRM struct {
-	maxInfoFieldLengthTransmit uint8
-	maxInfoFieldLengthReceive  uint8
+	maxInfoFieldLengthTransmit uint16
+	maxInfoFieldLengthReceive  uint16
 	windowSizeTransmit         uint32
 	windowSizeReceive          uint32
 }
@@ -265,7 +265,7 @@ func NewHdlcTransport(rw io.ReadWriter, networkRoundtripTime time.Duration, clie
 	return htran
 }
 
-func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint8, maxInfoFieldLengthReceive *uint8) (err error) {
+func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint16, maxInfoFieldLengthReceive *uint16) (err error) {
 
 	command := new(HdlcControlCommand)
 	command.control = HDLC_CONTROL_SNRM
@@ -926,7 +926,7 @@ func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
 	return nil
 }
 
-func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, maxInfoFieldLengthTransmit *uint8, maxInfoFieldLengthReceive *uint8, windowSizeTransmit *uint32, windowSizeReceive *uint32) {
+func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, maxInfoFieldLengthTransmit *uint16, maxInfoFieldLengthReceive *uint16, windowSizeTransmit *uint32, windowSizeReceive *uint32) {
 	r := bytes.NewBuffer(frame.infoField)
 
 	p := make([]byte, 1)
@@ -1029,19 +1029,26 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 		parameterValue := pp
 
 		if 0x05 == parameterId {
-			if 1 != length {
+			maxInfoFieldLengthTransmit = new(uint16)
+			if 1 == length {
+				*maxInfoFieldLengthTransmit = uint16(parameterValue[0])
+			} else if 2 == length {
+				*maxInfoFieldLengthTransmit = uint16(parameterValue[0])<<8 | uint16(parameterValue[1])
+			} else {
 				warnLog("wrong parameter value length")
 				return HdlcErrorParameterValue, nil, nil, nil, nil
 			}
-			maxInfoFieldLengthTransmit = new(uint8)
-			*maxInfoFieldLengthTransmit = uint8(parameterValue[0])
+
 		} else if 0x06 == parameterId {
-			if 1 != length {
+			maxInfoFieldLengthReceive = new(uint16)
+			if 1 == length {
+				*maxInfoFieldLengthReceive = uint16(parameterValue[0])
+			} else if 2 == length {
+				*maxInfoFieldLengthReceive = uint16(parameterValue[0])<<8 | uint16(parameterValue[1])
+			} else {
 				warnLog("wrong parameter value length")
 				return HdlcErrorParameterValue, nil, nil, nil, nil
 			}
-			maxInfoFieldLengthReceive = new(uint8)
-			*maxInfoFieldLengthReceive = uint8(parameterValue[0])
 		} else if 0x07 == parameterId {
 			if 4 != length {
 				warnLog("wrong parameter value length")
@@ -1079,7 +1086,7 @@ func (htran *HdlcTransport) decodeLinkParameters(frame *HdlcFrame) (err error, m
 
 }
 
-func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldLengthTransmit *uint8, maxInfoFieldLengthReceive *uint8, windowSizeTransmit *uint32, windowSizeReceive *uint32) (err error) {
+func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldLengthTransmit *uint16, maxInfoFieldLengthReceive *uint16, windowSizeTransmit *uint32, windowSizeReceive *uint32) (err error) {
 
 	w := new(bytes.Buffer)
 
@@ -1118,7 +1125,7 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 	// maxInfoFieldLengthTransmit
 
 	if nil == maxInfoFieldLengthTransmit {
-		maxInfoFieldLengthTransmit = new(uint8)
+		maxInfoFieldLengthTransmit = new(uint16)
 		*maxInfoFieldLengthTransmit = 0
 	}
 	err = binary.Write(ww, binary.BigEndian, uint8(0x05))
@@ -1126,21 +1133,36 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 		errorLog("binary.Write() failed: %v", err)
 		return err
 	}
-	err = binary.Write(ww, binary.BigEndian, uint8(1))
-	if nil != err {
-		errorLog("binary.Write() failed: %v", err)
-		return err
-	}
-	err = binary.Write(ww, binary.BigEndian, maxInfoFieldLengthTransmit)
-	if nil != err {
-		errorLog("binary.Write() failed: %v", err)
-		return err
+	if *maxInfoFieldLengthTransmit <= uint16(0xFF) {
+		err = binary.Write(ww, binary.BigEndian, uint8(1))
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+		err = binary.Write(ww, binary.BigEndian, uint8(*maxInfoFieldLengthTransmit))
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+	} else if *maxInfoFieldLengthTransmit <= uint16(0xFFFF) {
+		err = binary.Write(ww, binary.BigEndian, uint8(2))
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+		err = binary.Write(ww, binary.BigEndian, uint16(*maxInfoFieldLengthTransmit))
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+	} else {
+		panic("value is too big")
 	}
 
 	// maxInfoFieldLengthReceive
 
 	if nil == maxInfoFieldLengthReceive {
-		maxInfoFieldLengthReceive = new(uint8)
+		maxInfoFieldLengthReceive = new(uint16)
 		*maxInfoFieldLengthReceive = 0
 	}
 	err = binary.Write(ww, binary.BigEndian, uint8(0x06))
@@ -1148,15 +1170,30 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 		errorLog("binary.Write() failed: %v", err)
 		return err
 	}
-	err = binary.Write(ww, binary.BigEndian, uint8(1))
-	if nil != err {
-		errorLog("binary.Write() failed: %v", err)
-		return err
-	}
-	err = binary.Write(ww, binary.BigEndian, maxInfoFieldLengthReceive)
-	if nil != err {
-		errorLog("binary.Write() failed: %v", err)
-		return err
+	if *maxInfoFieldLengthReceive <= uint16(0xFF) {
+		err = binary.Write(ww, binary.BigEndian, uint8(1))
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+		err = binary.Write(ww, binary.BigEndian, uint8(*maxInfoFieldLengthReceive))
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+	} else if *maxInfoFieldLengthReceive <= uint16(0xFFFF) {
+		err = binary.Write(ww, binary.BigEndian, uint8(2))
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+		err = binary.Write(ww, binary.BigEndian, uint16(*maxInfoFieldLengthReceive))
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+	} else {
+		panic("value is too big")
 	}
 
 	// windowSizeTransmit
