@@ -567,6 +567,9 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 
 func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 	var w io.Writer = htran.rw
+	if hdlcDebug {
+		w = frame.content
+	}
 
 	var v16 uint16
 	p := make([]byte, 1)
@@ -764,6 +767,9 @@ func (htran *HdlcTransport) decodeClientAddress(frame *HdlcFrame) (err error, n 
 
 func (htran *HdlcTransport) encodeClientAddress(frame *HdlcFrame) (err error) {
 	var w io.Writer = htran.rw
+	if hdlcDebug {
+		w = frame.content
+	}
 	var b0 byte
 	p := make([]byte, 1)
 
@@ -858,6 +864,9 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 
 func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
 	var w io.Writer = htran.rw
+	if hdlcDebug {
+		w = frame.content
+	}
 	p := make([]byte, 1)
 
 	// HCS - header control sum
@@ -1637,6 +1646,9 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 
 func (htran *HdlcTransport) encodeFrameACI(frame *HdlcFrame) (err error) {
 	var w io.Writer = htran.rw
+	if hdlcDebug {
+		w = frame.content
+	}
 	var b0 byte
 
 	p := make([]byte, 1)
@@ -2001,9 +2013,9 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 			}
 
 			if htran.client {
-				fmt.Printf("client_inbound: %0X%0X%0X\n", b0, b1, p)
+				fmt.Printf("client_inbound: 7E%0X%0X%0X\n", b0, b1, p)
 			} else {
-				fmt.Printf("server_inbound: %0X%0X%0X\n", b0, b1, p)
+				fmt.Printf("server_inbound: 7E%0X%0X%0X\n", b0, b1, p)
 			}
 		}
 
@@ -2011,6 +2023,7 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		n += nn
 		return err, n
 	} else {
+		warnLog("worng format field %02X", p)
 		return HdlcErrorMalformedSegment, n
 	}
 }
@@ -2019,6 +2032,9 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 
 func (htran *HdlcTransport) encodeFrameFACI(frame *HdlcFrame) (err error) {
 	var w io.Writer = htran.rw
+	if hdlcDebug {
+		w = frame.content
+	}
 
 	p := make([]byte, 1)
 	var b0, b1 byte
@@ -2063,7 +2079,7 @@ func (htran *HdlcTransport) readFrameNormal(direction int) (err error, frame *Hd
 	p := make([]byte, 1)
 	for {
 		// expect opening flag
-		_, err = io.ReadFull(htran.rw, p)
+		_, err := io.ReadFull(htran.rw, p)
 		if nil != err {
 			if !isTimeOutErr(err) {
 				errorLog("io.ReadFull() failed: %v", err)
@@ -2078,6 +2094,7 @@ func (htran *HdlcTransport) readFrameNormal(direction int) (err error, frame *Hd
 			err, _ = htran.decodeFrameFACI(frame, 0)
 			if nil != err {
 				if HdlcErrorMalformedSegment == err {
+					warnLog("received malformed segment")
 					// ignore malformed segment and try read next segment
 					continue
 				} else {
@@ -2268,6 +2285,10 @@ func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFram
 func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 	var w io.Writer
 	w = htran.rw
+	if hdlcDebug {
+		frame.content = new(bytes.Buffer)
+		w = frame.content
+	}
 
 	frame.fcs16 = PPPINITFCS16
 
@@ -2296,6 +2317,17 @@ func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 		return err
 	}
 	if hdlcDebug {
+		p = frame.content.Bytes()
+		_, err := htran.rw.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+		if htran.client {
+			fmt.Printf("client_outbound: %0X\n", p)
+		} else {
+			fmt.Printf("server_outbound: %0X\n", p)
+		}
 		htran.printFrame(frame)
 	}
 

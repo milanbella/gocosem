@@ -23,7 +23,7 @@ func generateBytes(len int) []byte {
 }
 
 func createHdlcPipe(t *testing.T) (conn1 net.Conn, conn2 net.Conn) {
-	conn1, err := net.Dial("unixpacket", hdlcTestServerSockName)
+	conn1, err := net.Dial("unix", hdlcTestServerSockName)
 	if nil != err {
 		t.Fatalf("%v", err)
 	}
@@ -38,7 +38,7 @@ func createHdlcPipe(t *testing.T) (conn1 net.Conn, conn2 net.Conn) {
 func hdlcTestInit(t *testing.T) {
 	if nil == hdlcTestServer {
 		os.Remove(hdlcTestServerSockName)
-		ln, err := net.Listen("unixpacket", hdlcTestServerSockName)
+		ln, err := net.Listen("unix", hdlcTestServerSockName)
 		if err != nil {
 			t.Fatalf("%v", err)
 		}
