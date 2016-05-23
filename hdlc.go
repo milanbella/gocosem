@@ -1639,6 +1639,22 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 		return HdlcErrorMalformedSegment, n
 	}
 
+	// closing flag
+
+	_, err = io.ReadFull(r, p)
+	if nil != err {
+		if !isTimeOutErr(err) {
+			errorLog("io.ReadFull() failed: %v", err)
+		}
+		return err, n
+	}
+	n += 1
+	frame.fcs16 = pppfcs16(frame.fcs16, p)
+	if 0x7E != p[0] {
+		warnLog("missing closing flag 0x7E")
+		return HdlcErrorMalformedSegment, n
+	}
+
 	return nil, n
 }
 
@@ -1919,6 +1935,16 @@ func (htran *HdlcTransport) encodeFrameACI(frame *HdlcFrame) (err error) {
 		return HdlcErrorInvalidValue
 	}
 
+	// closing flag
+
+	p[0] = 0x7E
+	_, err = w.Write(p)
+	if nil != err {
+		errorLog("w.Write() failed: %v", err)
+		return err
+	}
+	frame.fcs16 = pppfcs16(frame.fcs16, p)
+
 	return nil
 }
 
@@ -1997,7 +2023,7 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		if hdlcDebug {
 			frame.content = new(bytes.Buffer)
 
-			p := make([]byte, frame.length-2)
+			p := make([]byte, frame.length-2+1) // add 1 to include closing flag
 			_, err = io.ReadFull(htran.rw, p)
 			if nil != err {
 				if !isTimeOutErr(err) {
@@ -2071,8 +2097,12 @@ func (htran *HdlcTransport) encodeFrameFACI(frame *HdlcFrame) (err error) {
 	}
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
 
-	return htran.encodeFrameACI(frame)
+	err = htran.encodeFrameACI(frame)
+	if nil != err {
+		return err
+	}
 
+	return nil
 }
 
 func (htran *HdlcTransport) readFrameNormal(direction int) (err error, frame *HdlcFrame) {
@@ -2318,6 +2348,10 @@ func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 	}
 	if hdlcDebug {
 		p = frame.content.Bytes()
+		//@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+		//p = []byte{0x7E, 0xA0, 0x07, 0x03, 0x03, 0x93, 0x8C, 0x11, 0x7E}
+		//p = []byte{0x7E, 0xA0, 0x1E, 0x03, 0x03, 0x93, 0x4E, 0x2B, 0x81, 0x80, 0x12, 0x05, 0x01, 0x80, 0x06, 0x01, 0x80, 0x07, 0x04, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x00, 0x00, 0x00, 0x01, 0x53, 0x3B, 0x7E}
+		//@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 		_, err := htran.rw.Write(p)
 		if nil != err {
 			errorLog("w.Write() failed: %v", err)

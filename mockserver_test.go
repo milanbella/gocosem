@@ -543,21 +543,21 @@ func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) {
 			conn.rwc.Close()
 			break
 		}
-		m := msg.Data.(map[string]interface{})
-		if nil == m["pdu"] {
+		m := msg.Data.(*DlmsTransportReceiveRequestReply)
+		if nil == m.pdu {
 			panic("assertion failed")
 		}
 
 		go func() {
 			if conn.srv.replyDelayMsec <= 0 {
-				err := conn.replyToRequest(t, bytes.NewBuffer(m["pdu"].([]byte)))
+				err := conn.replyToRequest(t, bytes.NewBuffer(m.pdu))
 				if nil != err {
 					t.Errorf("%v\n", err)
 					conn.rwc.Close()
 				}
 			} else {
 				<-time.After(time.Millisecond * time.Duration(conn.srv.replyDelayMsec))
-				err := conn.replyToRequest(t, bytes.NewBuffer(m["pdu"].([]byte)))
+				err := conn.replyToRequest(t, bytes.NewBuffer(m.pdu))
 				if nil != err {
 					t.Errorf("%v\n", err)
 					conn.rwc.Close()
@@ -649,10 +649,10 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 		rwc.Close()
 		return err
 	}
-	m := msg.Data.(map[string]interface{})
+	m := msg.Data.(*DlmsTransportReceiveRequestReply)
 
-	logicalDevice := m["dst"].(uint16)
-	applicationClient := m["src"].(uint16)
+	logicalDevice := m.dst
+	applicationClient := m.src
 
 	// reply with aare
 	ipTransportSend(ch, rwc, logicalDevice, applicationClient, aare)

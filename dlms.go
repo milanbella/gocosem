@@ -2686,11 +2686,18 @@ type DlmsTransportSendRequest struct {
 	dst uint16            // destination address
 	pdu []byte
 }
+type DlmsTransportSendRequestReply struct {
+}
 
 type DlmsTransportReceiveRequest struct {
 	ch  chan *DlmsMessage // reply channel
 	src uint16            // source address
 	dst uint16            // destination address
+}
+type DlmsTransportReceiveRequestReply struct {
+	src uint16 // source address
+	dst uint16 // destination address
+	pdu []byte
 }
 
 var ErrorDlmsTimeout = errors.New("ErrorDlmsTimeout")
@@ -2734,7 +2741,7 @@ func _ipTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport uin
 		return
 	}
 	debugLog("sending: ok")
-	ch <- &DlmsMessage{nil, nil}
+	ch <- &DlmsMessage{nil, &DlmsTransportSendRequestReply{}}
 }
 
 func ipTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport uint16, dstWport uint16, pdu []byte) {
@@ -2757,7 +2764,7 @@ func _hdlcTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, pdu []byte
 		return
 	}
 	debugLog("sending: ok")
-	ch <- &DlmsMessage{nil, nil}
+	ch <- &DlmsMessage{nil, &DlmsTransportSendRequestReply{}}
 }
 
 func hdlcTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, pdu []byte) {
@@ -2844,11 +2851,7 @@ func _ipTransportReceive(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport 
 	debugLog("received pdu: % 02X\n", pdu)
 
 	// send reply
-	m := make(map[string]interface{})
-	m["src"] = header.SrcWport
-	m["dst"] = header.DstWport
-	m["pdu"] = pdu
-	ch <- &DlmsMessage{nil, m}
+	ch <- &DlmsMessage{nil, &DlmsTransportReceiveRequestReply{header.SrcWport, header.DstWport, pdu}}
 
 	return
 }
@@ -2903,9 +2906,7 @@ func _hdlcTransportReceive(ch chan *DlmsMessage, rwc io.ReadWriteCloser) {
 	debugLog("received pdu: % 02X\n", pdu)
 
 	// send reply
-	m := make(map[string]interface{})
-	m["pdu"] = pdu
-	ch <- &DlmsMessage{nil, m}
+	ch <- &DlmsMessage{nil, &DlmsTransportReceiveRequestReply{0, 0, pdu}}
 
 	return
 }
@@ -2921,10 +2922,9 @@ func (dconn *DlmsConn) doTransportReceive(ch chan *DlmsMessage, src uint16, dst 
 	debugLog("trnascport type: %d\n", dconn.transportType)
 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
-
 		ipTransportReceiveForApp(ch, dconn.rwc, src, dst)
 	} else if Transport_HLDC == dconn.transportType {
-
+		hdlcTransportReceive(ch, dconn.rwc)
 	} else {
 		err := fmt.Errorf("unsupported transport type: %d", dconn.transportType)
 		errorLog("%s", err)
@@ -3015,20 +3015,8 @@ func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalD
 			_ch <- &DlmsMessage{msg.Err, nil}
 			return
 		}
-		m := msg.Data.(map[string]interface{})
-		if m["src"] != logicalDevice {
-			err = fmt.Errorf("incorret src address in received pdu: %v", m["srcWport"])
-			errorLog("%s", err)
-			ch <- &DlmsMessage{err, nil}
-			return
-		}
-		if m["dst"] != applicationClient {
-			err = fmt.Errorf("incorret dst address in received pdu: %v", m["dstWport"])
-			errorLog("%s", err)
-			ch <- &DlmsMessage{err, nil}
-			return
-		}
-		pdu = m["pdu"].([]byte)
+		m := msg.Data.(*DlmsTransportReceiveRequestReply)
+		pdu = m.pdu
 
 		var aare AARE
 		err = aare.decode(pdu)
@@ -3043,9 +3031,33 @@ func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalD
 			return
 		} else {
 			aconn := NewAppConn(dconn, applicationClient, logicalDevice)
-			ch <- &DlmsMessage{msg.Err, aconn}
+			ch <- &DlmsMessage{nil, aconn}
 		}
 
+	}()
+	return ch
+}
+
+func (dconn *DlmsConn) AppConnectRaw(applicationClient uint16, logicalDevice uint16, aarq []byte) <-chan *DlmsMessage {
+	ch := make(chan *DlmsMessage)
+	go func() {
+		defer close(ch)
+
+		_ch := make(chan *DlmsMessage)
+		dconn.transportSend(_ch, applicationClient, logicalDevice, aarq)
+		msg := <-_ch
+		if nil != msg.Err {
+			ch <- &DlmsMessage{msg.Err, nil}
+			return
+		}
+		dconn.transportReceive(_ch, logicalDevice, applicationClient)
+		msg = <-_ch
+		if nil != msg.Err {
+			_ch <- &DlmsMessage{msg.Err, nil}
+			return
+		}
+		m := msg.Data.(*DlmsTransportReceiveRequestReply)
+		ch <- &DlmsMessage{nil, m.pdu}
 	}()
 	return ch
 }

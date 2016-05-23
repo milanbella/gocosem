@@ -37,17 +37,38 @@ func TestApp_AppConnect(t *testing.T) {
 	defer dconn.Close()
 
 	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
-	if nil != msg.Err {
-		t.Fatalf("%s\n", msg.Err)
-	}
-	t.Logf("application connected")
 	msg = <-ch
 	if nil != msg.Err {
 		t.Fatalf("%s\n", msg.Err)
 	}
+	t.Logf("application connected")
 	aconn := msg.Data.(*AppConn)
 	defer aconn.Close()
 
+}
+
+func TestApp_AppConnectRaw(t *testing.T) {
+	ensureMockCosemServer(t)
+	mockCosemServer.Init()
+	defer mockCosemServer.Close()
+
+	ch := TcpConnect("localhost", 4059)
+	msg := <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	t.Logf("transport connected")
+	dconn := msg.Data.(*DlmsConn)
+	defer dconn.Close()
+
+	aarq := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x18, 0x1F, 0x08, 0x00, 0x00, 0x07}
+	ch = dconn.AppConnectRaw(01, 01, aarq)
+	msg = <-ch
+	if nil != msg.Err {
+		t.Fatalf("%s\n", msg.Err)
+	}
+	aare := msg.Data.([]byte)
+	t.Logf("aare: %02X", aare)
 }
 
 func TestApp_app_GetRequestNormal(t *testing.T) {

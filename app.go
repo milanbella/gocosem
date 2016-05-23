@@ -175,8 +175,8 @@ func (aconn *AppConn) handleAppLevelRequests() {
 				aconn.Close()
 				return
 			}
-			m := _msg.Data.(map[string]interface{})
-			pdu := m["pdu"].([]byte)
+			m := _msg.Data.(*DlmsTransportReceiveRequestReply)
+			pdu := m.pdu
 
 			buf := bytes.NewBuffer(pdu)
 
