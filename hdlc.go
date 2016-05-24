@@ -2774,16 +2774,12 @@ mainLoop:
 						}
 
 						if hdlcDebug {
-							str := ""
-							for i := 0; i < len(segment.p); i++ {
-								str += fmt.Sprintf(" %d", segment.p[i])
-							}
 							if htran.client {
 								clientRcnt += len(segment.p)
-								fmt.Fprintf(os.Stdout, "client: received %d: %s\n", clientRcnt, str)
+								fmt.Fprintf(os.Stdout, "client: received total: %d bytes, this segment: %02X\n", clientRcnt, segment.p)
 							} else {
 								serverRcnt += len(segment.p)
-								fmt.Fprintf(os.Stdout, "server: received %d: %s\n", serverRcnt, str)
+								fmt.Fprintf(os.Stdout, "server: received total: %d bytes, this segment: %02X\n", serverRcnt, segment.p)
 							}
 						}
 

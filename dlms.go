@@ -2646,10 +2646,9 @@ func decode_SetResponseForLastDataBlockWithList(r io.Reader) (err error, dataAcc
 }
 
 const (
-	Transport_HLDC = int(1)
+	Transport_TCP  = int(1)
 	Transport_UDP  = int(2)
-	Transport_TCP  = int(3)
-	Transport_HDLC = int(4)
+	Transport_HDLC = int(3)
 )
 
 type DlmsMessage struct {
@@ -2749,20 +2748,31 @@ func ipTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport uint
 }
 
 func _hdlcTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, pdu []byte) {
+	var buf bytes.Buffer
 	llcHeader := []byte{0xE6, 0xE6, 0x00} // LLC sublayer header
-	debugLog("sending: %02X%02X\n", llcHeader, pdu)
-	_, err := rwc.Write(llcHeader)
+
+	_, err := buf.Write(llcHeader)
 	if nil != err {
 		errorLog("io.Write() failed, err: %v\n", err)
 		ch <- &DlmsMessage{err, nil}
 		return
 	}
-	_, err = rwc.Write(pdu)
+	_, err = buf.Write(pdu)
 	if nil != err {
 		errorLog("io.Write() failed, err: %v\n", err)
 		ch <- &DlmsMessage{err, nil}
 		return
 	}
+
+	p := buf.Bytes()
+	debugLog("sending: %02X\n", p)
+	_, err = rwc.Write(p)
+	if nil != err {
+		errorLog("io.Write() failed, err: %v\n", err)
+		ch <- &DlmsMessage{err, nil}
+		return
+	}
+
 	debugLog("sending: ok")
 	ch <- &DlmsMessage{nil, &DlmsTransportSendRequestReply{}}
 }
@@ -2923,7 +2933,7 @@ func (dconn *DlmsConn) doTransportReceive(ch chan *DlmsMessage, src uint16, dst 
 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 		ipTransportReceiveForApp(ch, dconn.rwc, src, dst)
-	} else if Transport_HLDC == dconn.transportType {
+	} else if Transport_HDLC == dconn.transportType {
 		hdlcTransportReceive(ch, dconn.rwc)
 	} else {
 		err := fmt.Errorf("unsupported transport type: %d", dconn.transportType)
@@ -3126,7 +3136,8 @@ func _HdlcConnect(ch chan *DlmsMessage, ipAddr string, port int, applicationClie
 		ch <- &DlmsMessage{err, nil}
 		return
 	}
-	dconn.hdlcClient = client
+	//dconn.hdlcClient = client
+	dconn.rwc = client
 
 	debugLog("hdlc transport connected over tcp: %s:%d\n", ipAddr, port)
 
