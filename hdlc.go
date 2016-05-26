@@ -425,10 +425,8 @@ func (htran *HdlcTransport) Close() (err error) {
 }
 
 func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n int) {
-	var r io.Reader = htran.rw
-	if hdlcDebug {
-		r = frame.content
-	}
+	var r io.Reader
+	r = frame.content
 	n = 0
 
 	var b0, b1, b2, b3 byte
@@ -566,10 +564,8 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 }
 
 func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
-	var w io.Writer = htran.rw
-	if hdlcDebug {
-		w = frame.content
-	}
+	var w io.Writer
+	w = frame.content
 
 	var v16 uint16
 	p := make([]byte, 1)
@@ -736,10 +732,9 @@ func (htran *HdlcTransport) lengthServerAddress(frame *HdlcFrame) (n int) {
 }
 
 func (htran *HdlcTransport) decodeClientAddress(frame *HdlcFrame) (err error, n int) {
-	var r io.Reader = htran.rw
-	if hdlcDebug {
-		r = frame.content
-	}
+	var r io.Reader
+	r = frame.content
+
 	n = 0
 	var b0 byte
 	p := make([]byte, 1)
@@ -766,10 +761,9 @@ func (htran *HdlcTransport) decodeClientAddress(frame *HdlcFrame) (err error, n 
 }
 
 func (htran *HdlcTransport) encodeClientAddress(frame *HdlcFrame) (err error) {
-	var w io.Writer = htran.rw
-	if hdlcDebug {
-		w = frame.content
-	}
+	var w io.Writer
+	w = frame.content
+
 	var b0 byte
 	p := make([]byte, 1)
 
@@ -797,10 +791,9 @@ func (htran *HdlcTransport) lengthClientAddress(frame *HdlcFrame) int {
 }
 
 func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error, n int) {
-	var r io.Reader = htran.rw
-	if hdlcDebug {
-		r = frame.content
-	}
+	var r io.Reader
+	r = frame.content
+
 	p := make([]byte, 1)
 
 	// HCS - header control sum
@@ -863,10 +856,9 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 }
 
 func (htran *HdlcTransport) encodeFrameInfo(frame *HdlcFrame) (err error) {
-	var w io.Writer = htran.rw
-	if hdlcDebug {
-		w = frame.content
-	}
+	var w io.Writer
+	w = frame.content
+
 	p := make([]byte, 1)
 
 	// HCS - header control sum
@@ -1275,10 +1267,9 @@ func (htran *HdlcTransport) encodeLinkParameters(frame *HdlcFrame, maxInfoFieldL
 // decode frame address, control and information field
 
 func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, n int) {
-	var r io.Reader = htran.rw
-	if hdlcDebug {
-		r = frame.content
-	}
+	var r io.Reader
+	r = frame.content
+
 	n = 0
 	var b0 byte
 	var nn int
@@ -1661,10 +1652,9 @@ func (htran *HdlcTransport) decodeFrameACI(frame *HdlcFrame, l int) (err error, 
 // encode frame address, control and information field
 
 func (htran *HdlcTransport) encodeFrameACI(frame *HdlcFrame) (err error) {
-	var w io.Writer = htran.rw
-	if hdlcDebug {
-		w = frame.content
-	}
+	var w io.Writer
+	w = frame.content
+
 	var b0 byte
 
 	p := make([]byte, 1)
@@ -2020,24 +2010,24 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		}
 
 		frame.length = int((uint16(b0&0x07) << 8) + uint16(b1))
+		frame.content = new(bytes.Buffer)
+
+		p := make([]byte, frame.length-2+1) // add 1 to include closing flag
+		_, err = io.ReadFull(htran.rw, p)
+		if nil != err {
+			if !isTimeOutErr(err) {
+				errorLog("io.ReadFull() failed: %v", err)
+			}
+			return err, n
+		}
+
+		_, err = frame.content.Write(p)
+		if nil != err {
+			errorLog("Buffer.Write() failed: %v", err)
+			return err, n
+		}
+
 		if hdlcDebug {
-			frame.content = new(bytes.Buffer)
-
-			p := make([]byte, frame.length-2+1) // add 1 to include closing flag
-			_, err = io.ReadFull(htran.rw, p)
-			if nil != err {
-				if !isTimeOutErr(err) {
-					errorLog("io.ReadFull() failed: %v", err)
-				}
-				return err, n
-			}
-
-			_, err = frame.content.Write(p)
-			if nil != err {
-				errorLog("Buffer.Write() failed: %v", err)
-				return err, n
-			}
-
 			if htran.client {
 				fmt.Printf("client_inbound: 7E%0X%0X%0X\n", b0, b1, p)
 			} else {
@@ -2057,10 +2047,8 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 // encode frame format, address, control and information field
 
 func (htran *HdlcTransport) encodeFrameFACI(frame *HdlcFrame) (err error) {
-	var w io.Writer = htran.rw
-	if hdlcDebug {
-		w = frame.content
-	}
+	var w io.Writer
+	w = frame.content
 
 	p := make([]byte, 1)
 	var b0, b1 byte
@@ -2314,11 +2302,8 @@ func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFram
 
 func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 	var w io.Writer
-	w = htran.rw
-	if hdlcDebug {
-		frame.content = new(bytes.Buffer)
-		w = frame.content
-	}
+	frame.content = new(bytes.Buffer)
+	w = frame.content
 
 	frame.fcs16 = PPPINITFCS16
 
@@ -2346,17 +2331,13 @@ func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 		errorLog("w.Write() failed: %v", err)
 		return err
 	}
+	p = frame.content.Bytes()
+	_, err = htran.rw.Write(p)
+	if nil != err {
+		errorLog("w.Write() failed: %v", err)
+		return err
+	}
 	if hdlcDebug {
-		p = frame.content.Bytes()
-		//@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-		//p = []byte{0x7E, 0xA0, 0x07, 0x03, 0x03, 0x93, 0x8C, 0x11, 0x7E}
-		//p = []byte{0x7E, 0xA0, 0x1E, 0x03, 0x03, 0x93, 0x4E, 0x2B, 0x81, 0x80, 0x12, 0x05, 0x01, 0x80, 0x06, 0x01, 0x80, 0x07, 0x04, 0x00, 0x00, 0x00, 0x01, 0x08, 0x04, 0x00, 0x00, 0x00, 0x01, 0x53, 0x3B, 0x7E}
-		//@@@@@@@@@@@@@@@@@@@@@@@@@@@@
-		_, err := htran.rw.Write(p)
-		if nil != err {
-			errorLog("w.Write() failed: %v", err)
-			return err
-		}
 		if htran.client {
 			fmt.Printf("client_outbound: %0X\n", p)
 		} else {
@@ -2776,10 +2757,10 @@ mainLoop:
 						if hdlcDebug {
 							if htran.client {
 								clientRcnt += len(segment.p)
-								fmt.Fprintf(os.Stdout, "client: received total: %d bytes, this segment: %02X\n", clientRcnt, segment.p)
+								fmt.Fprintf(os.Stdout, "client: received bytes total: %d, segment: %02X\n", clientRcnt, segment.p)
 							} else {
 								serverRcnt += len(segment.p)
-								fmt.Fprintf(os.Stdout, "server: received total: %d bytes, this segment: %02X\n", serverRcnt, segment.p)
+								fmt.Fprintf(os.Stdout, "server: received bytes total: %d, segment: %02X\n", serverRcnt, segment.p)
 							}
 						}
 

@@ -2672,6 +2672,7 @@ type tWrapperHeader struct {
 
 type DlmsConn struct {
 	closed        bool
+	closedAck     chan error
 	rwc           io.ReadWriteCloser
 	hdlcRwc       io.ReadWriteCloser // stream used by hdlc transport for sending and reading HDLC frames
 	hdlcClient    *HdlcTransport
@@ -2957,13 +2958,14 @@ func (dconn *DlmsConn) transportReceive(ch chan *DlmsMessage, src uint16, dst ui
 }
 
 func (dconn *DlmsConn) handleTransportRequests() {
-	debugLog("start\n")
+	var err error
+	debugLog("start")
 	for msg := range dconn.ch {
 		switch v := msg.Data.(type) {
 		case *DlmsTransportSendRequest:
 			debugLog("send request\n")
 			if dconn.closed {
-				err := fmt.Errorf("tansport send request ignored, transport connection closed")
+				err = fmt.Errorf("tansport send request ignored, transport connection closed")
 				errorLog("%s", err)
 				v.ch <- &DlmsMessage{err, nil}
 			}
@@ -2971,7 +2973,7 @@ func (dconn *DlmsConn) handleTransportRequests() {
 		case *DlmsTransportReceiveRequest:
 			debugLog("receive request\n")
 			if dconn.closed {
-				err := fmt.Errorf("transport receive request ignored, transport connection closed")
+				err = fmt.Errorf("transport receive request ignored, transport connection closed")
 				errorLog("%s", err)
 				v.ch <- &DlmsMessage{err, nil}
 			}
@@ -2980,21 +2982,24 @@ func (dconn *DlmsConn) handleTransportRequests() {
 			panic(fmt.Sprintf("unknown request type: %T", v))
 		}
 	}
-	debugLog("finish\n")
+	debugLog("finish")
 
 	// cleanup
 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
-		dconn.rwc.Close()
+		err = dconn.rwc.Close()
 	} else if Transport_HDLC == dconn.transportType {
-		err := dconn.hdlcClient.SendDISC()
+		err = dconn.hdlcClient.SendDISC()
 		if nil != err {
 			errorLog("%s", err)
+			dconn.rwc.Close()
+		} else {
+			err = dconn.rwc.Close()
 		}
-		dconn.rwc.Close()
 	} else {
 		panic(fmt.Sprintf("unsupported transport type: %d", dconn.transportType))
 	}
+	dconn.closedAck <- err
 }
 
 func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalDevice uint16, password string) <-chan *DlmsMessage {
@@ -3082,6 +3087,7 @@ func _TcpConnect(ch chan *DlmsMessage, ipAddr string, port int) {
 
 	dconn := new(DlmsConn)
 	dconn.closed = false
+	dconn.closedAck = make(chan error)
 	dconn.ch = make(chan *DlmsMessage)
 	dconn.transportType = Transport_TCP
 
@@ -3117,6 +3123,7 @@ func _HdlcConnect(ch chan *DlmsMessage, ipAddr string, port int, applicationClie
 
 	dconn := new(DlmsConn)
 	dconn.closed = false
+	dconn.closedAck = make(chan error)
 	dconn.ch = make(chan *DlmsMessage)
 	dconn.transportType = Transport_HDLC
 
@@ -3136,7 +3143,7 @@ func _HdlcConnect(ch chan *DlmsMessage, ipAddr string, port int, applicationClie
 		ch <- &DlmsMessage{err, nil}
 		return
 	}
-	//dconn.hdlcClient = client
+	dconn.hdlcClient = client
 	dconn.rwc = client
 
 	debugLog("hdlc transport connected over tcp: %s:%d\n", ipAddr, port)
@@ -3158,6 +3165,7 @@ func (dconn *DlmsConn) Close() {
 		return
 	}
 	debugLog("closing transport connection")
-	dconn.closed = true
 	close(dconn.ch)
+	<-dconn.closedAck
+	dconn.closed = true
 }
