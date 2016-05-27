@@ -2675,7 +2675,7 @@ type DlmsConn struct {
 	closedAck     chan error
 	rwc           io.ReadWriteCloser
 	hdlcRwc       io.ReadWriteCloser // stream used by hdlc transport for sending and reading HDLC frames
-	hdlcClient    *HdlcTransport
+	HdlcClient    *HdlcTransport
 	transportType int
 	ch            chan *DlmsMessage // channel to handle transport level requests/replies
 }
@@ -2989,13 +2989,7 @@ func (dconn *DlmsConn) handleTransportRequests() {
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 		err = dconn.rwc.Close()
 	} else if Transport_HDLC == dconn.transportType {
-		err = dconn.hdlcClient.SendDISC()
-		if nil != err {
-			errorLog("%s", err)
-			dconn.rwc.Close()
-		} else {
-			err = dconn.rwc.Close()
-		}
+		err = dconn.rwc.Close()
 	} else {
 		panic(fmt.Sprintf("unsupported transport type: %d", dconn.transportType))
 	}
@@ -3143,7 +3137,7 @@ func _HdlcConnect(ch chan *DlmsMessage, ipAddr string, port int, applicationClie
 		ch <- &DlmsMessage{err, nil}
 		return
 	}
-	dconn.hdlcClient = client
+	dconn.HdlcClient = client
 	dconn.rwc = client
 
 	debugLog("hdlc transport connected over tcp: %s:%d\n", ipAddr, port)

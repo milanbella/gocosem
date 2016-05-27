@@ -252,7 +252,7 @@ func NewHdlcTransport(rw io.ReadWriter, networkRoundtripTime time.Duration, clie
 	htran.closedAck = make(chan map[string]interface{})
 	htran.finishedCh = make(chan bool)
 
-	htran.responseTimeout = time.Duration(1) * time.Second //TODO: set it to network round trip time
+	htran.responseTimeout = networkRoundtripTime
 	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_4
 	htran.clientId = clientId
 	htran.logicalDeviceId = logicalDeviceId
@@ -830,9 +830,11 @@ func (htran *HdlcTransport) decodeFrameInfo(frame *HdlcFrame, l int) (err error,
 
 	if infoFieldLength > 0 {
 
-		if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
-			warnLog("long info field")
-			return HdlcErrorMalformedSegment, n
+		if false { // do not check as elektonica meter is sending us longer frames
+			if infoFieldLength > int(htran.maxInfoFieldLengthReceive) {
+				warnLog("long info field")
+				return HdlcErrorMalformedSegment, n
+			}
 		}
 
 		p = make([]byte, infoFieldLength)
@@ -2439,6 +2441,12 @@ func (htran *HdlcTransport) handleHdlc() {
 	framesToSend := list.New() // frames scheduled to send in next poll
 	rfCh := make(chan bool)
 
+	if htran.client {
+		sending = true
+	} else {
+		sending = false
+	}
+
 mainLoop:
 	for {
 		if sending {
@@ -2669,27 +2677,44 @@ mainLoop:
 			}
 
 		} else {
-			// receiving
 
-			timeout = false
-			go func() {
-				if htran.client {
-					// we need upcast to net.Conn so that we cat set read dealine (this should be only palce in entire code needing such upcasting)
-					conn, ok := htran.rw.(net.Conn)
-					if !ok {
-						panic("io.ReadWriter passed to hdlc transport constructor must be instance of net.Conn")
-					}
-					conn.SetReadDeadline(time.Now().Add(htran.responseTimeout))
-					err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_CLIENT_INBOUND)
-				} else {
-					err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_SERVER_INBOUND)
+			if (STATE_DISCONNECTED == state) && htran.client {
+				// wait for SNRM command
+
+				go func() {
+					time.Sleep(time.Duration(10) * time.Millisecond)
+					sending = true
+					rfCh <- true
+				}()
+				select {
+				case <-rfCh:
+					continue mainLoop
+				case <-htran.finishedCh:
+					break mainLoop
 				}
-				rfCh <- true
-			}()
-			select {
-			case <-rfCh:
-			case <-htran.finishedCh:
-				break mainLoop
+			} else {
+				// receiving
+
+				timeout = false
+				go func() {
+					if htran.client {
+						// we need upcast to net.Conn so that we cat set read dealine (this should be only palce in entire code needing such upcasting)
+						conn, ok := htran.rw.(net.Conn)
+						if !ok {
+							panic("io.ReadWriter passed to hdlc transport constructor must be instance of net.Conn")
+						}
+						conn.SetReadDeadline(time.Now().Add(htran.responseTimeout))
+						err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_CLIENT_INBOUND)
+					} else {
+						err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_SERVER_INBOUND)
+					}
+					rfCh <- true
+				}()
+				select {
+				case <-rfCh:
+				case <-htran.finishedCh:
+					break mainLoop
+				}
 			}
 
 			if hdlcDebug {
@@ -2710,6 +2735,7 @@ mainLoop:
 
 			if nil != err {
 				if isTimeOutErr(err) { // timeout occured
+					warnLog("no reply timeout")
 					if htran.client {
 						// Per ISO 13239 it is responsibility of client to do time-out no-reply recovery and
 						// in case of timeout client may transmit  even if it did not receive the poll.
