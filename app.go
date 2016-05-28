@@ -111,6 +111,32 @@ func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16)
 	return aconn
 }
 
+func NewAppConnAtChannel(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16, channel uint8) (aconn *AppConn) {
+	aconn = new(AppConn)
+	aconn.dconn = dconn
+	aconn.closed = false
+	aconn.applicationClient = applicationClient
+	aconn.logicalDevice = logicalDevice
+
+	aconn.ch = make(chan *DlmsMessage)
+
+	// init invoke ids
+	if channel > 0x0F {
+		panic("channel exceeds limit")
+	}
+	aconn.invokeIdsCh = make(chan uint8, 1)
+	aconn.invokeIdsCh <- channel
+	// -----------
+
+	aconn.rips = make(map[uint8][]*DlmsRequestResponse)
+
+	aconn.finish = make(chan string)
+
+	go aconn.handleAppLevelRequests()
+
+	return aconn
+}
+
 func (aconn *AppConn) Close() {
 	if aconn.closed {
 		return

@@ -7,3 +7,4 @@ go test -run TestApp
 go test -run TestHdlc
 go test -run TestMeterTcp
 go test -run TestMeterHdlc
+go test -run TestMeterAHdlc
