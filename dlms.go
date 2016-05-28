@@ -3107,7 +3107,7 @@ func TcpConnect(ipAddr string, port int) <-chan *DlmsMessage {
 	return ch
 }
 
-func _HdlcConnect(ch chan *DlmsMessage, ipAddr string, port int, applicationClient uint16, logicalDevice uint16, networkRoundtripTime time.Duration) {
+func _HdlcConnect(ch chan *DlmsMessage, ipAddr string, port int, applicationClient uint16, logicalDevice uint16, responseTimeout time.Duration) {
 	var (
 		conn net.Conn
 		err  error
@@ -3130,7 +3130,7 @@ func _HdlcConnect(ch chan *DlmsMessage, ipAddr string, port int, applicationClie
 	}
 	dconn.hdlcRwc = conn
 
-	client := NewHdlcTransport(dconn.hdlcRwc, networkRoundtripTime, true, uint8(applicationClient), logicalDevice, nil)
+	client := NewHdlcTransport(dconn.hdlcRwc, responseTimeout, true, uint8(applicationClient), logicalDevice, nil)
 	err = client.SendSNRM(nil, nil)
 	if nil != err {
 		conn.Close()

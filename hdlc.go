@@ -228,7 +228,7 @@ var HdlcErrorNoInfo = errors.New("frame contains no info field")
 var HdlcErrorFrameRejected = errors.New("frame rejected")
 var HdlcErrorNotClient = errors.New("not a client")
 
-func NewHdlcTransport(rw io.ReadWriter, networkRoundtripTime time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
+func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
 	htran := new(HdlcTransport)
 	htran.rw = rw
 	htran.modulus = 8
@@ -252,7 +252,7 @@ func NewHdlcTransport(rw io.ReadWriter, networkRoundtripTime time.Duration, clie
 	htran.closedAck = make(chan map[string]interface{})
 	htran.finishedCh = make(chan bool)
 
-	htran.responseTimeout = networkRoundtripTime
+	htran.responseTimeout = responseTimeout
 	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_4
 	htran.clientId = clientId
 	htran.logicalDeviceId = logicalDeviceId
