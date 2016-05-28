@@ -93,35 +93,13 @@ func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16)
 
 	// init invoke ids
 	aconn.invokeIdsCh = make(chan uint8, 0x0F+1)
-	for i := 0; i <= 0x0F; i += 1 {
-		aconn.invokeIdsCh <- uint8(i)
+	if dconn.transportType == Transport_HDLC {
+		aconn.invokeIdsCh <- 4
+	} else {
+		for i := 0; i <= 0x0F; i += 1 {
+			aconn.invokeIdsCh <- uint8(i)
+		}
 	}
-	// -----------
-
-	aconn.rips = make(map[uint8][]*DlmsRequestResponse)
-
-	aconn.finish = make(chan string)
-
-	go aconn.handleAppLevelRequests()
-
-	return aconn
-}
-
-func NewAppConnAtChannel(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16, channel uint8) (aconn *AppConn) {
-	aconn = new(AppConn)
-	aconn.dconn = dconn
-	aconn.closed = false
-	aconn.applicationClient = applicationClient
-	aconn.logicalDevice = logicalDevice
-
-	aconn.ch = make(chan *DlmsMessage)
-
-	// init invoke ids
-	if channel > 0x0F {
-		panic("channel exceeds limit")
-	}
-	aconn.invokeIdsCh = make(chan uint8, 1)
-	aconn.invokeIdsCh <- channel
 	// -----------
 
 	aconn.rips = make(map[uint8][]*DlmsRequestResponse)
