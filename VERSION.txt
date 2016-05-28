@@ -20,3 +20,7 @@ but original asn1c encoder encode_AARQapdu()  is preserved and may be stil used,
 1.0.4
 ======
 - refactor of logging
+
+1.1.0
+======
+- added hdlc transport support
