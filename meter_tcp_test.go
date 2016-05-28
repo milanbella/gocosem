@@ -5,12 +5,11 @@ import (
 	"testing"
 )
 
-func TestMeter_TcpConnect(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+var tcpMeterIp = "172.16.123.182"
 
-	ch := TcpConnect(meterIp, 4059)
+func TestMeterTcp_TcpConnect(t *testing.T) {
+
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatal(msg.Err)
@@ -20,12 +19,9 @@ func TestMeter_TcpConnect(t *testing.T) {
 	defer dconn.Close()
 }
 
-func TestMeter_AppConnect(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+func TestMeterTcp_AppConnect(t *testing.T) {
 
-	ch := TcpConnect(meterIp, 4059)
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatal(msg.Err)
@@ -44,12 +40,9 @@ func TestMeter_AppConnect(t *testing.T) {
 	defer aconn.Close()
 }
 
-func TestMeter_GetTime(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+func TestMeterTcp_GetTime(t *testing.T) {
 
-	ch := TcpConnect(meterIp, 4059)
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
@@ -88,12 +81,9 @@ func TestMeter_GetTime(t *testing.T) {
 	t.Logf("datetime: %s", DlmsDateTimeFromBytes(data.GetOctetString()).PrintDateTime())
 }
 
-func TestMeter_SetTime(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+func TestMeterTcp_SetTime(t *testing.T) {
 
-	ch := TcpConnect(meterIp, 4059)
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -180,12 +170,9 @@ func TestMeter_SetTime(t *testing.T) {
 	t.Logf("datetime: %s", DlmsDateTimeFromBytes(data.GetOctetString()).PrintDateTime())
 }
 
-func TestMeter_ProfileCaptureObjects(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+func TestMeterTcp_ProfileCaptureObjects(t *testing.T) {
 
-	ch := TcpConnect(meterIp, 4059)
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -244,12 +231,9 @@ func TestMeter_ProfileCaptureObjects(t *testing.T) {
 	}
 }
 
-func TestMeter_ProfileEntriesInUse(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+func TestMeterTcp_ProfileEntriesInUse(t *testing.T) {
 
-	ch := TcpConnect(meterIp, 4059)
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -295,12 +279,9 @@ func TestMeter_ProfileEntriesInUse(t *testing.T) {
 	t.Logf("profile entries in use: %d", data.GetDoubleLongUnsigned())
 }
 
-func TestMeter_ProfileSortMethod(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+func TestMeterTcp_ProfileSortMethod(t *testing.T) {
 
-	ch := TcpConnect(meterIp, 4059)
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -345,12 +326,9 @@ func TestMeter_ProfileSortMethod(t *testing.T) {
 	t.Logf("sort method: %d", data.GetEnum())
 }
 
-func TestMeter_ProfileSortObject(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+func TestMeterTcp_ProfileSortObject(t *testing.T) {
 
-	ch := TcpConnect(meterIp, 4059)
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -403,12 +381,9 @@ func TestMeter_ProfileSortObject(t *testing.T) {
 	t.Logf("\tdata index: %02X", data.Arr[3].GetLongUnsigned())
 }
 
-func TestMeter_ProfileCapturePeriod(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+func TestMeterTcp_ProfileCapturePeriod(t *testing.T) {
 
-	ch := TcpConnect(meterIp, 4059)
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -453,12 +428,9 @@ func TestMeter_ProfileCapturePeriod(t *testing.T) {
 	t.Logf("capture period: %d seconds", data.GetDoubleLongUnsigned())
 }
 
-func TestMeter_ProfileFirstEntries(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+func TestMeterTcp_ProfileFirstEntries(t *testing.T) {
 
-	ch := TcpConnect(meterIp, 4059)
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -520,12 +492,9 @@ func TestMeter_ProfileFirstEntries(t *testing.T) {
 	}
 }
 
-func TestMeter_ProfileLastEntries(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+func TestMeterTcp_ProfileLastEntries(t *testing.T) {
 
-	ch := TcpConnect(meterIp, 4059)
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
@@ -612,12 +581,9 @@ func TestMeter_ProfileLastEntries(t *testing.T) {
 	}
 }
 
-func TestMeter_ProfileTimeRange(t *testing.T) {
-	if !realMeter {
-		t.SkipNow()
-	}
+func TestMeterTcp_ProfileTimeRange(t *testing.T) {
 
-	ch := TcpConnect(meterIp, 4059)
+	ch := TcpConnect(tcpMeterIp, 4059)
 	msg := <-ch
 	if nil != msg.Err {
 		t.Fatalf("cannot connect tcp: %s", msg.Err)
