@@ -62,7 +62,7 @@ func TestHdlc_hdlcPipe(t *testing.T) {
 	p := make([]byte, len(msg))
 	_, err = io.ReadFull(srw, p)
 	if nil != err {
-		t.Fatal("%v", err)
+		t.Fatal(err)
 	}
 
 	if 0 != strings.Compare(msg, string(p)) {
@@ -159,7 +159,7 @@ func TestHdlc_WriteRead(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	if n != len(bc) {
-		t.Fatalf("bad length", err)
+		t.Fatal("bad length", err)
 	}
 
 	bs := make([]byte, 5)
@@ -170,7 +170,7 @@ func TestHdlc_WriteRead(t *testing.T) {
 			t.Fatalf("%v", err)
 		}
 		if n != len(bs) {
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 		}
 		if 0 != bytes.Compare(bc, bs) {
 			t.Fatalf("bytes does not match")
@@ -212,7 +212,7 @@ func TestHdlc_WriteRead_i50(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	if n != len(bc) {
-		t.Fatalf("bad length", err)
+		t.Fatal("bad length", err)
 	}
 
 	bs := make([]byte, len(bc))
@@ -226,7 +226,7 @@ func TestHdlc_WriteRead_i50(t *testing.T) {
 		}
 		if n != len(bs) {
 			ch <- true
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		if 0 != bytes.Compare(bc, bs) {
@@ -274,7 +274,7 @@ func TestHdlc_WriteRead_i30_drop_every_5th_frame(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	if n != len(bc) {
-		t.Fatalf("bad length", err)
+		t.Fatal("bad length", err)
 	}
 
 	bs := make([]byte, len(bc))
@@ -288,7 +288,7 @@ func TestHdlc_WriteRead_i30_drop_every_5th_frame(t *testing.T) {
 		}
 		if n != len(bs) {
 			ch <- true
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		if 0 != bytes.Compare(bc, bs) {
@@ -336,7 +336,7 @@ func TestHdlc_WriteRead_i30_drop_every_3rd_frame(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	if n != len(bc) {
-		t.Fatalf("bad length", err)
+		t.Fatal("bad length", err)
 	}
 
 	bs := make([]byte, len(bc))
@@ -350,7 +350,7 @@ func TestHdlc_WriteRead_i30_drop_every_3rd_frame(t *testing.T) {
 		}
 		if n != len(bs) {
 			ch <- true
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		if 0 != bytes.Compare(bc, bs) {
@@ -400,7 +400,7 @@ func TestHdlc_WriteRead_i30_drop_random_5(t *testing.T) {
 		t.Fatalf("%v", err)
 	}
 	if n != len(bc) {
-		t.Fatalf("bad length", err)
+		t.Fatal("bad length", err)
 	}
 
 	bs := make([]byte, len(bc))
@@ -414,7 +414,7 @@ func TestHdlc_WriteRead_i30_drop_random_5(t *testing.T) {
 		}
 		if n != len(bs) {
 			ch <- true
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		if 0 != bytes.Compare(bc, bs) {
@@ -468,7 +468,7 @@ func TestHdlc_WriteRead_parallel_transmit(t *testing.T) {
 		}
 		if n != len(bt) {
 			close(chf)
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		chf <- "1"
@@ -484,7 +484,7 @@ func TestHdlc_WriteRead_parallel_transmit(t *testing.T) {
 		}
 		if n != len(bt) {
 			close(chf)
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		chf <- "2"
@@ -501,7 +501,7 @@ func TestHdlc_WriteRead_parallel_transmit(t *testing.T) {
 		}
 		if n != len(bt) {
 			close(chf)
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		if 0 != bytes.Compare(bt, br) {
@@ -586,7 +586,7 @@ func TestHdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 		}
 		if n != len(bt) {
 			close(chf)
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		chf <- "1"
@@ -597,12 +597,12 @@ func TestHdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 		n, err := server.Write(bt)
 		if nil != err {
 			close(chf)
+			t.Fatal(err)
 			return
-			t.Fatalf("%v", err)
 		}
 		if n != len(bt) {
 			close(chf)
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		chf <- "2"
@@ -614,12 +614,12 @@ func TestHdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 		n, err := client.Read(br)
 		if nil != err {
 			close(chf)
-			t.Fatalf("%v", err)
+			t.Fatal(err)
 			return
 		}
 		if n != len(bt) {
 			close(chf)
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		if 0 != bytes.Compare(bt, br) {
@@ -641,7 +641,7 @@ func TestHdlc_WriteRead_i50_w1_parallel_transmit(t *testing.T) {
 		}
 		if n != len(bt) {
 			close(chf)
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		if 0 != bytes.Compare(bt, br) {
@@ -704,7 +704,7 @@ func TestHdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 		}
 		if n != len(bt) {
 			close(chf)
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		chf <- "1"
@@ -720,7 +720,7 @@ func TestHdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 		}
 		if n != len(bt) {
 			close(chf)
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		chf <- "2"
@@ -737,7 +737,7 @@ func TestHdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 		}
 		if n != len(bt) {
 			close(chf)
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		if 0 != bytes.Compare(bt, br) {
@@ -757,7 +757,7 @@ func TestHdlc_WriteRead_i22_w1_parallel_transmit(t *testing.T) {
 		}
 		if n != len(bt) {
 			close(chf)
-			t.Fatalf("bad length", err)
+			t.Fatal("bad length", err)
 			return
 		}
 		if 0 != bytes.Compare(bt, br) {

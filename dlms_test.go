@@ -595,22 +595,22 @@ func TestDlms_decode_GetResponseWithList(t *testing.T) {
 	}
 
 	if 0 != dataAccessResults[0] {
-		t.Fatalf("wrong dataAccessResults[0]: ", dataAccessResults[0])
+		t.Fatalf("wrong dataAccessResults[0]: %v", dataAccessResults[0])
 	}
 	data := datas[0]
 	if DATA_TYPE_OCTET_STRING != data.GetType() {
-		t.Fatalf("wrong tag[0]: ", data.GetType)
+		t.Fatalf("wrong tag[0]: %v", data.GetType())
 	}
 	if !bytes.Equal(data.GetOctetString(), []byte{0x01, 0x02, 0x03, 0x04}) {
 		t.Fatalf("wrong data[0]")
 	}
 
 	if 0 != dataAccessResults[1] {
-		t.Fatalf("wrong dataAccessResults[1]: ", dataAccessResults[1])
+		t.Fatalf("wrong dataAccessResults[1]: %v", dataAccessResults[1])
 	}
 	data = datas[1]
 	if DATA_TYPE_VISIBLE_STRING != data.GetType() {
-		t.Fatalf("wrong tag[1]: ", data.GetType())
+		t.Fatalf("wrong tag[1]: %v", data.GetType())
 	}
 	if !bytes.Equal(data.GetVisibleString(), []byte{0x30, 0x30, 0x30}) {
 		t.Fatalf("wrong data[1]")

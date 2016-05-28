@@ -146,7 +146,7 @@ func (date *DlmsDate) PrintDate() string {
 		dayOfWeek = fmt.Sprintf("%02d_wd", date.DayOfWeek)
 	}
 
-	return fmt.Sprintf("%s-%s-%s-%s", year, month, dayOfMonth, dayOfWeek)
+	return fmt.Sprintf("%s-%s-%s (%s)", year, month, dayOfMonth, dayOfWeek)
 }
 
 func (date *DlmsDate) SetYearWildcard() {
