@@ -32,3 +32,7 @@ but original asn1c encoder encode_AARQapdu()  is preserved and may be stil used,
 1.1.2
 ======
 - ondrej's changes for gometalinter
+
+1.1.3
+======
+- error fix
