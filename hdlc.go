@@ -227,6 +227,7 @@ var HdlcErrorParameterValue = errors.New("wrong parameter value")
 var HdlcErrorNoInfo = errors.New("frame contains no info field")
 var HdlcErrorFrameRejected = errors.New("frame rejected")
 var HdlcErrorNotClient = errors.New("not a client")
+var HdlcErrorTransportClosed = errors.New("transport closed")
 
 func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
 	htran := new(HdlcTransport)
@@ -2690,6 +2691,7 @@ mainLoop:
 				case <-rfCh:
 					continue mainLoop
 				case <-htran.finishedCh:
+					err = HdlcErrorTransportClosed
 					break mainLoop
 				}
 			} else {
@@ -2713,6 +2715,7 @@ mainLoop:
 				select {
 				case <-rfCh:
 				case <-htran.finishedCh:
+					err = HdlcErrorTransportClosed
 					break mainLoop
 				}
 			}
