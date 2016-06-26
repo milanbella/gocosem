@@ -241,17 +241,17 @@ func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bo
 
 	htran.writeQueue = list.New()
 	htran.writeQueueMtx = new(sync.Mutex)
-	htran.writeAck = make(chan map[string]interface{})
+	htran.writeAck = make(chan map[string]interface{}, 100)
 
 	htran.readQueue = list.New()
 	htran.readQueueMtx = new(sync.Mutex)
-	htran.readAck = make(chan map[string]interface{})
+	htran.readAck = make(chan map[string]interface{}, 100)
 
 	htran.controlQueue = list.New()
 	htran.controlQueueMtx = new(sync.Mutex)
-	htran.controlAck = make(chan map[string]interface{})
+	htran.controlAck = make(chan map[string]interface{}, 100)
 
-	htran.closedAck = make(chan map[string]interface{})
+	htran.closedAck = make(chan map[string]interface{}, 100)
 	htran.finishedCh = make(chan bool)
 
 	htran.responseTimeout = responseTimeout
@@ -2561,7 +2561,7 @@ mainLoop:
 					}
 					snrmCommand = command
 					if !htran.client {
-						go func() { htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotDisconnected} }()
+						htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotDisconnected}
 						continue mainLoop
 					}
 					frame = new(HdlcFrame)
@@ -2582,7 +2582,7 @@ mainLoop:
 					state = STATE_CONNECTING
 					sending = false
 				} else {
-					go func() { htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotDisconnected} }()
+					htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotDisconnected}
 				}
 			} else if (nil != command) && (HDLC_CONTROL_DISC == command.control) {
 				if htran.client { // only client may disconnect the line.
@@ -2600,10 +2600,10 @@ mainLoop:
 						state = STATE_DISCONNECTING
 						sending = false
 					} else {
-						go func() { htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotConnected} }()
+						htran.controlAck <- map[string]interface{}{"err": HdlcErrorNotConnected}
 					}
 				} else {
-					go func() { htran.controlAck <- map[string]interface{}{"err": HdlcErrorNoAllowed} }()
+					htran.controlAck <- map[string]interface{}{"err": HdlcErrorNoAllowed}
 				}
 			} else if nil != segment {
 				if STATE_CONNECTED == state {
@@ -2633,7 +2633,7 @@ mainLoop:
 					sending = false
 
 				} else {
-					go func() { htran.readAck <- map[string]interface{}{"err": HdlcErrorNotConnected} }()
+					htran.readAck <- map[string]interface{}{"err": HdlcErrorNotConnected}
 				}
 			} else {
 				// nothing to transmit now, poll the peer (may be peer has someting to transmit now)
@@ -2792,7 +2792,7 @@ mainLoop:
 						htran.writeQueue.PushBack(segment)
 						htran.writeQueueMtx.Unlock()
 						if segment.last {
-							go func() { htran.writeAck <- map[string]interface{}{"err": nil} }()
+							htran.writeAck <- map[string]interface{}{"err": nil}
 						}
 
 						if hdlcDebug {
@@ -2808,7 +2808,7 @@ mainLoop:
 						if nil != segmentToAck {
 							// acknoledge transmitted segment
 							segmentToAck = nil
-							go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
+							htran.readAck <- map[string]interface{}{"err": nil}
 
 							htran.readQueueMtx.Lock()
 							if 0 == htran.readQueue.Len() {
@@ -2882,7 +2882,7 @@ mainLoop:
 						if nil != segmentToAck {
 							// acknoledge transmitted segment
 							segmentToAck = nil
-							go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
+							htran.readAck <- map[string]interface{}{"err": nil}
 						}
 					} else {
 						// retransmit all unacknowledged frames to insure that peer received frames we transmitted in last poll
@@ -2900,7 +2900,7 @@ mainLoop:
 						if nil != segmentToAck {
 							// acknoledge transmitted segment
 							segmentToAck = nil
-							go func() { htran.readAck <- map[string]interface{}{"err": nil} }()
+							htran.readAck <- map[string]interface{}{"err": nil}
 						}
 
 					} else {
@@ -3020,14 +3020,14 @@ mainLoop:
 			} else if HDLC_CONTROL_DM == frame.control {
 				if STATE_DISCONNECTING == state {
 					state = STATE_DISCONNECTED
-					go func() { htran.controlAck <- map[string]interface{}{"err": nil} }()
+					htran.controlAck <- map[string]interface{}{"err": nil}
 				} else {
 					// ignore frame
 				}
 			} else if HDLC_CONTROL_UA == frame.control {
 				if STATE_DISCONNECTING == state {
 					state = STATE_DISCONNECTED
-					go func() { htran.controlAck <- map[string]interface{}{"err": nil} }()
+					htran.controlAck <- map[string]interface{}{"err": nil}
 				} else if STATE_CONNECTING == state {
 
 					// negotiate link parameters
@@ -3066,7 +3066,7 @@ mainLoop:
 					vr = 0
 					segmentToAck = nil
 					clientRcnt = 0
-					go func() { htran.controlAck <- map[string]interface{}{"err": nil} }()
+					htran.controlAck <- map[string]interface{}{"err": nil}
 				} else {
 					// ignore frame
 				}
@@ -3091,22 +3091,14 @@ mainLoop:
 	}
 
 	if nil != err {
-		go func() {
-			htran.writeAck <- map[string]interface{}{"err": err}
-			close(htran.writeAck)
-		}()
-		go func() {
-			htran.readAck <- map[string]interface{}{"err": err}
-			close(htran.readAck)
-		}()
-		go func() {
-			htran.controlAck <- map[string]interface{}{"err": err}
-			close(htran.controlAck)
-		}()
+		htran.writeAck <- map[string]interface{}{"err": err}
+		close(htran.writeAck)
+		htran.readAck <- map[string]interface{}{"err": err}
+		close(htran.readAck)
+		htran.controlAck <- map[string]interface{}{"err": err}
+		close(htran.controlAck)
 	}
 
-	go func() {
-		htran.closedAck <- map[string]interface{}{"err": nil}
-		close(htran.closedAck)
-	}()
+	htran.closedAck <- map[string]interface{}{"err": nil}
+	close(htran.closedAck)
 }
