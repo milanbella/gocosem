@@ -427,7 +427,7 @@ func (dconn *DlmsConn) AppConnectRaw(applicationClient uint16, logicalDevice uin
 		dconn.transportReceive(_ch, logicalDevice, applicationClient)
 		msg = <-_ch
 		if nil != msg.Err {
-			_ch <- &DlmsMessage{msg.Err, nil}
+			ch <- &DlmsMessage{msg.Err, nil}
 			return
 		}
 		m := msg.Data.(*DlmsTransportReceiveRequestReply)
