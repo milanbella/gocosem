@@ -801,7 +801,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 
 func (aconn *AppConn) SendRequest(vals []*DlmsRequest) <-chan *DlmsMessage {
 
-	ch := make(chan *DlmsMessage, 1)
+	ch := make(chan *DlmsMessage)
 	go aconn.sendRequest(ch, vals)
 	return ch
 }
