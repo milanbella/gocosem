@@ -2452,7 +2452,6 @@ func (htran *HdlcTransport) handleHdlc() {
 
 	var segmentToAck *HdlcFrame = nil
 	framesToSend := list.New() // frames scheduled to send in next poll
-	rfCh := make(chan bool)
 
 	if htran.client {
 		sending = true
@@ -2694,13 +2693,14 @@ mainLoop:
 			if (STATE_DISCONNECTED == state) && htran.client {
 				// wait for SNRM command
 
-				go func() {
+				ch := make(chan bool)
+				go func(ch chan bool) {
 					time.Sleep(time.Duration(10) * time.Millisecond)
 					sending = true
-					rfCh <- true
-				}()
+					close(ch)
+				}(ch)
 				select {
-				case <-rfCh:
+				case <-ch:
 					continue mainLoop
 				case <-htran.finishedCh:
 					err = HdlcErrorTransportClosed
@@ -2710,7 +2710,8 @@ mainLoop:
 				// receiving
 
 				timeout = false
-				go func() {
+				ch := make(chan bool)
+				go func(ch chan bool) {
 					if htran.client {
 						// we need upcast to net.Conn so that we cat set read dealine (this should be only palce in entire code needing such upcasting)
 						conn, ok := htran.rw.(net.Conn)
@@ -2722,10 +2723,11 @@ mainLoop:
 					} else {
 						err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_SERVER_INBOUND)
 					}
-					rfCh <- true
-				}()
+					//rfCh <- true
+					close(ch)
+				}(ch)
 				select {
-				case <-rfCh:
+				case <-ch:
 				case <-htran.finishedCh:
 					err = HdlcErrorTransportClosed
 					break mainLoop
