@@ -802,6 +802,12 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 func (aconn *AppConn) SendRequest(vals []*DlmsRequest) <-chan *DlmsMessage {
 
 	ch := make(chan *DlmsMessage)
+	if aconn.closed {
+		err := fmt.Errorf("connection closed")
+		errorLog("%s", err)
+		ch <- &DlmsMessage{err, nil}
+		return ch
+	}
 	go aconn.sendRequest(ch, vals)
 	return ch
 }
