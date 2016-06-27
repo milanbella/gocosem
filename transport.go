@@ -167,6 +167,12 @@ func (dconn *DlmsConn) _doTransportSend(ch chan *DlmsMessage, src uint16, dst ui
 }
 
 func (dconn *DlmsConn) transportSend(ch chan *DlmsMessage, src uint16, dst uint16, pdu []byte) {
+	if dconn.closed {
+		err := fmt.Errorf("connection closed")
+		errorLog("%s", err)
+		ch <- &DlmsMessage{err, nil}
+		return
+	}
 	// enqueue send request
 	go func() {
 		msg := new(DlmsMessage)
@@ -310,6 +316,12 @@ func (dconn *DlmsConn) doTransportReceive(ch chan *DlmsMessage, src uint16, dst 
 }
 
 func (dconn *DlmsConn) transportReceive(ch chan *DlmsMessage, src uint16, dst uint16) {
+	if dconn.closed {
+		err := fmt.Errorf("connection closed")
+		errorLog("%s", err)
+		ch <- &DlmsMessage{err, nil}
+		return
+	}
 	// enqueue receive request
 	go func() {
 		data := new(DlmsTransportReceiveRequest)
