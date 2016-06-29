@@ -34,9 +34,6 @@ type DlmsRequestResponse struct {
 	Req *DlmsRequest
 	Rep *DlmsResponse
 
-	invokeId           uint8
-	Dead               *string           // If non nil then this request is already dead from whatever reason (e.g. timeot) and MUST NOT be used anymore. Value indicates reason for being dead.
-	Ch                 chan *DlmsMessage // Channel to deliver reply.
 	RequestSubmittedAt time.Time
 	ReplyDeliveredAt   time.Time
 	highPriority       bool
@@ -55,13 +52,8 @@ type DlmsAppLevelReceiveRequest struct {
 
 type AppConn struct {
 	dconn             *DlmsConn
-	closed            bool
-	ch                chan *DlmsMessage // channel to handle application level requests/replies
 	applicationClient uint16
 	logicalDevice     uint16
-	invokeIdsCh       chan uint8
-	finish            chan string
-	rips              map[uint8][]*DlmsRequestResponse // Requests in progress. Map key is invokeId. In case of GetRequestNormal value array will comtain just one item. In case of  GetRequestWithList array lengh will be equal to number of values requested.
 }
 
 type DlmsResultResponse []*DlmsRequestResponse
@@ -93,10 +85,6 @@ func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16)
 
 func (aconn *AppConn) Close() {
 	debugLog("closing")
-	if !aconn.closed {
-		aconn.dconn.Close()
-		aconn.closed = true
-	}
 }
 
 func (aconn *AppConn) processGetResponseNormal(rips []*DlmsRequestResponse, r io.Reader, errr error) error {
@@ -456,12 +444,6 @@ func (aconn *AppConn) SendRequest(vals []*DlmsRequest, invokeId uint8) (rips []*
 		return nil, nil
 	}
 
-	if aconn.closed {
-		err := fmt.Errorf("connection closed")
-		errorLog("%s", err)
-		return nil, err
-	}
-
 	debugLog("invokeId %d\n", invokeId)
 	if invokeId > 0x0F {
 		err := fmt.Errorf("invokeId exceeds limit")
@@ -474,7 +456,6 @@ func (aconn *AppConn) SendRequest(vals []*DlmsRequest, invokeId uint8) (rips []*
 		rip := new(DlmsRequestResponse)
 		rip.Req = vals[i]
 
-		rip.invokeId = invokeId
 		rip.RequestSubmittedAt = time.Now()
 		rip.highPriority = highPriority
 		rips[i] = rip
