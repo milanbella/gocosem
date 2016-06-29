@@ -436,7 +436,7 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 	}
 }
 
-func (aconn *AppConn) SendRequest(vals []*DlmsRequest, invokeId uint8) (rips []*DlmsRequestResponse, err error) {
+func (aconn *AppConn) SendRequest(vals []*DlmsRequest, invokeId uint8) (response DlmsResultResponse, err error) {
 	debugLog("enter")
 	highPriority := true
 
@@ -451,7 +451,7 @@ func (aconn *AppConn) SendRequest(vals []*DlmsRequest, invokeId uint8) (rips []*
 		return nil, err
 	}
 
-	rips = make([]*DlmsRequestResponse, len(vals))
+	rips := make([]*DlmsRequestResponse, len(vals))
 	for i := 0; i < len(vals); i += 1 {
 		rip := new(DlmsRequestResponse)
 		rip.Req = vals[i]
@@ -666,5 +666,11 @@ func (aconn *AppConn) SendRequest(vals []*DlmsRequest, invokeId uint8) (rips []*
 	}
 
 	err = aconn.processReply(rips, p, buf)
-	return rips, err
+	if nil == err {
+		t := time.Now()
+		for i := 0; i < rips.length; i++ {
+			rips[i].ReplyDeliveredAt(t)
+		}
+	}
+	return DlmsResultResponse(rips), err
 }

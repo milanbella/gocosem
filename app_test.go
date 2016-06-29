@@ -11,13 +11,11 @@ func TestApp_TcpConnect(t *testing.T) {
 	mockCosemServer.Init()
 	defer mockCosemServer.Close()
 
-	ch := TcpConnect("localhost", 4059)
-	msg := <-ch
-	if nil != msg.Err {
+	dconn, err := TcpConnect("localhost", 4059)
+	if nil != err {
 		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
 	defer dconn.Close()
 
 }
@@ -27,22 +25,18 @@ func TestApp_AppConnect(t *testing.T) {
 	mockCosemServer.Init()
 	defer mockCosemServer.Close()
 
-	ch := TcpConnect("localhost", 4059)
-	msg := <-ch
-	if nil != msg.Err {
+	dconn, err := TcpConnect("localhost", 4059)
+	if nil != err {
 		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
 	defer dconn.Close()
 
-	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
-	msg = <-ch
-	if nil != msg.Err {
+	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	if nil != err {
 		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("application connected")
-	aconn := msg.Data.(*AppConn)
 	defer aconn.Close()
 
 }
@@ -52,19 +46,16 @@ func TestApp_AppConnectRaw(t *testing.T) {
 	mockCosemServer.Init()
 	defer mockCosemServer.Close()
 
-	ch := TcpConnect("localhost", 4059)
-	msg := <-ch
-	if nil != msg.Err {
+	dconn, err := TcpConnect("localhost", 4059)
+	if nil != err {
 		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
 	defer dconn.Close()
 
 	aarq := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x18, 0x1F, 0x08, 0x00, 0x00, 0x07}
-	ch = dconn.AppConnectRaw(01, 01, aarq)
-	msg = <-ch
-	if nil != msg.Err {
+	aare, err := dconn.AppConnectRaw(01, 01, aarq)
+	if nil != err {
 		t.Fatalf("%s\n", msg.Err)
 	}
 	aare := msg.Data.([]byte)
@@ -80,22 +71,18 @@ func TestApp_app_GetRequestNormal(t *testing.T) {
 	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
 	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
 
-	ch := TcpConnect("localhost", 4059)
-	msg := <-ch
-	if nil != msg.Err {
+	dconn := TcpConnect("localhost", 4059)
+	if nil != err {
 		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
 	defer dconn.Close()
 
-	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
-	msg = <-ch
-	if nil != msg.Err {
+	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	if nil != err {
 		t.Fatalf("%s\n", msg.Err)
 	}
 	t.Logf("application connected")
-	aconn := msg.Data.(*AppConn)
 	defer aconn.Close()
 
 	val := new(DlmsRequest)
@@ -104,12 +91,10 @@ func TestApp_app_GetRequestNormal(t *testing.T) {
 	val.AttributeId = 0x02
 	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
+	rep, err = aconn.SendRequest(0, vals)
+	if nil != err {
 		t.Fatalf("%s\n", msg.Err)
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
