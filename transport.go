@@ -90,23 +90,6 @@ func makeWpdu(srcWport uint16, dstWport uint16, pdu []byte) (err error, wpdu []b
 
 }
 
-func _ipTransportSend(ch chan *DlmsMessage, rwc io.ReadWriteCloser, srcWport uint16, dstWport uint16, pdu []byte) {
-	err, wpdu := makeWpdu(srcWport, dstWport, pdu)
-	if nil != err {
-		ch <- &DlmsMessage{err, nil}
-		return
-	}
-	debugLog("sending: % 02X\n", wpdu)
-	_, err = rwc.Write(wpdu)
-	if nil != err {
-		errorLog("io.Write() failed, err: %v\n", err)
-		ch <- &DlmsMessage{err, nil}
-		return
-	}
-	debugLog("sending: ok")
-	ch <- &DlmsMessage{nil, &DlmsTransportSendRequestReply{}}
-}
-
 func ipTransportSend(rwc io.ReadWriteCloser, srcWport uint16, dstWport uint16, pdu []byte) error {
 	err, wpdu := makeWpdu(srcWport, dstWport, pdu)
 	if nil != err {
@@ -161,7 +144,7 @@ func (dconn *DlmsConn) transportSend(src uint16, dst uint16, pdu []byte) error {
 	}
 }
 
-func ipTransportReceive(rwc io.ReadWriteCloser, srcWport uint16, dstWport uint16) (pdu []byte, err error) {
+func ipTransportReceive(rwc io.ReadWriteCloser, srcWport *uint16, dstWport *uint16) (pdu []byte, src uint16, dst uint16, err error) {
 	var (
 		header tWrapperHeader
 	)
@@ -170,28 +153,28 @@ func ipTransportReceive(rwc io.ReadWriteCloser, srcWport uint16, dstWport uint16
 	err = binary.Read(rwc, binary.BigEndian, &header)
 	if nil != err {
 		errorLog("binary.Read() failed, err: %v\n", err)
-		return nil, err
+		return nil, 0, 0, err
 	}
 	debugLog("header: ok\n")
-	if header.SrcWport != srcWport {
+	if (nil != srcWport) && (header.SrcWport != *srcWport) {
 		err = fmt.Errorf("wrong srcWport: %d, expected: %d", header.SrcWport, srcWport)
 		errorLog("%s", err)
-		return nil, err
+		return nil, 0, 0, err
 	}
-	if header.DstWport != dstWport {
+	if (nil != dstWport) && (header.DstWport != *dstWport) {
 		err = fmt.Errorf("wrong dstWport: %d, expected: %d", header.DstWport, dstWport)
 		errorLog("%s", err)
-		return nil, err
+		return nil, 0, 0, err
 	}
 	pdu = make([]byte, header.DataLength)
 	err = binary.Read(rwc, binary.BigEndian, pdu)
 	if nil != err {
 		errorLog("binary.Read() failed, err: %v\n", err)
-		return nil, err
+		return nil, 0, 0, err
 	}
 	debugLog("received pdu: % 02X\n", pdu)
 
-	return pdu, nil
+	return pdu, header.SrcWport, header.DstWport, nil
 }
 
 func hdlcTransportReceive(rwc io.ReadWriteCloser) (pdu []byte, err error) {
@@ -240,7 +223,8 @@ func (dconn *DlmsConn) transportReceive(src uint16, dst uint16) (pdu []byte, err
 	debugLog("trnascport type: %d\n", dconn.transportType)
 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
-		return ipTransportReceive(dconn.rwc, src, dst)
+		pdu, _, _, err = ipTransportReceive(dconn.rwc, &src, &dst)
+		return pdu, err
 	} else if Transport_HDLC == dconn.transportType {
 		return hdlcTransportReceive(dconn.rwc)
 	} else {

@@ -83,16 +83,14 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 			return err
 		}
 		ch := make(DlmsChannel)
-		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, buf.Bytes())
-		msg := <-ch
-		if nil != msg.Err {
+		err = ipTransportSend(conn.rwc, conn.logicalDevice, conn.applicationClient, buf.Bytes())
+		if nil != err {
 			t.Errorf("%v\n", msg.Err)
 			return err
 		}
 
 	} else {
 		t.Logf("outbound normal transfer")
-		ch := make(DlmsChannel)
 		_, err := buf.Write([]byte{b0, b1, byte(invokeIdAndPriority)})
 		if nil != err {
 			t.Errorf("%v\n", err)
@@ -111,9 +109,8 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 			t.Errorf("%v\n", err)
 			return err
 		}
-		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, buf.Bytes())
-		msg := <-ch
-		if nil != msg.Err {
+		err = ipTransportSend(conn.rwc, conn.logicalDevice, conn.applicationClient, buf.Bytes())
+		if nil != err {
 			t.Errorf("%v\n", msg.Err)
 			return err
 		}
@@ -370,9 +367,8 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 				<-time.After(time.Millisecond * time.Duration(conn.srv.blockDelayMsec))
 			}
 		}
-		ipTransportSend(ch, conn.rwc, conn.logicalDevice, conn.applicationClient, buf.Bytes())
-		msg := <-ch
-		if nil != msg.Err {
+		err = ipTransportSend(conn.rwc, conn.logicalDevice, conn.applicationClient, buf.Bytes())
+		if nil != err {
 			t.Errorf("%v\n", msg.Err)
 			return err
 		}
@@ -535,35 +531,29 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) {
 	for {
 
-		ch := make(DlmsChannel)
-		ipTransportReceive(ch, conn.rwc, &conn.applicationClient, &conn.logicalDevice)
-		msg := <-ch
-		if nil != msg.Err {
+		pdu, _, _, err := ipTransportReceive(conn.rwc, &conn.applicationClient, &conn.logicalDevice)
+		if nil != err {
 			t.Errorf("%v\n", msg.Err)
 			conn.rwc.Close()
 			break
 		}
-		m := msg.Data.(*DlmsTransportReceiveRequestReply)
-		if nil == m.pdu {
-			panic("assertion failed")
-		}
 
-		go func() {
-			if conn.srv.replyDelayMsec <= 0 {
-				err := conn.replyToRequest(t, bytes.NewBuffer(m.pdu))
-				if nil != err {
-					t.Errorf("%v\n", err)
-					conn.rwc.Close()
-				}
-			} else {
-				<-time.After(time.Millisecond * time.Duration(conn.srv.replyDelayMsec))
-				err := conn.replyToRequest(t, bytes.NewBuffer(m.pdu))
-				if nil != err {
-					t.Errorf("%v\n", err)
-					conn.rwc.Close()
-				}
+		if conn.srv.replyDelayMsec <= 0 {
+			err := conn.replyToRequest(t, bytes.NewBuffer(m.pdu))
+			if nil != err {
+				t.Errorf("%v\n", err)
+				conn.rwc.Close()
+				break
 			}
-		}()
+		} else {
+			<-time.After(time.Millisecond * time.Duration(conn.srv.replyDelayMsec))
+			err := conn.replyToRequest(t, bytes.NewBuffer(m.pdu))
+			if nil != err {
+				t.Errorf("%v\n", err)
+				conn.rwc.Close()
+				break
+			}
+		}
 	}
 }
 
@@ -641,23 +631,18 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	t.Logf("mock server waiting for client to connect")
 
 	// receive aarq
-	ch := make(DlmsChannel)
-	ipTransportReceive(ch, rwc, nil, nil)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Errorf("%v\n", msg.Err)
-		rwc.Close()
+	aarq, src, dst, err := ipTransportReceive(rwc, nil, nil)
+	if nil != err {
+		t.Errorf("%v\n", err)
 		return err
 	}
-	m := msg.Data.(*DlmsTransportReceiveRequestReply)
 
-	logicalDevice := m.dst
-	applicationClient := m.src
+	logicalDevice := dst
+	applicationClient := src
 
 	// reply with aare
-	ipTransportSend(ch, rwc, logicalDevice, applicationClient, aare)
-	msg = <-ch
-	if nil != msg.Err {
+	err = ipTransportSend(rwc, logicalDevice, applicationClient, aare)
+	if nil != err {
 		t.Errorf("%v\n", msg.Err)
 		rwc.Close()
 		return err
