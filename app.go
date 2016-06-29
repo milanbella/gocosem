@@ -85,189 +85,21 @@ func (rep DlmsResultResponse) DeliveredIn() time.Duration {
 func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16) (aconn *AppConn) {
 	aconn = new(AppConn)
 	aconn.dconn = dconn
-	aconn.closed = false
 	aconn.applicationClient = applicationClient
 	aconn.logicalDevice = logicalDevice
-
-	aconn.ch = make(chan *DlmsMessage)
-
-	// init invoke ids
-	aconn.invokeIdsCh = make(chan uint8, 0x0F+1)
-	if dconn.transportType == Transport_HDLC {
-		aconn.invokeIdsCh <- 4
-	} else {
-		for i := 0; i <= 0x0F; i += 1 {
-			aconn.invokeIdsCh <- uint8(i)
-		}
-	}
-	// -----------
-
-	aconn.rips = make(map[uint8][]*DlmsRequestResponse)
-
-	aconn.finish = make(chan string)
-
-	go aconn.handleAppLevelRequests()
-
-	return aconn
-}
-
-func NewAppConnAtChannel(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16, channel uint8) (aconn *AppConn) {
-	aconn = new(AppConn)
-	aconn.dconn = dconn
-	aconn.closed = false
-	aconn.applicationClient = applicationClient
-	aconn.logicalDevice = logicalDevice
-
-	aconn.ch = make(chan *DlmsMessage)
-
-	// init invoke ids
-	if channel > 0x0F {
-		panic("channel exceeds limit")
-	}
-	aconn.invokeIdsCh = make(chan uint8, 1)
-	aconn.invokeIdsCh <- channel
-	// -----------
-
-	aconn.rips = make(map[uint8][]*DlmsRequestResponse)
-
-	aconn.finish = make(chan string)
-
-	go aconn.handleAppLevelRequests()
 
 	return aconn
 }
 
 func (aconn *AppConn) Close() {
-	if aconn.closed {
-		return
-	}
-	debugLog("closing app connection")
-	aconn.closed = true
-	close(aconn.finish)
-	for _, rips := range aconn.rips {
-		if nil != rips[0].Dead {
-			continue
-		}
-		aconn.killRequest(rips, errors.New("app connection closed"))
+	debugLog("closing")
+	if !aconn.closed {
+		aconn.dconn.Close()
+		aconn.closed = true
 	}
 }
 
-func (aconn *AppConn) transportSend(invokeId uint8, rips []*DlmsRequestResponse, pdu []byte) {
-	debugLog("enter")
-	ch := make(chan *DlmsMessage)
-	msg := new(DlmsMessage)
-	msg.Data = &DlmsAppLevelSendRequest{ch, invokeId, rips, pdu}
-	aconn.ch <- msg
-}
-
-func (aconn *AppConn) transportReceive() {
-	debugLog("enter")
-	ch := make(chan *DlmsMessage)
-	msg := new(DlmsMessage)
-	msg.Data = &DlmsAppLevelReceiveRequest{ch}
-	aconn.ch <- msg
-}
-
-func (aconn *AppConn) _transportSubmit(invokeId uint8, rips []*DlmsRequestResponse, pdu []byte) {
-	aconn.transportSend(invokeId, rips, pdu)
-	aconn.transportReceive()
-}
-
-func (aconn *AppConn) transportSubmit(invokeId uint8, rips []*DlmsRequestResponse, pdu []byte) {
-	debugLog("enter")
-	go aconn._transportSubmit(invokeId, rips, pdu)
-}
-
-func (aconn *AppConn) handleAppLevelRequests() {
-	debugLog("enter")
-	for msg := range aconn.ch {
-		switch v := msg.Data.(type) {
-		case *DlmsAppLevelSendRequest:
-			debugLog("send request\n")
-
-			aconn.rips[v.invokeId] = v.rips
-			ch := make(chan *DlmsMessage)
-			aconn.dconn.transportSend(ch, aconn.applicationClient, aconn.logicalDevice, v.pdu)
-			_msg := <-ch
-			if nil != _msg.Err {
-				errorLog("closing app connection due to transport error: %v\n", _msg.Err)
-				aconn.Close()
-				return
-			}
-
-		case *DlmsAppLevelReceiveRequest:
-			debugLog("receive request\n")
-
-			ch := make(chan *DlmsMessage)
-			aconn.dconn.transportReceive(ch, aconn.logicalDevice, aconn.applicationClient)
-			_msg := <-ch
-
-			if nil != _msg.Err {
-				errorLog("closing app connection due to transport error: %v\n", _msg.Err)
-				aconn.Close()
-				return
-			}
-			m := _msg.Data.(*DlmsTransportReceiveRequestReply)
-			pdu := m.pdu
-
-			buf := bytes.NewBuffer(pdu)
-
-			p := make([]byte, 3)
-			err := binary.Read(buf, binary.BigEndian, p)
-			if nil != err {
-				errorLog("io.Read() failed: %v", err)
-				aconn.Close()
-				return
-			}
-
-			invokeId := uint8((p[2] & 0xF0) >> 4)
-			debugLog("invokeId %d\n", invokeId)
-
-			rips := aconn.rips[invokeId]
-			if nil == rips {
-				errorLog("no request in progresss for invokeId %d", invokeId)
-				errorLog("closing app connection")
-				aconn.Close()
-			}
-			if nil != rips[0].Dead {
-				errorLog("received pdu for dead request, invokeId %d, reason for request being dead: %s\n", rips[0].invokeId, *rips[0].Dead)
-				errorLog("closing app connection")
-				aconn.Close()
-				return
-			}
-			go aconn.processReply(rips, p, buf)
-		default:
-			panic(fmt.Sprintf("unknown request type: %T", v))
-		}
-	}
-}
-
-func (aconn *AppConn) killRequest(rips []*DlmsRequestResponse, err error) {
-	invokeId := rips[0].invokeId
-	if nil != rips[0].Dead {
-		debugLog("already dead request, invokeId: %d", invokeId)
-		return
-	}
-	for _, rip := range rips {
-		rip.Dead = new(string)
-		if nil != err {
-			*rip.Dead = fmt.Sprintf("killed, error: %s", err.Error())
-			rip.ReplyDeliveredAt = time.Now()
-		} else {
-			*rip.Dead = "reply delivered"
-			rip.ReplyDeliveredAt = time.Now()
-		}
-	}
-	if nil != err {
-		err = fmt.Errorf("request killed, invokeId: %d, reason: %s", invokeId, *rips[0].Dead)
-		errorLog("%s", err)
-	}
-	rips[0].Ch <- &DlmsMessage{err, DlmsResultResponse(rips)}
-	close(rips[0].Ch)
-	aconn.invokeIdsCh <- invokeId
-}
-
-func (aconn *AppConn) processGetResponseNormal(rips []*DlmsRequestResponse, r io.Reader, errr error) {
+func (aconn *AppConn) processGetResponseNormal(rips []*DlmsRequestResponse, r io.Reader, errr error) error {
 
 	err, dataAccessResult, data := decode_GetResponseNormal(r)
 
@@ -276,17 +108,17 @@ func (aconn *AppConn) processGetResponseNormal(rips []*DlmsRequestResponse, r io
 	rips[0].Rep.Data = data
 
 	if nil == err {
-		aconn.killRequest(rips, nil)
+		return nil
 	} else {
 		if nil != errr {
-			aconn.killRequest(rips, errr)
+			return errr
 		} else {
-			aconn.killRequest(rips, err)
+			return err
 		}
 	}
 }
 
-func (aconn *AppConn) processGetResponseNormalBlock(rips []*DlmsRequestResponse, r io.Reader, errr error) {
+func (aconn *AppConn) processGetResponseNormalBlock(rips []*DlmsRequestResponse, r io.Reader, errr error) error {
 
 	err, data := decode_GetResponseNormalBlock(r)
 
@@ -295,17 +127,17 @@ func (aconn *AppConn) processGetResponseNormalBlock(rips []*DlmsRequestResponse,
 	rips[0].Rep.Data = data
 
 	if nil == err {
-		aconn.killRequest(rips, nil)
+		return nil
 	} else {
 		if nil != errr {
-			aconn.killRequest(rips, errr)
+			return errr
 		} else {
-			aconn.killRequest(rips, err)
+			return err
 		}
 	}
 }
 
-func (aconn *AppConn) processGetResponseWithList(rips []*DlmsRequestResponse, r io.Reader, errr error) {
+func (aconn *AppConn) processGetResponseWithList(rips []*DlmsRequestResponse, r io.Reader, errr error) error {
 
 	err, dataAccessResults, datas := decode_GetResponseWithList(r)
 
@@ -326,28 +158,28 @@ func (aconn *AppConn) processGetResponseWithList(rips []*DlmsRequestResponse, r 
 	}
 
 	if nil == err {
-		aconn.killRequest(rips, nil)
+		return nil
 	} else {
 		if nil != errr {
-			aconn.killRequest(rips, errr)
+			return errr
 		} else {
-			aconn.killRequest(rips, err)
+			return err
 		}
 	}
 
 }
 
-func (aconn *AppConn) processBlockResponse(rips []*DlmsRequestResponse, r io.Reader, err error) {
+func (aconn *AppConn) processBlockResponse(rips []*DlmsRequestResponse, r io.Reader, err error) error {
 	if 1 == len(rips) {
 		debugLog("blocks received, processing ResponseNormal")
-		aconn.processGetResponseNormalBlock(rips, r, err)
+		return aconn.processGetResponseNormalBlock(rips, r, err)
 	} else {
 		debugLog("blocks received, processing ResponseWithList")
-		aconn.processGetResponseWithList(rips, r, err)
+		return aconn.processGetResponseWithList(rips, r, err)
 	}
 }
 
-func (aconn *AppConn) processSetResponseNormal(rips []*DlmsRequestResponse, r io.Reader, errr error) {
+func (aconn *AppConn) processSetResponseNormal(rips []*DlmsRequestResponse, r io.Reader, errr error) error {
 
 	err, dataAccessResult := decode_SetResponseNormal(r)
 
@@ -355,17 +187,17 @@ func (aconn *AppConn) processSetResponseNormal(rips []*DlmsRequestResponse, r io
 	rips[0].Rep.DataAccessResult = dataAccessResult
 
 	if nil == err {
-		aconn.killRequest(rips, nil)
+		return nil
 	} else {
 		if nil != errr {
-			aconn.killRequest(rips, errr)
+			return errr
 		} else {
-			aconn.killRequest(rips, err)
+			return err
 		}
 	}
 }
 
-func (aconn *AppConn) processSetResponseWithList(rips []*DlmsRequestResponse, r io.Reader, errr error) {
+func (aconn *AppConn) processSetResponseWithList(rips []*DlmsRequestResponse, r io.Reader, errr error) error {
 
 	err, dataAccessResults := decode_SetResponseWithList(r)
 
@@ -385,17 +217,17 @@ func (aconn *AppConn) processSetResponseWithList(rips []*DlmsRequestResponse, r 
 	}
 
 	if nil == err {
-		aconn.killRequest(rips, nil)
+		return nil
 	} else {
 		if nil != errr {
-			aconn.killRequest(rips, errr)
+			return errr
 		} else {
-			aconn.killRequest(rips, err)
+			return err
 		}
 	}
 }
 
-func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.Reader) {
+func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.Reader) error {
 
 	invokeId := uint8((p[2] & 0xF0) >> 4)
 	debugLog("invokeId %d\n", invokeId)
@@ -403,12 +235,12 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 	if (0xC4 == p[0]) && (0x01 == p[1]) {
 		debugLog("processing GetResponseNormal")
 
-		aconn.processGetResponseNormal(rips, r, nil)
+		return aconn.processGetResponseNormal(rips, r, nil)
 
 	} else if (0xC4 == p[0]) && (0x03 == p[1]) {
 		debugLog("processing GetResponseWithList")
 
-		aconn.processGetResponseWithList(rips, r, nil)
+		return aconn.processGetResponseWithList(rips, r, nil)
 
 	} else if (0xC4 == p[0]) && (0x02 == p[1]) {
 		// data blocks response
@@ -416,14 +248,12 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 
 		err, lastBlock, blockNumber, dataAccessResult, rawData := decode_GetResponsewithDataBlock(r)
 		if nil != err {
-			aconn.killRequest(rips, err)
-			return
+			return err
 		}
 		if 0 != dataAccessResult {
 			err = fmt.Errorf("error occured receiving response block, invokeId: %d, blockNumber: %d, dataAccessResult: %d", invokeId, blockNumber, dataAccessResult)
 			errorLog("%s", err)
-			aconn.killRequest(rips, err)
-			return
+			return err
 		}
 
 		if nil == rips[0].rawData {
@@ -434,38 +264,61 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 		_pdu := rips[0].rawData
 
 		if lastBlock {
-			aconn.processBlockResponse(rips, bytes.NewBuffer(_pdu), nil)
+			return aconn.processBlockResponse(rips, bytes.NewBuffer(_pdu), nil)
 		} else {
 			// requests next data block
 
 			debugLog("requesting next data block after block %d", blockNumber)
 
-			var buf bytes.Buffer
+			buf := new(bytes.Buffer)
 			invokeIdAndPriority := p[2]
 			_, err := buf.Write([]byte{0xC0, 0x02, byte(invokeIdAndPriority)})
 			if nil != err {
-				aconn.killRequest(rips, err)
-				return
+				return err
 			}
 
-			err = encode_GetRequestForNextDataBlock(&buf, blockNumber)
+			err = encode_GetRequestForNextDataBlock(buf, blockNumber)
 			if nil != err {
-				aconn.killRequest(rips, err)
-				return
+				return err
 			}
 
-			aconn.transportSubmit(invokeId, rips, buf.Bytes())
+			err = aconn.dconn.transportSend(aconn.applicationClient, aconn.logicalDevice, buf.Bytes())
+			if nil != err {
+				return err
+			}
+
+			pdu, err := aconn.dconn.transportReceive(aconn.logicalDevice, aconn.applicationClient)
+			if nil != err {
+				return err
+			}
+
+			buf = bytes.NewBuffer(pdu)
+
+			p = make([]byte, 3)
+			err = binary.Read(buf, binary.BigEndian, p)
+			if nil != err {
+				errorLog("io.Read() failed: %v", err)
+				return err
+			}
+			invokeIdRcv := uint8((p[2] & 0xF0) >> 4)
+			if invokeIdRcv != invokeId {
+				err := fmt.Errorf("invoke ids differs: invokeId sent: %v, invokeId received: %v", invokeId, invokeIdRcv)
+				errorLog("%s", err)
+				return err
+			}
+
+			return aconn.processReply(rips, p, buf)
 		}
 
 	} else if (0xC5 == p[0]) && (0x01 == p[1]) {
 		debugLog("processing SetResponseNormal")
 
-		aconn.processSetResponseNormal(rips, r, nil)
+		return aconn.processSetResponseNormal(rips, r, nil)
 
 	} else if (0xC5 == p[0]) && (0x05 == p[1]) {
 		debugLog("processing SetResponseWithList")
 
-		aconn.processSetResponseWithList(rips, r, nil)
+		return aconn.processSetResponseWithList(rips, r, nil)
 
 	} else if (0xC5 == p[0]) && (0x02 == p[1]) {
 		debugLog("processing SetResponseForDataBlock")
@@ -474,14 +327,12 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 
 		err, blockNumber := decode_SetResponseForDataBlock(r)
 		if nil != err {
-			aconn.killRequest(rips, err)
-			return
+			return err
 		}
 		if req.blockNumber != blockNumber {
 			err = fmt.Errorf("error occured receiving response block: received unexpected blockNumber: %d, invokeId: %d ", blockNumber, invokeId)
 			errorLog("%s", err)
-			aconn.killRequest(rips, err)
-			return
+			return err
 		}
 
 		// set next block
@@ -501,22 +352,46 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 
 		debugLog("setting next data block (current block is %d)", blockNumber)
 
-		var buf bytes.Buffer
+		buf := new(bytes.Buffer)
 		invokeIdAndPriority := p[2]
 		_, err = buf.Write([]byte{0xC1, 0x03, byte(invokeIdAndPriority)})
 		if nil != err {
-			aconn.killRequest(rips, err)
-			return
+			return err
 		}
 
-		err = encode_SetRequestWithDataBlock(&buf, lastBlock, blockNumber+1, rawData)
+		err = encode_SetRequestWithDataBlock(buf, lastBlock, blockNumber+1, rawData)
 		if nil != err {
-			aconn.killRequest(rips, err)
-			return
+			return err
 		}
 		req.blockNumber += 1
 
-		aconn.transportSubmit(invokeId, rips, buf.Bytes())
+		err = aconn.dconn.transportSend(aconn.applicationClient, aconn.logicalDevice, buf.Bytes())
+		if nil != err {
+			return err
+		}
+
+		pdu, err := aconn.dconn.transportReceive(aconn.logicalDevice, aconn.applicationClient)
+		if nil != err {
+			return err
+		}
+
+		buf = bytes.NewBuffer(pdu)
+
+		p = make([]byte, 3)
+		err = binary.Read(buf, binary.BigEndian, p)
+		if nil != err {
+			errorLog("io.Read() failed: %v", err)
+			aconn.Close()
+			return err
+		}
+		invokeIdRcv := uint8((p[2] & 0xF0) >> 4)
+		if invokeIdRcv != invokeId {
+			err := fmt.Errorf("invoke ids differs: invokeId sent: %v, invokeId received: %v", invokeId, invokeIdRcv)
+			errorLog("%s", err)
+			return err
+		}
+
+		return aconn.processReply(rips, p, buf)
 
 	} else if (0xC5 == p[0]) && (0x03 == p[1]) {
 		debugLog("processing SetResponseForLastDataBlock")
@@ -525,20 +400,18 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 
 		err, dataAccessResult, blockNumber := decode_SetResponseForLastDataBlock(r)
 		if nil != err {
-			aconn.killRequest(rips, err)
-			return
+			return err
 		}
 		if req.blockNumber != blockNumber {
 			err = fmt.Errorf("error occured receiving response block: received unexpected blockNumber: %d, invokeId: %d ", blockNumber, invokeId)
 			errorLog("%s", err)
-			aconn.killRequest(rips, err)
-			return
+			return err
 		}
 
 		rips[0].Rep = new(DlmsResponse)
 		rips[0].Rep.DataAccessResult = dataAccessResult
 
-		aconn.killRequest(rips, nil)
+		return nil
 
 	} else if (0xC5 == p[0]) && (0x04 == p[1]) {
 		debugLog("processing SetResponseForLastDataBlockWithList")
@@ -547,21 +420,18 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 
 		err, dataAccessResults, blockNumber := decode_SetResponseForLastDataBlockWithList(r)
 		if nil != err {
-			aconn.killRequest(rips, err)
-			return
+			return err
 		}
 		if req.blockNumber != blockNumber {
 			err = fmt.Errorf("error occured receiving response block: received unexpected blockNumber: %d, invokeId: %d ", blockNumber, invokeId)
 			errorLog("%s", err)
-			aconn.killRequest(rips, err)
-			return
+			return err
 		}
 
 		if len(rips) != len(dataAccessResults) {
 			err = fmt.Errorf("error occured receiving response block: received unexpected number of results: %d, expected: %d, invokeId: %d ", len(dataAccessResults), len(rips), invokeId)
 			errorLog("%s", err)
-			aconn.killRequest(rips, err)
-			return
+			return err
 		}
 
 		for i := 0; i < len(rips); i++ {
@@ -569,60 +439,43 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 			rips[i].Rep.DataAccessResult = dataAccessResults[i]
 		}
 
-		aconn.killRequest(rips, nil)
+		return nil
 
 	} else {
 		err := fmt.Errorf("received pdu discarded due to unknown tag: %02X %02X", p[0], p[1])
 		errorLog("%s", err)
-		return
+		return err
 	}
 }
 
-func (aconn *AppConn) getInvokeId() (err error, invokeId uint8) {
-
-	debugLog("waiting for free invokeId ...")
-	select {
-	case _invokeId := <-aconn.invokeIdsCh:
-		debugLog("invokeId: %d", _invokeId)
-		return nil, _invokeId
-	case <-aconn.finish:
-		err = fmt.Errorf("aborted, reason: app connection closed")
-		errorLog("%s", err)
-		return err, 0
-	}
-}
-
-func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
-	debugLog("")
+func (aconn *AppConn) SendRequest(vals []*DlmsRequest, invokeId uint8) (rips []*DlmsRequestResponse, err error) {
+	debugLog("enter")
 	highPriority := true
 
 	if 0 == len(vals) {
-		ch <- &DlmsMessage{nil, nil}
-		return
+		return nil, nil
 	}
 
 	if aconn.closed {
 		err := fmt.Errorf("connection closed")
 		errorLog("%s", err)
-		ch <- &DlmsMessage{err, nil}
-		return
+		return nil, err
 	}
 
-	err, invokeId := aconn.getInvokeId()
-	if nil != err {
-		ch <- &DlmsMessage{err, nil}
-		return
-	}
 	debugLog("invokeId %d\n", invokeId)
+	if invokeId > 0x0F {
+		err := fmt.Errorf("invokeId exceeds limit")
+		errorLog("%s", err)
+		return nil, err
+	}
 
-	rips := make([]*DlmsRequestResponse, len(vals))
+	rips = make([]*DlmsRequestResponse, len(vals))
 	for i := 0; i < len(vals); i += 1 {
 		rip := new(DlmsRequestResponse)
 		rip.Req = vals[i]
 
 		rip.invokeId = invokeId
 		rip.RequestSubmittedAt = time.Now()
-		rip.Ch = ch
 		rip.highPriority = highPriority
 		rips[i] = rip
 	}
@@ -636,42 +489,44 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 		invokeIdAndPriority = tDlmsInvokeIdAndPriority(invokeId << 4)
 	}
 
-	var buf bytes.Buffer
+	buf := new(bytes.Buffer) // buffer for encoded application layer data pdu
+
+	// encode application layer data pdu
 
 	if 1 == len(vals) {
 		if nil == vals[0].Data {
 			_, err = buf.Write([]byte{0xC0, 0x01, byte(invokeIdAndPriority)})
 			if nil != err {
 				errorLog("buf.Write() failed: %v\n", err)
-				return
+				return nil, err
 			}
-			err = encode_GetRequestNormal(&buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
+			err = encode_GetRequestNormal(buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
 			if nil != err {
-				return
+				return nil, err
 			}
 		} else {
 			if 0 == vals[0].BlockSize {
 				_, err = buf.Write([]byte{0xC1, 0x01, byte(invokeIdAndPriority)})
 				if nil != err {
 					errorLog("buf.Write() failed: %v\n", err)
-					return
+					return nil, err
 				}
 
-				err = encode_SetRequestNormal(&buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter, vals[0].Data)
+				err = encode_SetRequestNormal(buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter, vals[0].Data)
 				if nil != err {
-					return
+					return nil, err
 				}
 			} else {
 				_, err = buf.Write([]byte{0xC1, 0x02, byte(invokeIdAndPriority)})
 				if nil != err {
 					errorLog("buf.Write() failed: %v\n", err)
-					return
+					return nil, err
 				}
 
 				var _buf bytes.Buffer
 				err = vals[0].Data.Encode(&_buf)
 				if nil != err {
-					return
+					return nil, err
 				}
 				vals[0].rawData = _buf.Bytes()
 
@@ -688,9 +543,9 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 					lastBlock = true
 				}
 
-				err = encode_SetRequestNormalBlock(&buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter, lastBlock, vals[0].blockNumber+1, rawData)
+				err = encode_SetRequestNormalBlock(buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter, lastBlock, vals[0].blockNumber+1, rawData)
 				if nil != err {
-					return
+					return nil, err
 				} else {
 					vals[0].blockNumber += 1
 				}
@@ -701,7 +556,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 			_, err = buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
 			if nil != err {
 				errorLog("buf.Write() failed: %v\n", err)
-				return
+				return nil, err
 			}
 			var (
 				classIds         []DlmsClassId        = make([]DlmsClassId, len(vals))
@@ -717,9 +572,9 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 				accessSelectors[i] = vals[i].AccessSelector
 				accessParameters[i] = vals[i].AccessParameter
 			}
-			err = encode_GetRequestWithList(&buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters)
+			err = encode_GetRequestWithList(buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters)
 			if nil != err {
-				return
+				return nil, err
 			}
 		} else {
 			var (
@@ -742,18 +597,18 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 				_, err = buf.Write([]byte{0xC1, 0x04, byte(invokeIdAndPriority)})
 				if nil != err {
 					errorLog("buf.Write() failed: %v\n", err)
-					return
+					return nil, err
 				}
 
-				err = encode_SetRequestWithList(&buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, datas)
+				err = encode_SetRequestWithList(buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, datas)
 				if nil != err {
-					return
+					return nil, err
 				}
 			} else {
 				_, err = buf.Write([]byte{0xC1, 0x05, byte(invokeIdAndPriority)})
 				if nil != err {
 					errorLog("buf.Write() failed: %v\n", err)
-					return
+					return nil, err
 				}
 
 				var _buf bytes.Buffer
@@ -766,7 +621,7 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 				for i := 0; i < int(count); i++ {
 					err = vals[i].Data.Encode(&_buf)
 					if nil != err {
-						return
+						return nil, err
 					}
 				}
 				vals[0].rawData = _buf.Bytes()
@@ -784,9 +639,9 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 					lastBlock = true
 				}
 
-				err = encode_SetRequestWithListBlock(&buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, lastBlock, vals[0].blockNumber+1, rawData)
+				err = encode_SetRequestWithListBlock(buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, lastBlock, vals[0].blockNumber+1, rawData)
 				if nil != err {
-					return
+					return nil, err
 				} else {
 					vals[0].blockNumber += 1
 				}
@@ -796,18 +651,39 @@ func (aconn *AppConn) sendRequest(ch chan *DlmsMessage, vals []*DlmsRequest) {
 		panic("assertion failed")
 	}
 
-	aconn.transportSubmit(invokeId, rips, buf.Bytes())
-}
+	// send request
 
-func (aconn *AppConn) SendRequest(vals []*DlmsRequest) <-chan *DlmsMessage {
+	debugLog("send request")
 
-	ch := make(chan *DlmsMessage)
-	if aconn.closed {
-		err := fmt.Errorf("connection closed")
-		errorLog("%s", err)
-		ch <- &DlmsMessage{err, nil}
-		return ch
+	err = aconn.dconn.transportSend(aconn.applicationClient, aconn.logicalDevice, buf.Bytes())
+	if nil != err {
+		return nil, err
 	}
-	go aconn.sendRequest(ch, vals)
-	return ch
+
+	// receive reply
+
+	debugLog("receive request")
+
+	pdu, err := aconn.dconn.transportReceive(aconn.logicalDevice, aconn.applicationClient)
+	if nil != err {
+		return nil, err
+	}
+
+	buf = bytes.NewBuffer(pdu)
+
+	p := make([]byte, 3)
+	err = binary.Read(buf, binary.BigEndian, p)
+	if nil != err {
+		errorLog("io.Read() failed: %v", err)
+		return nil, err
+	}
+	invokeIdRcv := uint8((p[2] & 0xF0) >> 4)
+	if invokeIdRcv != invokeId {
+		err := fmt.Errorf("invoke ids differs: invokeId sent: %v, invokeId received: %v", invokeId, invokeIdRcv)
+		errorLog("%s", err)
+		return nil, err
+	}
+
+	err = aconn.processReply(rips, p, buf)
+	return rips, err
 }
