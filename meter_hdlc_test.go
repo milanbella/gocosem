@@ -9,90 +9,54 @@ import (
 var hdlcMeterIp = "172.16.123.187"
 
 func TestMeterHdlc_TcpConnect(t *testing.T) {
-	ch := TcpConnect(hdlcMeterIp, 4059)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := TcpConnect(hdlcMeterIp, 4059)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
 	defer dconn.Close()
 }
 
 func TestMeterHdlc_HdlcConnect(t *testing.T) {
-	ch := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 }
 
 func TestMeterHdlc_AppConnect(t *testing.T) {
 
-	ch := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
-	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
 	t.Logf("application connected")
-	aconn := msg.Data.(*AppConn)
 	defer aconn.Close()
 }
 
 func TestMeterHdlc_GetTime(t *testing.T) {
 
-	ch := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
-	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
 	t.Logf("application connected")
-	aconn := msg.Data.(*AppConn)
 	defer aconn.Close()
 
 	val := new(DlmsRequest)
@@ -101,12 +65,10 @@ func TestMeterHdlc_GetTime(t *testing.T) {
 	val.AttributeId = 0x02
 	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -118,30 +80,18 @@ func TestMeterHdlc_GetTime(t *testing.T) {
 
 func TestMeterHdlc_SetTime(t *testing.T) {
 
-	ch := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
-	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
 	t.Logf("application connected")
-	aconn := msg.Data.(*AppConn)
 	defer aconn.Close()
 
 	// read time
@@ -152,12 +102,10 @@ func TestMeterHdlc_SetTime(t *testing.T) {
 	val.AttributeId = 0x02
 	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("%s\n", msg.Err)
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -175,12 +123,10 @@ func TestMeterHdlc_SetTime(t *testing.T) {
 	val.Data = data
 	vals = make([]*DlmsRequest, 1)
 	vals[0] = val
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("%s\n", msg.Err)
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
 	}
-	rep = msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -195,12 +141,10 @@ func TestMeterHdlc_SetTime(t *testing.T) {
 	val.AttributeId = 0x02
 	vals = make([]*DlmsRequest, 1)
 	vals[0] = val
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("%s\n", msg.Err)
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
 	}
-	rep = msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -213,30 +157,18 @@ func TestMeterHdlc_SetTime(t *testing.T) {
 
 func TestMeterHdlc_ProfileCaptureObjects(t *testing.T) {
 
-	ch := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
-	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
+	if nil != err.Err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
 	t.Logf("application connected")
-	aconn := msg.Data.(*AppConn)
 	defer aconn.Close()
 
 	// capture objects definitions
@@ -249,13 +181,11 @@ func TestMeterHdlc_ProfileCaptureObjects(t *testing.T) {
 	val.AttributeId = 3
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
+	rep, err := aconn.SendRequest(vals)
 	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -279,30 +209,18 @@ func TestMeterHdlc_ProfileCaptureObjects(t *testing.T) {
 
 func TestMeterHdlc_ProfileFirstEntries(t *testing.T) {
 
-	ch := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
-	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
 	t.Logf("application connected")
-	aconn := msg.Data.(*AppConn)
 	defer aconn.Close()
 
 	// request first 10 entries
@@ -323,13 +241,11 @@ func TestMeterHdlc_ProfileFirstEntries(t *testing.T) {
 
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -349,30 +265,18 @@ func TestMeterHdlc_ProfileFirstEntries(t *testing.T) {
 
 func TestMeterHdlc_ProfileLastEntries(t *testing.T) {
 
-	ch := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
-	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
-	msg = <-ch
-	if nil != msg.Err {
+	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	if nil != err {
 		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
 	}
 	t.Logf("application connected")
-	aconn := msg.Data.(*AppConn)
 	defer aconn.Close()
 
 	// profile entries in use
@@ -385,13 +289,11 @@ func TestMeterHdlc_ProfileLastEntries(t *testing.T) {
 	val.AttributeId = 4
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -418,13 +320,11 @@ func TestMeterHdlc_ProfileLastEntries(t *testing.T) {
 
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep = msg.Data.(DlmsResultResponse)
 	dataAccessResult = rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -444,30 +344,18 @@ func TestMeterHdlc_ProfileLastEntries(t *testing.T) {
 
 func TestMeterHdlc_ProfileTimeRange(t *testing.T) {
 
-	ch := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIp, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
-	ch = dconn.AppConnectWithPassword(01, 01, "12345678")
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+	dconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
 	t.Logf("application connected")
-	aconn := msg.Data.(*AppConn)
 	defer aconn.Close()
 
 	// profile entries in use
@@ -480,13 +368,11 @@ func TestMeterHdlc_ProfileTimeRange(t *testing.T) {
 	val.AttributeId = 4
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -513,13 +399,11 @@ func TestMeterHdlc_ProfileTimeRange(t *testing.T) {
 
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep = msg.Data.(DlmsResultResponse)
 	dataAccessResult = rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -626,13 +510,11 @@ func TestMeterHdlc_ProfileTimeRange(t *testing.T) {
 
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep = msg.Data.(DlmsResultResponse)
 	dataAccessResult = rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)

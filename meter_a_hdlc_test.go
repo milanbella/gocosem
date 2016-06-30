@@ -10,54 +10,32 @@ import (
 var hdlcMeterIpA = "172.16.123.187"
 
 func TestMeterAHdlcHdlc_TcpConnect(t *testing.T) {
-	ch := TcpConnect(hdlcMeterIpA, 4059)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := TcpConnect(hdlcMeterIpA, 4059)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
 	defer dconn.Close()
 }
 
 func TestMeterAHdlcHdlc_HdlcConnect(t *testing.T) {
-	ch := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 }
 
 func TestMeterAHdlcHdlc_AppConnect(t *testing.T) {
 	b := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
 
-	ch := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	docnn, err := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
 	aarq := []byte{0x60, 0x36, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0x8A, 0x02, 0x07, 0x80, 0x8B, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01, 0xAC, 0x0A, 0x80, 0x08, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0xBE, 0x10, 0x04, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0xFF, 0xFF, 0xFF, 0x02, 0x00}
 	ch = dconn.AppConnectRaw(01, 01, aarq)
@@ -65,7 +43,7 @@ func TestMeterAHdlcHdlc_AppConnect(t *testing.T) {
 	if nil != msg.Err {
 		t.Fatal(msg.Err)
 	}
-	aare := msg.Data.([]byte)
+	defer aconn.Close()
 	t.Logf("aare: %02X", aare)
 
 	if !bytes.Equal(b, aare) {
@@ -77,37 +55,24 @@ func TestMeterAHdlcHdlc_AppConnect(t *testing.T) {
 func TestMeterAHdlcHdlc_GetTime(t *testing.T) {
 	b := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
 
-	ch := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
 	aarq := []byte{0x60, 0x36, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0x8A, 0x02, 0x07, 0x80, 0x8B, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01, 0xAC, 0x0A, 0x80, 0x08, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0xBE, 0x10, 0x04, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0xFF, 0xFF, 0xFF, 0x02, 0x00}
-	ch = dconn.AppConnectRaw(01, 01, aarq)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	aconn, err := dconn.AppConnectRaw(01, 01, aarq)
+	if nil != err {
+		t.Fatal(err)
 	}
-	aare := msg.Data.([]byte)
+	defer aconn.Close()
 	t.Logf("aare: %02X", aare)
 
 	if !bytes.Equal(b, aare) {
 		t.Fatalf("failed")
 	}
-	aconn := NewAppConnAtChannel(dconn, 01, 01, 4)
-	defer aconn.Close()
 
 	val := new(DlmsRequest)
 	val.ClassId = 8
@@ -115,12 +80,10 @@ func TestMeterAHdlcHdlc_GetTime(t *testing.T) {
 	val.AttributeId = 0x02
 	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -133,37 +96,24 @@ func TestMeterAHdlcHdlc_GetTime(t *testing.T) {
 func TestMeterAHdlcHdlc_SetTime(t *testing.T) {
 	b := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
 
-	ch := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
 	aarq := []byte{0x60, 0x36, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0x8A, 0x02, 0x07, 0x80, 0x8B, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01, 0xAC, 0x0A, 0x80, 0x08, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0xBE, 0x10, 0x04, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0xFF, 0xFF, 0xFF, 0x02, 0x00}
-	ch = dconn.AppConnectRaw(01, 01, aarq)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	aconn, err = dconn.AppConnectRaw(01, 01, aarq)
+	if nil != err {
+		t.Fatal(err)
 	}
-	aare := msg.Data.([]byte)
+	defer aconn.Close()
 	t.Logf("aare: %02X", aare)
 
 	if !bytes.Equal(b, aare) {
 		t.Fatalf("failed")
 	}
-	aconn := NewAppConnAtChannel(dconn, 01, 01, 4)
-	defer aconn.Close()
 
 	// read time
 
@@ -173,12 +123,10 @@ func TestMeterAHdlcHdlc_SetTime(t *testing.T) {
 	val.AttributeId = 0x02
 	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("%s\n", msg.Err)
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -196,12 +144,10 @@ func TestMeterAHdlcHdlc_SetTime(t *testing.T) {
 	val.Data = data
 	vals = make([]*DlmsRequest, 1)
 	vals[0] = val
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("%s\n", msg.Err)
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
 	}
-	rep = msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -216,12 +162,10 @@ func TestMeterAHdlcHdlc_SetTime(t *testing.T) {
 	val.AttributeId = 0x02
 	vals = make([]*DlmsRequest, 1)
 	vals[0] = val
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
 		t.Fatalf("%s\n", msg.Err)
 	}
-	rep = msg.Data.(DlmsResultResponse)
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
 		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
@@ -235,37 +179,24 @@ func TestMeterAHdlcHdlc_SetTime(t *testing.T) {
 func TestMeterAHdlcHdlc_ProfileCaptureObjects(t *testing.T) {
 	b := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
 
-	ch := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
 	aarq := []byte{0x60, 0x36, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0x8A, 0x02, 0x07, 0x80, 0x8B, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01, 0xAC, 0x0A, 0x80, 0x08, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0xBE, 0x10, 0x04, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0xFF, 0xFF, 0xFF, 0x02, 0x00}
-	ch = dconn.AppConnectRaw(01, 01, aarq)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	aconn, err := dconn.AppConnectRaw(01, 01, aarq)
+	if nil != err {
+		t.Fatal(err)
 	}
-	aare := msg.Data.([]byte)
+	defer aconn.Close()
 	t.Logf("aare: %02X", aare)
 
 	if !bytes.Equal(b, aare) {
 		t.Fatalf("failed")
 	}
-	aconn := NewAppConnAtChannel(dconn, 01, 01, 4)
-	defer aconn.Close()
 
 	// capture objects definitions
 
@@ -277,13 +208,11 @@ func TestMeterAHdlcHdlc_ProfileCaptureObjects(t *testing.T) {
 	val.AttributeId = 3
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -308,37 +237,24 @@ func TestMeterAHdlcHdlc_ProfileCaptureObjects(t *testing.T) {
 func TestMeterAHdlcHdlc_ProfileFirstEntries(t *testing.T) {
 	b := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
 
-	ch := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
 	aarq := []byte{0x60, 0x36, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0x8A, 0x02, 0x07, 0x80, 0x8B, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01, 0xAC, 0x0A, 0x80, 0x08, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0xBE, 0x10, 0x04, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0xFF, 0xFF, 0xFF, 0x02, 0x00}
-	ch = dconn.AppConnectRaw(01, 01, aarq)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	aconn, err := dconn.AppConnectRaw(01, 01, aarq)
+	if nil != err {
+		t.Fatal(err)
 	}
-	aare := msg.Data.([]byte)
+	defer aconn.Close()
 	t.Logf("aare: %02X", aare)
 
 	if !bytes.Equal(b, aare) {
 		t.Fatalf("failed")
 	}
-	aconn := NewAppConnAtChannel(dconn, 01, 01, 4)
-	defer aconn.Close()
 
 	// request first 10 entries
 
@@ -358,13 +274,12 @@ func TestMeterAHdlcHdlc_ProfileFirstEntries(t *testing.T) {
 
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep := msg.Data.(DlmsResultResponse)
+	defer aconn.Close()
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -385,37 +300,24 @@ func TestMeterAHdlcHdlc_ProfileFirstEntries(t *testing.T) {
 func TestMeterAHdlcHdlc_ProfileLastEntries(t *testing.T) {
 	b := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
 
-	ch := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	aconn, err := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
 	aarq := []byte{0x60, 0x36, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0x8A, 0x02, 0x07, 0x80, 0x8B, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01, 0xAC, 0x0A, 0x80, 0x08, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0xBE, 0x10, 0x04, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0xFF, 0xFF, 0xFF, 0x02, 0x00}
-	ch = dconn.AppConnectRaw(01, 01, aarq)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	aconn, err := dconn.AppConnectRaw(01, 01, aarq)
+	if nil != err {
+		t.Fatal(err)
 	}
-	aare := msg.Data.([]byte)
+	defer aconn.Close()
 	t.Logf("aare: %02X", aare)
 
 	if !bytes.Equal(b, aare) {
 		t.Fatalf("failed")
 	}
-	aconn := NewAppConnAtChannel(dconn, 01, 01, 4)
-	defer aconn.Close()
 
 	// profile entries in use
 
@@ -427,13 +329,11 @@ func TestMeterAHdlcHdlc_ProfileLastEntries(t *testing.T) {
 	val.AttributeId = 4
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -460,13 +360,11 @@ func TestMeterAHdlcHdlc_ProfileLastEntries(t *testing.T) {
 
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep = msg.Data.(DlmsResultResponse)
 	dataAccessResult = rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -487,37 +385,24 @@ func TestMeterAHdlcHdlc_ProfileLastEntries(t *testing.T) {
 func TestMeterAHdlcHdlc_ProfileTimeRange(t *testing.T) {
 	b := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
 
-	ch := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
-	msg := <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	dconn, err := HdlcConnect(hdlcMeterIpA, 4059, 1, 1, time.Duration(1)*time.Hour)
+	if nil != err {
+		t.Fatal(err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
-	defer func() {
-		err := dconn.HdlcClient.SendDISC()
-		if nil != err {
-			dconn.Close()
-			t.Fatalf("failed: %v", err)
-		} else {
-			dconn.Close()
-		}
-	}()
+	defer dconn.Close()
 
 	aarq := []byte{0x60, 0x36, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0x8A, 0x02, 0x07, 0x80, 0x8B, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01, 0xAC, 0x0A, 0x80, 0x08, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0xBE, 0x10, 0x04, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0xFF, 0xFF, 0xFF, 0x02, 0x00}
-	ch = dconn.AppConnectRaw(01, 01, aarq)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatal(msg.Err)
+	aconn, err := dconn.AppConnectRaw(01, 01, aarq)
+	if nil != err {
+		t.Fatal(err)
 	}
-	aare := msg.Data.([]byte)
+	defer aconn.Close()
 	t.Logf("aare: %02X", aare)
 
 	if !bytes.Equal(b, aare) {
 		t.Fatalf("failed")
 	}
-	aconn := NewAppConnAtChannel(dconn, 01, 01, 4)
-	defer aconn.Close()
 
 	// profile entries in use
 
@@ -529,13 +414,11 @@ func TestMeterAHdlcHdlc_ProfileTimeRange(t *testing.T) {
 	val.AttributeId = 4
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep := msg.Data.(DlmsResultResponse)
 	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -562,13 +445,11 @@ func TestMeterAHdlcHdlc_ProfileTimeRange(t *testing.T) {
 
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep = msg.Data.(DlmsResultResponse)
 	dataAccessResult = rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
@@ -675,13 +556,11 @@ func TestMeterAHdlcHdlc_ProfileTimeRange(t *testing.T) {
 
 	vals[0] = val
 
-	ch = aconn.SendRequest(vals)
-	msg = <-ch
-	if nil != msg.Err {
-		t.Fatalf("read failed: %s", msg.Err)
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
 		return
 	}
-	rep = msg.Data.(DlmsResultResponse)
 	dataAccessResult = rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
