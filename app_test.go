@@ -2,7 +2,6 @@ package gocosem
 
 import (
 	"bytes"
-	"sync"
 	"testing"
 )
 
@@ -13,7 +12,7 @@ func TestApp_TcpConnect(t *testing.T) {
 
 	dconn, err := TcpConnect("localhost", 4059)
 	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
+		t.Fatalf("%s\n", err)
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
@@ -27,39 +26,18 @@ func TestApp_AppConnect(t *testing.T) {
 
 	dconn, err := TcpConnect("localhost", 4059)
 	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
+		t.Fatalf("%s\n", err)
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
+		t.Fatalf("%s\n", err)
 	}
 	t.Logf("application connected")
 	defer aconn.Close()
 
-}
-
-func TestApp_AppConnectRaw(t *testing.T) {
-	ensureMockCosemServer(t)
-	mockCosemServer.Init()
-	defer mockCosemServer.Close()
-
-	dconn, err := TcpConnect("localhost", 4059)
-	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
-	}
-	t.Logf("transport connected")
-	defer dconn.Close()
-
-	aarq := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x18, 0x1F, 0x08, 0x00, 0x00, 0x07}
-	aare, err := dconn.AppConnectRaw(01, 01, aarq)
-	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
-	}
-	aare := msg.Data.([]byte)
-	t.Logf("aare: %02X", aare)
 }
 
 func TestApp_app_GetRequestNormal(t *testing.T) {
@@ -78,9 +56,9 @@ func TestApp_app_GetRequestNormal(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
+		t.Fatalf("%s\n", err)
 	}
 	t.Logf("application connected")
 	defer aconn.Close()
@@ -91,9 +69,9 @@ func TestApp_app_GetRequestNormal(t *testing.T) {
 	val.AttributeId = 0x02
 	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
-	rep, err = aconn.SendRequest(0, vals)
+	rep, err := aconn.SendRequest(vals)
 	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
+		t.Fatalf("%s\n", err)
 	}
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
@@ -114,14 +92,14 @@ func TestApp_GetRequestNormal_blockTransfer(t *testing.T) {
 	data.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05})
 	mockCosemServer.setAttribute(&DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}, 1, 0x02, data)
 
-	docnn, err := TcpConnect("localhost", 4059)
+	dconn, err := TcpConnect("localhost", 4059)
 	if nil != err {
 		t.Fatalf("%s\n", err)
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("%s\n", err)
 	}
@@ -168,9 +146,9 @@ func TestApp_GetRequestWithList(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
+		t.Fatalf("%s\n", err)
 	}
 	t.Logf("application connected")
 	defer aconn.Close()
@@ -224,12 +202,12 @@ func TestApp_GetRequestWithList_blockTransfer(t *testing.T) {
 
 	dconn, err := TcpConnect("localhost", 4059)
 	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
+		t.Fatalf("%s\n", err)
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("%s\n", err)
 	}
@@ -285,9 +263,9 @@ func TestApp_SetRequestNormal(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
+		t.Fatalf("%s\n", err)
 	}
 	t.Logf("application connected")
 	defer aconn.Close()
@@ -343,7 +321,7 @@ func TestApp_SetRequestNormal(t *testing.T) {
 	vals[0] = val
 	rep, err = aconn.SendRequest(vals)
 	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
+		t.Fatalf("%s\n", err)
 	}
 	t.Logf("response delivered: in %v", rep.DeliveredIn())
 	if 0 != rep.DataAccessResultAt(0) {
@@ -366,12 +344,12 @@ func TestApp_SetRequestNormal_blockTransfer(t *testing.T) {
 
 	dconn, err := TcpConnect("localhost", 4059)
 	if nil != err {
-		t.Fatalf("%s\n", msg.Err)
+		t.Fatalf("%s\n", err)
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("%s\n", err)
 	}
@@ -387,7 +365,7 @@ func TestApp_SetRequestNormal_blockTransfer(t *testing.T) {
 	val.InstanceId = &DlmsOid{0x00, 0x00, 0x2A, 0x00, 0x00, 0xFF}
 	val.AttributeId = 0x02
 	vals[0] = val
-	rep, err = aconn.SendRequest(vals)
+	rep, err := aconn.SendRequest(vals)
 	if nil != err {
 		t.Fatalf("%s\n", err)
 	}
@@ -466,7 +444,7 @@ func TestApp_SetRequestWithList(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("%s\n", err)
 	}
@@ -489,7 +467,7 @@ func TestApp_SetRequestWithList(t *testing.T) {
 	val.AttributeId = 0x02
 	vals[1] = val
 
-	rep, err = aconn.SendRequest(vals)
+	rep, err := aconn.SendRequest(vals)
 	if nil != err {
 		t.Fatalf("%s\n", err)
 	}
@@ -597,10 +575,9 @@ func TestApp_SetRequestWithList_blockTransfer(t *testing.T) {
 		t.Fatalf("%s\n", err)
 	}
 	t.Logf("transport connected")
-	dconn := msg.Data.(*DlmsConn)
 	defer dconn.Close()
 
-	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("%s\n", err)
 	}

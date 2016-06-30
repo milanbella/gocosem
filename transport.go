@@ -41,6 +41,8 @@ type DlmsConn struct {
 	HdlcClient          *HdlcTransport
 	transportType       int
 	hdlcResponseTimeout time.Duration
+	snrmTimeout         time.Duration
+	discTimeout         time.Duration
 }
 
 type DlmsTransportSendRequest struct {
@@ -234,7 +236,7 @@ func (dconn *DlmsConn) transportReceive(src uint16, dst uint16) (pdu []byte, err
 	}
 }
 
-func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalDevice uint16, password string) (aconn *AppConn, err error) {
+func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalDevice uint16, invokeId uint8, password string) (aconn *AppConn, err error) {
 	var aarq = AARQ{
 		appCtxt:   LogicalName_NoCiphering,
 		authMech:  LowLevelSecurity,
@@ -264,13 +266,13 @@ func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalD
 		errorLog("%s", err)
 		return nil, err
 	} else {
-		aconn = NewAppConn(dconn, applicationClient, logicalDevice)
+		aconn = NewAppConn(dconn, applicationClient, logicalDevice, invokeId)
 		return aconn, nil
 	}
 
 }
 
-func (dconn *DlmsConn) AppConnectRaw(applicationClient uint16, logicalDevice uint16, aarq []byte) (aare []byte, err error) {
+func (dconn *DlmsConn) AppConnectRaw(applicationClient uint16, logicalDevice uint16, invokeId uint8, aarq []byte, aare []byte) (aconn *AppConn, err error) {
 	err = dconn.transportSend(applicationClient, logicalDevice, aarq)
 	if nil != err {
 		return nil, err
@@ -279,10 +281,16 @@ func (dconn *DlmsConn) AppConnectRaw(applicationClient uint16, logicalDevice uin
 	if nil != err {
 		return nil, err
 	}
-	return pdu, nil
+	if !bytes.Equal(pdu, aare) {
+		err = errors.New("received unexpected AARE")
+		return nil, err
+	} else {
+		aconn = NewAppConn(dconn, applicationClient, logicalDevice, invokeId)
+		return aconn, nil
+	}
 }
 
-func TcpConnect(ch chan *DlmsMessage, ipAddr string, port int) (dconn *DlmsConn, err error) {
+func TcpConnect(ipAddr string, port int) (dconn *DlmsConn, err error) {
 	var (
 		conn net.Conn
 	)
@@ -306,6 +314,8 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 	var (
 		conn net.Conn
 	)
+	snrmTimeout := time.Duration(30) * time.Second //TODO: make it func parameter
+	discTimeout := time.Duration(30) * time.Second //TODO: make it func parameter
 
 	dconn = new(DlmsConn)
 	dconn.transportType = Transport_HDLC
@@ -320,6 +330,8 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 
 	client := NewHdlcTransport(dconn.hdlcRwc, responseTimeout, true, uint8(applicationClient), logicalDevice, nil)
 	dconn.hdlcResponseTimeout = responseTimeout
+	dconn.snrmTimeout = snrmTimeout
+	dconn.discTimeout = discTimeout
 
 	// send SNRM
 	ch := make(chan error)
@@ -337,9 +349,9 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 			dconn.HdlcClient = client
 			dconn.rwc = client
 		}
-	case <-time.After(dconn.hdlcResponseTimeout * 3):
+	case <-time.After(dconn.snrmTimeout):
 		go func() { <-ch }()
-		errorLog("SendSNRM() timeout")
+		errorLog("SendSNRM(): error timeout")
 		conn.Close()
 		return nil, ErrorDlmsTimeout
 	}
@@ -372,7 +384,7 @@ func (dconn *DlmsConn) Close() (err error) {
 			}
 		case <-time.After(dconn.hdlcResponseTimeout * 3):
 			go func() { <-ch }()
-			errorLog("SendDISC() timeout")
+			errorLog("SendDISC(): error timeout")
 			dconn.rwc.Close()
 			return ErrorDlmsTimeout
 		}

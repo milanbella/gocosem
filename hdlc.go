@@ -69,7 +69,6 @@ type HdlcTransport struct {
 	controlAck      chan map[string]interface{}
 	controlQueueMtx *sync.Mutex
 	closedAck       chan map[string]interface{}
-	closed          bool
 
 	finishedCh chan bool
 
@@ -326,9 +325,6 @@ func (htran *HdlcTransport) SendDISC() (err error) {
 }
 
 func (htran *HdlcTransport) Write(p []byte) (n int, err error) {
-	if htran.closed {
-		return 0, HdlcErrorTransportClosed
-	}
 
 	var segment *HdlcSegment
 	var maxSegmentSize = htran.maxInfoFieldLengthTransmit
@@ -360,9 +356,6 @@ func (htran *HdlcTransport) Write(p []byte) (n int, err error) {
 }
 
 func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
-	if htran.closed {
-		return 0, HdlcErrorTransportClosed
-	}
 
 	var segment *HdlcSegment
 
@@ -424,12 +417,8 @@ func (htran *HdlcTransport) Read(p []byte) (n int, err error) {
 }
 
 func (htran *HdlcTransport) Close() (err error) {
-	if htran.closed {
-		return HdlcErrorTransportClosed
-	}
 	close(htran.finishedCh)
 	msg := <-htran.closedAck
-	htran.closed = true
 	if nil == msg["err"] {
 		return nil
 	} else {

@@ -35,7 +35,7 @@ func TestMeterHdlc_AppConnect(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
 	if nil != err {
 		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
@@ -52,7 +52,7 @@ func TestMeterHdlc_GetTime(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
 	if nil != err {
 		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
@@ -65,7 +65,7 @@ func TestMeterHdlc_GetTime(t *testing.T) {
 	val.AttributeId = 0x02
 	vals := make([]*DlmsRequest, 1)
 	vals[0] = val
-	rep, err = aconn.SendRequest(vals)
+	rep, err := aconn.SendRequest(vals)
 	if nil != err {
 		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
@@ -87,7 +87,7 @@ func TestMeterHdlc_SetTime(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
 	if nil != err {
 		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
@@ -123,7 +123,7 @@ func TestMeterHdlc_SetTime(t *testing.T) {
 	val.Data = data
 	vals = make([]*DlmsRequest, 1)
 	vals[0] = val
-	rep, err := aconn.SendRequest(vals)
+	rep, err = aconn.SendRequest(vals)
 	if nil != err {
 		t.Fatalf("%s\n", err)
 	}
@@ -164,8 +164,8 @@ func TestMeterHdlc_ProfileCaptureObjects(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
-	if nil != err.Err {
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
+	if nil != err {
 		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
 	t.Logf("application connected")
@@ -182,7 +182,7 @@ func TestMeterHdlc_ProfileCaptureObjects(t *testing.T) {
 	vals[0] = val
 
 	rep, err := aconn.SendRequest(vals)
-	if nil != msg.Err {
+	if nil != err {
 		t.Fatalf("read failed: %s", err)
 		return
 	}
@@ -216,7 +216,7 @@ func TestMeterHdlc_ProfileFirstEntries(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
 	if nil != err {
 		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
@@ -272,9 +272,9 @@ func TestMeterHdlc_ProfileLastEntries(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
 	if nil != err {
-		t.Fatalf(fmt.Sprintf("%s\n", msg.Err))
+		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
 	t.Logf("application connected")
 	defer aconn.Close()
@@ -351,7 +351,7 @@ func TestMeterHdlc_ProfileTimeRange(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	dconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
 	if nil != err {
 		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}

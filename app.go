@@ -54,6 +54,7 @@ type AppConn struct {
 	dconn             *DlmsConn
 	applicationClient uint16
 	logicalDevice     uint16
+	invokeId          uint8
 }
 
 type DlmsResultResponse []*DlmsRequestResponse
@@ -74,11 +75,12 @@ func (rep DlmsResultResponse) DeliveredIn() time.Duration {
 	return rep[0].ReplyDeliveredAt.Sub(rep[0].RequestSubmittedAt)
 }
 
-func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16) (aconn *AppConn) {
+func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16, invokeId uint8) (aconn *AppConn) {
 	aconn = new(AppConn)
 	aconn.dconn = dconn
 	aconn.applicationClient = applicationClient
 	aconn.logicalDevice = logicalDevice
+	aconn.invokeId = invokeId
 
 	return aconn
 }
@@ -436,9 +438,10 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 	}
 }
 
-func (aconn *AppConn) SendRequest(vals []*DlmsRequest, invokeId uint8) (response DlmsResultResponse, err error) {
+func (aconn *AppConn) SendRequest(vals []*DlmsRequest) (response DlmsResultResponse, err error) {
 	debugLog("enter")
 	highPriority := true
+	invokeId := aconn.invokeId
 
 	if 0 == len(vals) {
 		return nil, nil
@@ -668,8 +671,8 @@ func (aconn *AppConn) SendRequest(vals []*DlmsRequest, invokeId uint8) (response
 	err = aconn.processReply(rips, p, buf)
 	if nil == err {
 		t := time.Now()
-		for i := 0; i < rips.length; i++ {
-			rips[i].ReplyDeliveredAt(t)
+		for i := 0; i < len(rips); i++ {
+			rips[i].ReplyDeliveredAt = t
 		}
 	}
 	return DlmsResultResponse(rips), err

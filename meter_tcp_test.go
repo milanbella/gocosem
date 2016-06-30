@@ -9,7 +9,7 @@ var tcpMeterIp = "172.16.123.182"
 
 func TestMeterTcp_TcpConnect(t *testing.T) {
 
-	err, dconn := TcpConnect(tcpMeterIp, 4059)
+	dconn, err := TcpConnect(tcpMeterIp, 4059)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -19,14 +19,14 @@ func TestMeterTcp_TcpConnect(t *testing.T) {
 
 func TestMeterTcp_AppConnect(t *testing.T) {
 
-	err, dconn := TcpConnect(tcpMeterIp, 4059)
+	dconn, err := TcpConnect(tcpMeterIp, 4059)
 	if nil != err {
 		t.Fatal(err)
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -36,14 +36,14 @@ func TestMeterTcp_AppConnect(t *testing.T) {
 
 func TestMeterTcp_GetTime(t *testing.T) {
 
-	err, dconn := TcpConnect(tcpMeterIp, 4059)
+	dconn, err := TcpConnect(tcpMeterIp, 4059)
 	if nil != err {
 		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
@@ -78,7 +78,7 @@ func TestMeterTcp_SetTime(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("%s\n", err)
 	}
@@ -158,7 +158,7 @@ func TestMeterTcp_ProfileCaptureObjects(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("cannot connect app: %s", err)
 		return
@@ -212,7 +212,7 @@ func TestMeterTcp_ProfileEntriesInUse(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("cannot connect app: %s", err)
 		return
@@ -253,7 +253,7 @@ func TestMeterTcp_ProfileSortMethod(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("cannot connect app: %s", err)
 		return
@@ -294,9 +294,9 @@ func TestMeterTcp_ProfileSortObject(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
-		t.Fatalf("cannot connect app: %s", msg.Err)
+		t.Fatalf("cannot connect app: %s", err)
 		return
 	}
 	t.Logf("application connected")
@@ -337,13 +337,13 @@ func TestMeterTcp_ProfileCapturePeriod(t *testing.T) {
 
 	dconn, err := TcpConnect(tcpMeterIp, 4059)
 	if nil != err {
-		t.Fatalf("cannot connect tcp: %s", msg.Err)
+		t.Fatalf("cannot connect tcp: %s", err)
 		return
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("cannot connect app: %s", err)
 		return
@@ -378,13 +378,13 @@ func TestMeterTcp_ProfileFirstEntries(t *testing.T) {
 
 	dconn, err := TcpConnect(tcpMeterIp, 4059)
 	if nil != err {
-		t.Fatalf("cannot connect tcp: %s", msg.Err)
+		t.Fatalf("cannot connect tcp: %s", err)
 		return
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err = dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("cannot connect app: %s", err)
 		return
@@ -436,13 +436,13 @@ func TestMeterTcp_ProfileLastEntries(t *testing.T) {
 
 	dconn, err := TcpConnect(tcpMeterIp, 4059)
 	if nil != err {
-		t.Fatalf("cannot connect tcp: %s", msg.Err)
+		t.Fatalf("cannot connect tcp: %s", err)
 		return
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("cannot connect app: %s", err)
 		return
@@ -523,7 +523,7 @@ func TestMeterTcp_ProfileTimeRange(t *testing.T) {
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, "12345678")
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
 	if nil != err {
 		t.Fatalf("cannot connect app: %s", err)
 		return
@@ -574,7 +574,7 @@ func TestMeterTcp_ProfileTimeRange(t *testing.T) {
 
 	rep, err = aconn.SendRequest(vals)
 	if nil != err {
-		t.Fatalf("read failed: %s", msg.Err)
+		t.Fatalf("read failed: %s", err)
 		return
 	}
 	dataAccessResult = rep.DataAccessResultAt(0)

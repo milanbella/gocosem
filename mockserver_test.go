@@ -82,10 +82,9 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 			t.Errorf("%v\n", err)
 			return err
 		}
-		ch := make(DlmsChannel)
 		err = ipTransportSend(conn.rwc, conn.logicalDevice, conn.applicationClient, buf.Bytes())
 		if nil != err {
-			t.Errorf("%v\n", msg.Err)
+			t.Errorf("%v\n", err)
 			return err
 		}
 
@@ -111,7 +110,7 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 		}
 		err = ipTransportSend(conn.rwc, conn.logicalDevice, conn.applicationClient, buf.Bytes())
 		if nil != err {
-			t.Errorf("%v\n", msg.Err)
+			t.Errorf("%v\n", err)
 			return err
 		}
 	}
@@ -361,7 +360,6 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 			t.Errorf("%v\n", err)
 			return err
 		}
-		ch := make(DlmsChannel)
 		if conn.srv.blockDelayMsec > 0 {
 			if !conn.srv.blockDelayLastBlock || (conn.srv.blockDelayLastBlock && lastBlock) {
 				<-time.After(time.Millisecond * time.Duration(conn.srv.blockDelayMsec))
@@ -369,7 +367,7 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 		}
 		err = ipTransportSend(conn.rwc, conn.logicalDevice, conn.applicationClient, buf.Bytes())
 		if nil != err {
-			t.Errorf("%v\n", msg.Err)
+			t.Errorf("%v\n", err)
 			return err
 		}
 		return nil
@@ -533,13 +531,13 @@ func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) {
 
 		pdu, _, _, err := ipTransportReceive(conn.rwc, &conn.applicationClient, &conn.logicalDevice)
 		if nil != err {
-			t.Errorf("%v\n", msg.Err)
+			t.Errorf("%v\n", err)
 			conn.rwc.Close()
 			break
 		}
 
 		if conn.srv.replyDelayMsec <= 0 {
-			err := conn.replyToRequest(t, bytes.NewBuffer(m.pdu))
+			err := conn.replyToRequest(t, bytes.NewBuffer(pdu))
 			if nil != err {
 				t.Errorf("%v\n", err)
 				conn.rwc.Close()
@@ -547,7 +545,7 @@ func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) {
 			}
 		} else {
 			<-time.After(time.Millisecond * time.Duration(conn.srv.replyDelayMsec))
-			err := conn.replyToRequest(t, bytes.NewBuffer(m.pdu))
+			err := conn.replyToRequest(t, bytes.NewBuffer(pdu))
 			if nil != err {
 				t.Errorf("%v\n", err)
 				conn.rwc.Close()
@@ -631,7 +629,7 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	t.Logf("mock server waiting for client to connect")
 
 	// receive aarq
-	aarq, src, dst, err := ipTransportReceive(rwc, nil, nil)
+	_, src, dst, err := ipTransportReceive(rwc, nil, nil)
 	if nil != err {
 		t.Errorf("%v\n", err)
 		return err
@@ -643,7 +641,7 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	// reply with aare
 	err = ipTransportSend(rwc, logicalDevice, applicationClient, aare)
 	if nil != err {
-		t.Errorf("%v\n", msg.Err)
+		t.Errorf("%v\n", err)
 		rwc.Close()
 		return err
 	}
@@ -671,30 +669,27 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	return nil
 }
 
-func (srv *tMockCosemServer) accept(t *testing.T, ch DlmsChannel, tcpAddr string, aare []byte) {
+func (srv *tMockCosemServer) accept(t *testing.T, ch DlmsChannel, tcpAddr string, aare []byte) (err error) {
 	ln, err := net.Listen("tcp", tcpAddr)
 	if err != nil {
 		t.Errorf("%v\n", err)
-		msg := new(DlmsMessage)
-		msg.Err = err
-		ch <- msg
-		return
+		return err
 	}
 	srv.ln = ln
 
 	t.Logf("mock server bound to %s", tcpAddr)
-	msg := new(DlmsMessage)
-	msg.Err = nil
-	ch <- msg
 
-	for {
-		conn, err := srv.ln.Accept()
-		if err != nil {
-			t.Errorf("%v\n", err)
-			return
+	go func() {
+		for {
+			conn, err := srv.ln.Accept()
+			if err != nil {
+				t.Errorf("%v\n", err)
+				return
+			}
+			go srv.acceptApp(t, conn, aare)
 		}
-		go srv.acceptApp(t, conn, aare)
-	}
+	}()
+	return nil
 }
 
 var mockCosemServer *tMockCosemServer
@@ -706,7 +701,10 @@ func startMockCosemServer(t *testing.T, ch DlmsChannel, addr string, port int, a
 	mockCosemServer = new(tMockCosemServer)
 	mockCosemServer.connections = list.New()
 	mockCosemServer.connections_mtx = &sync.Mutex{}
-	go mockCosemServer.accept(t, ch, tcpAddr, aare)
+	err := mockCosemServer.accept(t, ch, tcpAddr, aare)
+	if nil != err {
+		t.Fatal(err)
+	}
 }
 
 func (srv *tMockCosemServer) Close() {
