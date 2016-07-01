@@ -36,3 +36,7 @@ but original asn1c encoder encode_AARQapdu()  is preserved and may be stil used,
 1.1.3
 ======
 - error fix
+
+2.0.0
+======
+- refactor: eliminated overuse of go rutines, made interface blocking 
