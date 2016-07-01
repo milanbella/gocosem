@@ -531,7 +531,9 @@ func (conn *tMockCosemServerConnection) receiveAndReply(t *testing.T) {
 
 		pdu, _, _, err := ipTransportReceive(conn.rwc, &conn.applicationClient, &conn.logicalDevice)
 		if nil != err {
-			t.Errorf("%v\n", err)
+			if io.EOF != err {
+				t.Errorf("%v\n", err)
+			}
 			conn.rwc.Close()
 			break
 		}
@@ -669,7 +671,7 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	return nil
 }
 
-func (srv *tMockCosemServer) accept(t *testing.T, ch DlmsChannel, tcpAddr string, aare []byte) (err error) {
+func (srv *tMockCosemServer) accept(t *testing.T, tcpAddr string, aare []byte) (err error) {
 	ln, err := net.Listen("tcp", tcpAddr)
 	if err != nil {
 		t.Errorf("%v\n", err)
@@ -694,14 +696,14 @@ func (srv *tMockCosemServer) accept(t *testing.T, ch DlmsChannel, tcpAddr string
 
 var mockCosemServer *tMockCosemServer
 
-func startMockCosemServer(t *testing.T, ch DlmsChannel, addr string, port int, aare []byte) {
+func startMockCosemServer(t *testing.T, addr string, port int, aare []byte) {
 
 	tcpAddr := fmt.Sprintf("%s:%d", addr, port)
 
 	mockCosemServer = new(tMockCosemServer)
 	mockCosemServer.connections = list.New()
 	mockCosemServer.connections_mtx = &sync.Mutex{}
-	err := mockCosemServer.accept(t, ch, tcpAddr, aare)
+	err := mockCosemServer.accept(t, tcpAddr, aare)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -740,12 +742,6 @@ var c_TEST_AARE = []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0
 func ensureMockCosemServer(t *testing.T) {
 
 	if nil == mockCosemServer {
-		ch := make(DlmsChannel)
-		startMockCosemServer(t, ch, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
-		msg := <-ch
-		if nil != msg.Err {
-			t.Fatalf("%s\n", msg.Err)
-			mockCosemServer = nil
-		}
+		startMockCosemServer(t, c_TEST_ADDR, c_TEST_PORT, c_TEST_AARE)
 	}
 }

@@ -310,12 +310,10 @@ func TcpConnect(ipAddr string, port int) (dconn *DlmsConn, err error) {
 
 }
 
-func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevice uint16, responseTimeout time.Duration) (dconn *DlmsConn, err error) {
+func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevice uint16, responseTimeout time.Duration, snrmTimeout time.Duration, discTimeout time.Duration) (dconn *DlmsConn, err error) {
 	var (
 		conn net.Conn
 	)
-	snrmTimeout := time.Duration(30) * time.Second //TODO: make it func parameter
-	discTimeout := time.Duration(30) * time.Second //TODO: make it func parameter
 
 	dconn = new(DlmsConn)
 	dconn.transportType = Transport_HDLC
