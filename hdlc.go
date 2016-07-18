@@ -254,7 +254,7 @@ func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bo
 	htran.finishedCh = make(chan bool)
 
 	htran.responseTimeout = responseTimeout
-	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_4
+	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_2
 	htran.clientId = clientId
 	htran.logicalDeviceId = logicalDeviceId
 	htran.physicalDeviceId = physicalDeviceId
@@ -582,7 +582,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 		// logicalDeviceId
 
 		logicalDeviceId := htran.logicalDeviceId
-		if logicalDeviceId&0xFF80 > 0 {
+		if logicalDeviceId > 0x7F {
 			errorLog("logicalDeviceId exceeds limit")
 			return HdlcErrorInvalidValue
 		}
@@ -609,65 +609,14 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 		// logicalDeviceId
 
 		logicalDeviceId := htran.logicalDeviceId
-		if logicalDeviceId&0xFF80 > 0 {
+		if logicalDeviceId > 0x7F {
 			errorLog("logicalDeviceId exceeds limit")
 			return HdlcErrorInvalidValue
 		}
 
 		v16 = logicalDeviceId
 
-		p[0] = byte(v16 & 0x00FF)
-		_, err = w.Write(p)
-		if nil != err {
-			errorLog("binary.Write() failed: %v", err)
-			return err
-		}
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
-
-		// physicalDeviceId
-
-		if nil == frame.physicalDeviceId {
-			errorLog("physicalDeviceId not specified")
-			return HdlcErrorInvalidValue
-		}
-
-		physicalDeviceId := *htran.physicalDeviceId
-		if physicalDeviceId&0xFF80 > 0 {
-			errorLog("physicalDeviceId exceeds limit")
-			return HdlcErrorInvalidValue
-		}
-
-		v16 = (physicalDeviceId << 1) | 0x0001
-
-		p[0] = byte(v16 & 0x00FF)
-		_, err = w.Write(p)
-		if nil != err {
-			errorLog("binary.Write() failed: %v", err)
-			return err
-		}
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
-
-	} else if HDLC_ADDRESS_LENGTH_4 == htran.serverAddrLength {
-
-		// logicalDeviceId
-
-		logicalDeviceId := htran.logicalDeviceId
-		if logicalDeviceId&0x1000 > 0 {
-			errorLog("logicalDeviceId exceeds limit")
-			return HdlcErrorInvalidValue
-		}
-
-		v16 = logicalDeviceId
-
-		p[0] = byte((v16 & 0xFF00) >> 8)
-		_, err = w.Write(p)
-		if nil != err {
-			errorLog("binary.Write() failed: %v", err)
-			return err
-		}
-		frame.fcs16 = pppfcs16(frame.fcs16, p)
-
-		p[0] = byte(v16 & 0x00FF)
+		p[0] = byte((v16 & 0x007F) << 1)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
@@ -683,14 +632,14 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 		}
 
 		physicalDeviceId := *htran.physicalDeviceId
-		if physicalDeviceId&0x1000 > 0 {
+		if physicalDeviceId > 0x007F {
 			errorLog("physicalDeviceId exceeds limit")
 			return HdlcErrorInvalidValue
 		}
 
-		v16 = (physicalDeviceId << 1) | 0x0001
+		v16 = physicalDeviceId
 
-		p[0] = byte((v16 & 0xFF00) >> 8)
+		p[0] = byte(((v16 & 0x007F) << 1) | 0x0001)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
@@ -698,7 +647,58 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 		}
 		frame.fcs16 = pppfcs16(frame.fcs16, p)
 
-		p[0] = byte(v16 & 0x00FF)
+	} else if HDLC_ADDRESS_LENGTH_4 == htran.serverAddrLength {
+
+		// logicalDeviceId
+
+		logicalDeviceId := htran.logicalDeviceId
+		if logicalDeviceId > 0x3FFF {
+			errorLog("logicalDeviceId exceeds limit")
+			return HdlcErrorInvalidValue
+		}
+
+		v16 = logicalDeviceId
+
+		p[0] = byte(((v16 << 2) & 0xFE00) >> 8)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		p[0] = byte((v16 & 0x007F) << 1)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		// physicalDeviceId
+
+		if nil == htran.physicalDeviceId {
+			errorLog("physicalDeviceId not specified")
+			return HdlcErrorInvalidValue
+		}
+
+		physicalDeviceId := *htran.physicalDeviceId
+		if physicalDeviceId > 0x3FFF {
+			errorLog("physicalDeviceId exceeds limit")
+			return HdlcErrorInvalidValue
+		}
+
+		v16 = physicalDeviceId
+
+		p[0] = byte(((v16 << 2) & 0xFE00) >> 8)
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("binary.Write() failed: %v", err)
+			return err
+		}
+		frame.fcs16 = pppfcs16(frame.fcs16, p)
+
+		p[0] = byte(((v16 & 0x007F) << 1) | 0x0001)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
@@ -2306,35 +2306,42 @@ func (htran *HdlcTransport) readFrame(direction int) (err error, frame *HdlcFram
 
 func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 	var w io.Writer
-	frame.content = new(bytes.Buffer)
-	w = frame.content
+	var p []byte
 
-	frame.fcs16 = PPPINITFCS16
+	if nil == frame.content {
+		frame.content = new(bytes.Buffer)
+		w = frame.content
 
-	if 0 == frame.direction {
-		errorLog("frame direction not specified")
-		return HdlcErrorInvalidValue
+		frame.fcs16 = PPPINITFCS16
+
+		if 0 == frame.direction {
+			errorLog("frame direction not specified")
+			return HdlcErrorInvalidValue
+		}
+		if 0 == frame.control {
+			errorLog("frame controltype not specified")
+			return HdlcErrorInvalidValue
+		}
+
+		p = make([]byte, 1)
+
+		// opening flag
+		p[0] = 0x7E
+		_, err = w.Write(p)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+
+		err = htran.encodeFrameFACI(frame)
+		if nil != err {
+			errorLog("w.Write() failed: %v", err)
+			return err
+		}
+	} else {
+		w = frame.content
 	}
-	if 0 == frame.control {
-		errorLog("frame controltype not specified")
-		return HdlcErrorInvalidValue
-	}
 
-	p := make([]byte, 1)
-
-	// opening flag
-	p[0] = 0x7E
-	_, err = w.Write(p)
-	if nil != err {
-		errorLog("w.Write() failed: %v", err)
-		return err
-	}
-
-	err = htran.encodeFrameFACI(frame)
-	if nil != err {
-		errorLog("w.Write() failed: %v", err)
-		return err
-	}
 	p = frame.content.Bytes()
 	_, err = htran.rw.Write(p)
 	if nil != err {
@@ -2563,6 +2570,9 @@ mainLoop:
 						break mainLoop
 					}
 
+					// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
+					//frame.content = bytes.NewBuffer([]byte{0x7E, 0xA0, 0x1F, 0x02, 0xFF, 0x23, 0x93, 0x3D, 0xF9, 0x81, 0x80, 0x12, 0x05, 0x01, 0x82, 0x06, 0x01, 0x82, 0x07, 0x04, 0x00, 0x00, 0x00, 0x02, 0x08, 0x04, 0x00, 0x00, 0x00, 0x02, 0xCD, 0xBE, 0x7E})
+					// @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 					err = htran.writeFrame(frame)
 					if nil != err {
 						break mainLoop

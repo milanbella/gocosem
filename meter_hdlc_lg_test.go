@@ -17,7 +17,12 @@ func TestMeterLgHdlc_TcpConnect(t *testing.T) {
 }
 
 func TestMeterLgHdlc_HdlcConnect(t *testing.T) {
-	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+
+	applicationClient := uint16(0x11)
+	logicalDevice := uint16(0x01)
+	physicalDevice := uint16(0x7F)
+
+	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, applicationClient, logicalDevice, &physicalDevice, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -27,16 +32,23 @@ func TestMeterLgHdlc_HdlcConnect(t *testing.T) {
 
 func TestMeterLgHdlc_AppConnect(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	applicationClient := uint16(0x11)
+	logicalDevice := uint16(0x01)
+	physicalDevice := uint16(0x7F)
+
+	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, applicationClient, logicalDevice, &physicalDevice, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
 
-	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
+	aarq := []byte{0x60, 0x3A, 0x80, 0x02, 0x02, 0x84, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0x8A, 0x02, 0x07, 0x80, 0x8B, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01, 0xAC, 0x0A, 0x80, 0x08, 0x31, 0x41, 0x32, 0x42, 0x33, 0x43, 0x34, 0x44, 0xBE, 0x10, 0x04, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x18, 0x1D, 0x04, 0x00}
+	aare := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0x18, 0x1D, 0x01, 0xFA, 0x00, 0x07}
+
+	aconn, err := dconn.AppConnectRaw(applicationClient, logicalDevice, 8, aarq, aare)
 	if nil != err {
-		t.Fatalf(fmt.Sprintf("%s\n", err))
+		t.Fatal(err)
 	}
 	t.Logf("application connected")
 	defer aconn.Close()
@@ -44,7 +56,8 @@ func TestMeterLgHdlc_AppConnect(t *testing.T) {
 
 func TestMeterLgHdlc_GetTime(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	physicalDevice := uint16(0x7F)
+	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 0x11, 1, &physicalDevice, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -79,7 +92,8 @@ func TestMeterLgHdlc_GetTime(t *testing.T) {
 
 func TestMeterLgHdlc_SetTime(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	physicalDevice := uint16(0x7F)
+	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 0x11, 1, &physicalDevice, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -156,7 +170,8 @@ func TestMeterLgHdlc_SetTime(t *testing.T) {
 
 func TestMeterLgHdlc_ProfileCaptureObjects(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	physicalDevice := uint16(0x7F)
+	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 0x11, 1, &physicalDevice, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -208,7 +223,8 @@ func TestMeterLgHdlc_ProfileCaptureObjects(t *testing.T) {
 
 func TestMeterLgHdlc_ProfileFirstEntries(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	physicalDevice := uint16(0x7F)
+	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 0x11, 1, &physicalDevice, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -264,7 +280,8 @@ func TestMeterLgHdlc_ProfileFirstEntries(t *testing.T) {
 
 func TestMeterLgHdlc_ProfileLastEntries(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	physicalDevice := uint16(0x7F)
+	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 0x11, 1, &physicalDevice, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -343,7 +360,8 @@ func TestMeterLgHdlc_ProfileLastEntries(t *testing.T) {
 
 func TestMeterLgHdlc_ProfileTimeRange(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	physicalDevice := uint16(0x7F)
+	dconn, err := HdlcConnect(hdlcTestMeterLgIp, 4059, 0x11, 1, &physicalDevice, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}

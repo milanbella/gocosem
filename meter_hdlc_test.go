@@ -21,7 +21,7 @@ func TestMeterHdlc_TcpConnect(t *testing.T) {
 }
 
 func TestMeterHdlc_HdlcConnect(t *testing.T) {
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestMeterHdlc_HdlcConnect(t *testing.T) {
 
 func TestMeterHdlc_AppConnect(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestMeterHdlc_AppConnect(t *testing.T) {
 
 func TestMeterHdlc_GetTime(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -83,7 +83,7 @@ func TestMeterHdlc_GetTime(t *testing.T) {
 
 func TestMeterHdlc_SetTime(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -160,7 +160,7 @@ func TestMeterHdlc_SetTime(t *testing.T) {
 
 func TestMeterHdlc_ProfileCaptureObjects(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestMeterHdlc_ProfileCaptureObjects(t *testing.T) {
 
 func TestMeterHdlc_ProfileFirstEntries(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -268,7 +268,7 @@ func TestMeterHdlc_ProfileFirstEntries(t *testing.T) {
 
 func TestMeterHdlc_ProfileLastEntries(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -347,7 +347,7 @@ func TestMeterHdlc_ProfileLastEntries(t *testing.T) {
 
 func TestMeterHdlc_ProfileTimeRange(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
