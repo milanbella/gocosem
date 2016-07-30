@@ -2016,6 +2016,14 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		frame.length = int((uint16(b0&0x07) << 8) + uint16(b1))
 		frame.content = new(bytes.Buffer)
 
+		if hdlcDebug {
+			if htran.client {
+				fmt.Printf("client_inbound: frame.length: %d, waiting for frame content ...\n", frame.length)
+			} else {
+				fmt.Printf("server_inbound: frame.length: %d, waiting for frame content ...\n", frame.length)
+			}
+		}
+
 		p := make([]byte, frame.length-2+1) // add 1 to include closing flag
 		_, err = io.ReadFull(htran.rw, p)
 		if nil != err {

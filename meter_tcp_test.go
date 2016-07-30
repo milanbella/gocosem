@@ -243,6 +243,47 @@ func TestMeterTcp_ProfileEntriesInUse(t *testing.T) {
 	t.Logf("profile entries in use: %d", data.GetDoubleLongUnsigned())
 }
 
+func TestMeterTcp_ProfileEntries(t *testing.T) {
+
+	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	if nil != err {
+		t.Fatalf("cannot connect tcp: %s", err)
+		return
+	}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
+	if nil != err {
+		t.Fatalf("cannot connect app: %s", err)
+		return
+	}
+	t.Logf("application connected")
+	defer aconn.Close()
+
+	// profile entries
+
+	t.Logf("read profile entries in use...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 8
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	t.Logf("maximum profile entries: %d", data.GetDoubleLongUnsigned())
+}
+
 func TestMeterTcp_ProfileSortMethod(t *testing.T) {
 
 	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
@@ -457,7 +498,7 @@ func TestMeterTcp_ProfileLastEntries(t *testing.T) {
 	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
-	val.AttributeId = 4
+	val.AttributeId = 7
 	vals[0] = val
 
 	rep, err := aconn.SendRequest(vals)
@@ -484,10 +525,14 @@ func TestMeterTcp_ProfileLastEntries(t *testing.T) {
 	val.AccessSelector = 2
 	val.AccessParameter = new(DlmsData)
 	val.AccessParameter.SetStructure(4)
-	val.AccessParameter.Arr[0].SetDoubleLongUnsigned(entriesInUse - 10) // from_entry
-	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(entriesInUse)      // to_entry
-	val.AccessParameter.Arr[2].SetLongUnsigned(1)                       // from_selected_value
-	val.AccessParameter.Arr[3].SetLongUnsigned(0)                       // to_selected_value
+	if entriesInUse > 10 {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(entriesInUse - 10 + 1) // from_entry
+	} else {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(1) // from_entry
+	}
+	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(entriesInUse) // to_entry
+	val.AccessParameter.Arr[2].SetLongUnsigned(1)                  // from_selected_value
+	val.AccessParameter.Arr[3].SetLongUnsigned(0)                  // to_selected_value
 
 	vals[0] = val
 
@@ -538,7 +583,7 @@ func TestMeterTcp_ProfileTimeRange(t *testing.T) {
 	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
-	val.AttributeId = 4
+	val.AttributeId = 7
 	vals[0] = val
 
 	rep, err := aconn.SendRequest(vals)
@@ -565,10 +610,14 @@ func TestMeterTcp_ProfileTimeRange(t *testing.T) {
 	val.AccessSelector = 2
 	val.AccessParameter = new(DlmsData)
 	val.AccessParameter.SetStructure(4)
-	val.AccessParameter.Arr[0].SetDoubleLongUnsigned(entriesInUse - 10) // from_entry
-	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(entriesInUse)      // to_entry
-	val.AccessParameter.Arr[2].SetLongUnsigned(1)                       // from_selected_value
-	val.AccessParameter.Arr[3].SetLongUnsigned(0)                       // to_selected_value
+	if entriesInUse > 10 {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(entriesInUse - 10 + 1) // from_entry
+	} else {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(1) // from_entry
+	}
+	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(entriesInUse) // to_entry
+	val.AccessParameter.Arr[2].SetLongUnsigned(1)                  // from_selected_value
+	val.AccessParameter.Arr[3].SetLongUnsigned(0)                  // to_selected_value
 
 	vals[0] = val
 
