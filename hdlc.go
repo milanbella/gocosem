@@ -2024,11 +2024,13 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		frame.length = int((uint16(b0&0x07) << 8) + uint16(b1))
 		frame.content = new(bytes.Buffer)
 
-		if hdlcDebug {
-			if htran.client {
-				fmt.Printf("client_inbound: frame.length: %d, waiting for frame content ...\n", frame.length)
-			} else {
-				fmt.Printf("server_inbound: frame.length: %d, waiting for frame content ...\n", frame.length)
+		if false {
+			if hdlcDebug {
+				if htran.client {
+					fmt.Printf("client_inbound: frame.length: %d, waiting for frame content ...\n", frame.length)
+				} else {
+					fmt.Printf("server_inbound: frame.length: %d, waiting for frame content ...\n", frame.length)
+				}
 			}
 		}
 
@@ -2476,6 +2478,8 @@ func (htran *HdlcTransport) handleHdlc() {
 		sending = false
 	}
 
+	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@ cp 100: htran.cosem: %v\n", htran.cosem)
+
 mainLoop:
 	for {
 		if sending {
@@ -2522,18 +2526,6 @@ mainLoop:
 							htran.readQueue.Remove(htran.readQueue.Front())
 						} else {
 							segment = nil
-							if htran.cosem && ((nil != lastReceivedIFrame) && (false == lastReceivedIFrame.segmentation)) {
-								// This is optimization for cosem to avoid sending unnecessary RR frames. Transmitt buffer is empty so we must give cosem layer enough time for generating request/reply.
-
-								/*
-									If last received I-frame was end of segment we must have already received complete cosem request/reply (note: We make important assumption that the whole cosem request/reply
-									is transmitted inside one hdlc segment! Hdlc segment may span over more then one I-frame the end of segment being delimited by frame.segmentation set to false).
-									Here we wait for cosem layer to generate request/reply to avoid unnecessary polling of peer. If we sent RR frame with poll now anyway peer
-									is gonna return us back RR with poll because it is waiting for cosem reply.
-								*/
-								state = STATE_CONNECTED_SEGMENT_WAIT
-								segmentDeadline = time.Now().Add(htran.cosemWaitTime)
-							}
 						}
 						htran.readQueueMtx.Unlock()
 					} else {
@@ -2754,8 +2746,28 @@ mainLoop:
 					}
 					sending = false
 				} else if STATE_DISCONNECTED == state {
-					// no need to transmit anything, just wait for client to connect again
-					sending = false
+					if htran.client {
+						// just wait wait for upper layer to send SNRM command
+						// wait for SNRM command
+
+						ch := make(chan bool)
+						go func(ch chan bool) {
+							time.Sleep(time.Duration(1) * time.Millisecond)
+							sending = true
+							close(ch)
+						}(ch)
+						select {
+						case <-ch:
+							continue mainLoop
+						case <-htran.finishedCh:
+							err = HdlcErrorTransportClosed
+							break mainLoop
+						}
+					} else {
+						// server
+						// no need to transmit anything, just wait for client to connect again
+						sending = false
+					}
 				} else {
 					panic("unknown state")
 				}
@@ -2871,19 +2883,36 @@ mainLoop:
 
 							htran.readQueueMtx.Lock()
 							if 0 == htran.readQueue.Len() {
-								// send to peer acknowledgement that we received in sequence frame
 
-								frame = new(HdlcFrame)
-								if htran.client {
-									frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+								if htran.cosem && ((nil != lastReceivedIFrame) && (false == lastReceivedIFrame.segmentation)) {
+									fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@ cp 120\n")
+									// This is optimization for cosem to avoid sending unnecessary RR frames. Transmitt buffer is empty so we must give cosem layer enough time for generating request/reply.
+
+									/*
+										If last received I-frame was end of segment we must have already received complete cosem request/reply (note: We make important assumption that the whole cosem request/reply
+										is transmitted inside one hdlc segment! Hdlc segment may span over more then one I-frame the end of segment being delimited by frame.segmentation set to false).
+										Here we wait for cosem layer to generate request/reply to avoid unnecessary polling of peer. If we sent RR frame with poll now anyway peer
+										is gonna return us back RR with poll because it is waiting for cosem reply.
+									*/
+									state = STATE_CONNECTED_SEGMENT_WAIT
+									segmentDeadline = time.Now().Add(htran.cosemWaitTime)
+
+									// acknowledgement will be sent in next transmitted I frame
 								} else {
-									frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+									// send to peer acknowledgement that we received in sequence frame
+
+									frame = new(HdlcFrame)
+									if htran.client {
+										frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+									} else {
+										frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+									}
+									frame.poll = true
+									frame.control = HDLC_CONTROL_RR
+									frame.ns = vs
+									frame.nr = vr
+									framesToSend.PushBack(frame)
 								}
-								frame.poll = true
-								frame.control = HDLC_CONTROL_RR
-								frame.ns = vs
-								frame.nr = vr
-								framesToSend.PushBack(frame)
 							} else {
 								// acknowledgement will be sent in next I frame
 							}
