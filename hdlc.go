@@ -56,8 +56,6 @@ type HdlcTransport struct {
 
 	client bool
 
-	cosem bool
-
 	serverAddrLength int // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
 
 	logicalDeviceId  uint16
@@ -234,7 +232,7 @@ var HdlcErrorFrameRejected = errors.New("frame rejected")
 var HdlcErrorNotClient = errors.New("not a client")
 var HdlcErrorTransportClosed = errors.New("transport closed")
 
-func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bool, cosem bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
+func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
 	htran := new(HdlcTransport)
 	htran.rw = rw
 	htran.modulus = 8
@@ -267,7 +265,6 @@ func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bo
 		htran.serverAddrLength = HDLC_ADDRESS_LENGTH_1
 	}
 	htran.client = client
-	htran.cosem = cosem
 	go htran.handleHdlc()
 	return htran
 }
@@ -2711,7 +2708,7 @@ mainLoop:
 				} else if STATE_CONNECTED_SEGMENT_WAIT == state {
 
 					if time.Now().Before(segmentDeadline) {
-						// Wait for upper layer to generate reply before polling the peer side for data.
+						// Wait for upper layer (in mlliseconds increments) to generate reply before polling the peer side for data.
 
 						ch := make(chan bool)
 						go func(ch chan bool) {
@@ -2856,7 +2853,6 @@ mainLoop:
 						}
 
 						lastReceivedIFrame = frame
-						cosemDeadline = time.Now().Add(htran.cosemWaitTime)
 
 						if hdlcDebug {
 							if htran.client {
