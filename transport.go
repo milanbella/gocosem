@@ -310,7 +310,15 @@ func TcpConnect(ipAddr string, port int) (dconn *DlmsConn, err error) {
 
 }
 
-func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevice uint16, responseTimeout time.Duration, snrmTimeout time.Duration, discTimeout time.Duration) (dconn *DlmsConn, err error) {
+/*
+'responseTimeout' should be set to network roundtrip time if hdlc is used over unreliable transport and it should be set to eternity hdlc is used over reliable tcp.
+This timeout is part of hdlc error recovery function in case of lost or delayed frames over unreliable transport. In case of hdlc over reliable tcp this 'responseTimeout' should be set to eterinty
+to avoid unnecessary sending of RR frames.
+
+Optional 'cosemWaitTime' should be set to average time what it takes for cosem layer to generate request or reply. This should be used only if hdlc is used for cosem and it serves
+avoiding of sending unnecessary RR frames.
+*/
+func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevice uint16, responseTimeout time.Duration, cosemWaitTime *time.Duration, snrmTimeout time.Duration, discTimeout time.Duration) (dconn *DlmsConn, err error) {
 	var (
 		conn net.Conn
 	)
@@ -326,10 +334,14 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 	}
 	dconn.hdlcRwc = conn
 
-	client := NewHdlcTransport(dconn.hdlcRwc, responseTimeout, true, uint8(applicationClient), logicalDevice, nil)
+	client := NewHdlcTransport(dconn.hdlcRwc, responseTimeout, true, true, uint8(applicationClient), logicalDevice, nil)
 	dconn.hdlcResponseTimeout = responseTimeout
 	dconn.snrmTimeout = snrmTimeout
 	dconn.discTimeout = discTimeout
+
+	if nil != cosemWaitTime {
+		client.SetForCosem(*cosemWaitTime)
+	}
 
 	// send SNRM
 	ch := make(chan error)

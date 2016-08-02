@@ -48,10 +48,15 @@ type HdlcTransport struct {
 	maxInfoFieldLengthTransmit uint16
 	maxInfoFieldLengthReceive  uint16
 
+	cosem         bool
+	cosemWaitTime time.Duration
+
 	windowSizeTransmit uint32
 	windowSizeReceive  uint32
 
 	client bool
+
+	cosem bool
 
 	serverAddrLength int // HDLC_ADDRESS_BYTE_LENGTH_1, HDLC_ADDRESS_BYTE_LENGTH_2, HDLC_ADDRESS_BYTE_LENGTH_4
 
@@ -229,7 +234,7 @@ var HdlcErrorFrameRejected = errors.New("frame rejected")
 var HdlcErrorNotClient = errors.New("not a client")
 var HdlcErrorTransportClosed = errors.New("transport closed")
 
-func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
+func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bool, cosem bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
 	htran := new(HdlcTransport)
 	htran.rw = rw
 	htran.modulus = 8
@@ -262,8 +267,14 @@ func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bo
 		htran.serverAddrLength = HDLC_ADDRESS_LENGTH_1
 	}
 	htran.client = client
+	htran.cosem = cosem
 	go htran.handleHdlc()
 	return htran
+}
+
+func (htran *HdlcTransport) SetForCosem(cosemWaitTime time.Duration) {
+	htran.cosem = true
+	htran.cosemWaitTime = cosemWaitTime
 }
 
 func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint16, maxInfoFieldLengthReceive *uint16) (err error) {
@@ -2432,6 +2443,7 @@ func (htran *HdlcTransport) handleHdlc() {
 	const (
 		STATE_CONNECTING = iota
 		STATE_CONNECTED
+		STATE_CONNECTED_SEGMENT_WAIT
 		STATE_DISCONNECTING
 		STATE_DISCONNECTED
 	)
@@ -2441,6 +2453,10 @@ func (htran *HdlcTransport) handleHdlc() {
 
 	var segmentToAck *HdlcFrame = nil
 	framesToSend := list.New() // frames scheduled to send in next poll
+
+	var lastReceivedIFrame *HdlcFrame = nil
+
+	var segmentDeadline time.Time
 
 	if htran.client {
 		sending = true
@@ -2494,6 +2510,18 @@ mainLoop:
 							htran.readQueue.Remove(htran.readQueue.Front())
 						} else {
 							segment = nil
+							if htran.cosem && ((nil != lastReceivedIFrame) && (false == lastReceivedIFrame.segmentation)) {
+								// This is optimization for cosem to avoid sending unnecessary RR frames. Transmitt buffer is empty so we must give cosem layer enough time for generating request/reply.
+
+								/*
+									If last received I-frame was end of segment we must have already received complete cosem request/reply (note: We make important assumption that the whole cosem request/reply
+									is transmitted inside one hdlc segment! Hdlc segment may span over more then one I-frame the end of segment being delimited by frame.segmentation set to false).
+									Here we wait for cosem layer to generate request/reply to avoid unnecessary polling of peer. If we sent RR frame with poll now anyway peer
+									is gonna return us back RR with poll because it is waiting for cosem reply.
+								*/
+								state = STATE_CONNECTED_SEGMENT_WAIT
+								segmentDeadline = time.Now().Add(htran.cosemWaitTime)
+							}
 						}
 						htran.readQueueMtx.Unlock()
 					} else {
@@ -2644,6 +2672,8 @@ mainLoop:
 					}
 					sending = false
 				} else if STATE_CONNECTED == state {
+
+					// Nothing to transmit now. Poll the peer - may be peer side has something to transmit now.
 					frame = new(HdlcFrame)
 					if htran.client {
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2659,6 +2689,45 @@ mainLoop:
 						break mainLoop
 					}
 					sending = false
+
+				} else if STATE_CONNECTED_SEGMENT_WAIT == state {
+
+					if time.Now().Before(segmentDeadline) {
+						// Wait for upper layer to generate reply before polling the peer side for data.
+
+						ch := make(chan bool)
+						go func(ch chan bool) {
+							time.Sleep(time.Millisecond)
+							close(ch)
+						}(ch)
+						select {
+						case <-ch:
+							continue mainLoop
+						case <-htran.finishedCh:
+							err = HdlcErrorTransportClosed
+							break mainLoop
+						}
+
+					} else {
+						state = STATE_CONNECTED
+
+						// Upper layer has nothing to transmit now. Poll the peer - may be peer side has something to transmit now.
+						frame = new(HdlcFrame)
+						if htran.client {
+							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
+						} else {
+							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
+						}
+						frame.poll = true
+						frame.control = HDLC_CONTROL_RR
+						frame.ns = vs
+						frame.nr = vr
+						err := htran.writeFrame(frame)
+						if nil != err {
+							break mainLoop
+						}
+						sending = false
+					}
 				} else if STATE_DISCONNECTING == state {
 					frame = new(HdlcFrame)
 					frame.poll = true
@@ -2679,48 +2748,30 @@ mainLoop:
 
 		} else {
 
-			if (STATE_DISCONNECTED == state) && htran.client {
-				// wait for SNRM command
+			// receiving
 
-				ch := make(chan bool)
-				go func(ch chan bool) {
-					time.Sleep(time.Duration(10) * time.Millisecond)
-					sending = true
-					close(ch)
-				}(ch)
-				select {
-				case <-ch:
-					continue mainLoop
-				case <-htran.finishedCh:
-					err = HdlcErrorTransportClosed
-					break mainLoop
-				}
-			} else {
-				// receiving
-
-				timeout = false
-				ch := make(chan bool)
-				go func(ch chan bool) {
-					if htran.client {
-						// we need upcast to net.Conn so that we cat set read dealine (this should be only palce in entire code needing such upcasting)
-						conn, ok := htran.rw.(net.Conn)
-						if !ok {
-							panic("io.ReadWriter passed to hdlc transport constructor must be instance of net.Conn")
-						}
-						conn.SetReadDeadline(time.Now().Add(htran.responseTimeout))
-						err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_CLIENT_INBOUND)
-					} else {
-						err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_SERVER_INBOUND)
+			timeout = false
+			ch := make(chan bool)
+			go func(ch chan bool) {
+				if htran.client {
+					// we need upcast to net.Conn so that we cat set read dealine (this should be only palce in entire code needing such upcasting)
+					conn, ok := htran.rw.(net.Conn)
+					if !ok {
+						panic("io.ReadWriter passed to hdlc transport constructor must be instance of net.Conn")
 					}
-					//rfCh <- true
-					close(ch)
-				}(ch)
-				select {
-				case <-ch:
-				case <-htran.finishedCh:
-					err = HdlcErrorTransportClosed
-					break mainLoop
+					conn.SetReadDeadline(time.Now().Add(htran.responseTimeout))
+					err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_CLIENT_INBOUND)
+				} else {
+					err, frame = htran.readFrame(HDLC_FRAME_DIRECTION_SERVER_INBOUND)
 				}
+				//rfCh <- true
+				close(ch)
+			}(ch)
+			select {
+			case <-ch:
+			case <-htran.finishedCh:
+				err = HdlcErrorTransportClosed
+				break mainLoop
 			}
 
 			if hdlcDebug {
@@ -2785,6 +2836,9 @@ mainLoop:
 						if segment.last {
 							htran.writeAck <- map[string]interface{}{"err": nil}
 						}
+
+						lastReceivedIFrame = frame
+						cosemDeadline = time.Now().Add(htran.cosemWaitTime)
 
 						if hdlcDebug {
 							if htran.client {
@@ -2983,6 +3037,7 @@ mainLoop:
 					vs = 0
 					vr = 0
 					segmentToAck = nil
+					lastReceivedIFrame = nil
 					serverRcnt = 0
 					framesToSend.PushBack(frame)
 				} else {
