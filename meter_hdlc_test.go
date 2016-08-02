@@ -8,7 +8,6 @@ import (
 
 var hdlcTestMeterIp = "172.16.123.187"
 var hdlcTestResponseTimeout = time.Duration(1) * time.Hour
-var hdlcCosemWaitTime = time.Duration(500) * time.Millisecond
 var hdlcTestSnrmTimeout = time.Duration(45) * time.Second
 var hdlcTestDiscTimeout = time.Duration(45) * time.Second
 
@@ -22,7 +21,7 @@ func TestMeterHdlc_TcpConnect(t *testing.T) {
 }
 
 func TestMeterHdlc_HdlcConnect(t *testing.T) {
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, &hdlcCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -32,7 +31,7 @@ func TestMeterHdlc_HdlcConnect(t *testing.T) {
 
 func TestMeterHdlc_AppConnect(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, &hdlcCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -49,7 +48,7 @@ func TestMeterHdlc_AppConnect(t *testing.T) {
 
 func TestMeterHdlc_GetTime(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, &hdlcCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -84,7 +83,7 @@ func TestMeterHdlc_GetTime(t *testing.T) {
 
 func TestMeterHdlc_SetTime(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, &hdlcCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -161,7 +160,7 @@ func TestMeterHdlc_SetTime(t *testing.T) {
 
 func TestMeterHdlc_ProfileCaptureObjects(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, &hdlcCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -211,9 +210,215 @@ func TestMeterHdlc_ProfileCaptureObjects(t *testing.T) {
 	}
 }
 
+//@@@@@@@@@@@@@@@@@@
+func TestMeterHdlc_ProfileEntriesInUse(t *testing.T) {
+
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	if nil != err {
+		t.Fatal(err)
+	}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
+	}
+	t.Logf("application connected")
+	defer aconn.Close()
+
+	// profile entries in use
+
+	t.Logf("read profile entries in use...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 7
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	t.Logf("profile entries in use: %d", data.GetDoubleLongUnsigned())
+}
+
+func TestMeterHdlc_ProfileEntries(t *testing.T) {
+
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	if nil != err {
+		t.Fatal(err)
+	}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
+	}
+	t.Logf("application connected")
+	defer aconn.Close()
+
+	// profile entries
+
+	t.Logf("read profile entries in use...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 8
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	t.Logf("maximum profile entries: %d", data.GetDoubleLongUnsigned())
+}
+
+func TestMeterHdlc_ProfileSortMethod(t *testing.T) {
+
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	if nil != err {
+		t.Fatal(err)
+	}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
+	}
+	t.Logf("application connected")
+	defer aconn.Close()
+
+	// sort method
+
+	t.Logf("read sort method ...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 5
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	t.Logf("sort method: %d", data.GetEnum())
+}
+
+func TestMeterHdlc_ProfileSortObject(t *testing.T) {
+
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	if nil != err {
+		t.Fatal(err)
+	}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
+	}
+	t.Logf("application connected")
+	defer aconn.Close()
+
+	// sort object
+
+	t.Logf("read sort object ...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 6
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+
+	if DATA_TYPE_STRUCTURE != data.GetType() {
+		t.Fatalf("wrong data type")
+	}
+	t.Logf("sort object:")
+	t.Logf("\tclass id: %d", data.Arr[0].GetLongUnsigned())
+	t.Logf("\tlogical name: %02X", data.Arr[1].GetOctetString())
+	t.Logf("\tattribute index: %d", data.Arr[2].GetInteger())
+	t.Logf("\tdata index: %02X", data.Arr[3].GetLongUnsigned())
+}
+
+func TestMeterHdlc_ProfileCapturePeriod(t *testing.T) {
+
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	if nil != err {
+		t.Fatal(err)
+	}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
+	}
+	t.Logf("application connected")
+	defer aconn.Close()
+
+	// capture period
+
+	t.Logf("read capture period ...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 4
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	t.Logf("capture period: %d seconds", data.GetDoubleLongUnsigned())
+}
+
+//@@@@@@@@@@@@@@@@@@
+
 func TestMeterHdlc_ProfileFirstEntries(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, &hdlcCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -269,7 +474,7 @@ func TestMeterHdlc_ProfileFirstEntries(t *testing.T) {
 
 func TestMeterHdlc_ProfileLastEntries(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, &hdlcCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -290,7 +495,7 @@ func TestMeterHdlc_ProfileLastEntries(t *testing.T) {
 	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
-	val.AttributeId = 4
+	val.AttributeId = 7
 	vals[0] = val
 
 	rep, err := aconn.SendRequest(vals)
@@ -317,10 +522,14 @@ func TestMeterHdlc_ProfileLastEntries(t *testing.T) {
 	val.AccessSelector = 2
 	val.AccessParameter = new(DlmsData)
 	val.AccessParameter.SetStructure(4)
-	val.AccessParameter.Arr[0].SetDoubleLongUnsigned(entriesInUse - 10) // from_entry
-	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(entriesInUse)      // to_entry
-	val.AccessParameter.Arr[2].SetLongUnsigned(1)                       // from_selected_value
-	val.AccessParameter.Arr[3].SetLongUnsigned(0)                       // to_selected_value
+	if entriesInUse > 10 {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(entriesInUse - 10 + 1) // from_entry
+	} else {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(1) // from_entry
+	}
+	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(entriesInUse) // to_entry
+	val.AccessParameter.Arr[2].SetLongUnsigned(1)                  // from_selected_value
+	val.AccessParameter.Arr[3].SetLongUnsigned(0)                  // to_selected_value
 
 	vals[0] = val
 
@@ -348,7 +557,7 @@ func TestMeterHdlc_ProfileLastEntries(t *testing.T) {
 
 func TestMeterHdlc_ProfileTimeRange(t *testing.T) {
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, hdlcTestResponseTimeout, &hdlcCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -369,7 +578,7 @@ func TestMeterHdlc_ProfileTimeRange(t *testing.T) {
 	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
-	val.AttributeId = 4
+	val.AttributeId = 7
 	vals[0] = val
 
 	rep, err := aconn.SendRequest(vals)
@@ -396,10 +605,14 @@ func TestMeterHdlc_ProfileTimeRange(t *testing.T) {
 	val.AccessSelector = 2
 	val.AccessParameter = new(DlmsData)
 	val.AccessParameter.SetStructure(4)
-	val.AccessParameter.Arr[0].SetDoubleLongUnsigned(entriesInUse - 10) // from_entry
-	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(entriesInUse)      // to_entry
-	val.AccessParameter.Arr[2].SetLongUnsigned(1)                       // from_selected_value
-	val.AccessParameter.Arr[3].SetLongUnsigned(0)                       // to_selected_value
+	if entriesInUse > 10 {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(entriesInUse - 10 + 1) // from_entry
+	} else {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(1) // from_entry
+	}
+	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(entriesInUse) // to_entry
+	val.AccessParameter.Arr[2].SetLongUnsigned(1)                  // from_selected_value
+	val.AccessParameter.Arr[3].SetLongUnsigned(0)                  // to_selected_value
 
 	vals[0] = val
 
