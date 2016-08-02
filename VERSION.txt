@@ -44,3 +44,8 @@ but original asn1c encoder encode_AARQapdu()  is preserved and may be stil used,
 3.0.0
 ======
 - support for LG hdlc meter
+
+3.0.1
+======
+- fixed tests
+- added logging entry in hdlc
