@@ -2468,8 +2468,6 @@ func (htran *HdlcTransport) handleHdlc() {
 	var segmentToAck *HdlcFrame = nil
 	framesToSend := list.New() // frames scheduled to send in next poll
 
-	var lastReceivedIFrame *HdlcFrame = nil
-
 	var segmentDeadline time.Time
 
 	if htran.client {
@@ -2542,7 +2540,7 @@ mainLoop:
 						}
 					}
 				} else {
-					if STATE_CONNECTED == state {
+					if (STATE_CONNECTED == state) || (STATE_CONNECTED_SEGMENT_WAIT == state) {
 						if nil != segmentToAck {
 							// transmit again possibly lost transmitted I frame to server
 							if segmentToAck.poll {
@@ -2609,7 +2607,7 @@ mainLoop:
 				}
 			} else if (nil != command) && (HDLC_CONTROL_DISC == command.control) {
 				if htran.client { // only client may disconnect the line.
-					if STATE_CONNECTED == state {
+					if (STATE_CONNECTED == state) || (STATE_CONNECTED_SEGMENT_WAIT == state) {
 						frame = new(HdlcFrame)
 						frame.poll = true
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2629,7 +2627,12 @@ mainLoop:
 					htran.controlAck <- map[string]interface{}{"err": HdlcErrorNoAllowed}
 				}
 			} else if nil != segment {
-				if STATE_CONNECTED == state {
+				if (STATE_CONNECTED == state) || (STATE_CONNECTED_SEGMENT_WAIT == state) {
+
+					if STATE_CONNECTED_SEGMENT_WAIT == state {
+						state = STATE_CONNECTED
+					}
+
 					frame = new(HdlcFrame)
 					if htran.client {
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
@@ -2717,23 +2720,7 @@ mainLoop:
 
 					} else {
 						state = STATE_CONNECTED
-
-						// Upper layer has nothing to transmit now. Poll the peer - may be peer side has something to transmit now.
-						frame = new(HdlcFrame)
-						if htran.client {
-							frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND
-						} else {
-							frame.direction = HDLC_FRAME_DIRECTION_SERVER_OUTBOUND
-						}
-						frame.poll = true
-						frame.control = HDLC_CONTROL_RR
-						frame.ns = vs
-						frame.nr = vr
-						err := htran.writeFrame(frame)
-						if nil != err {
-							break mainLoop
-						}
-						sending = false
+						continue mainLoop
 					}
 				} else if STATE_DISCONNECTING == state {
 					frame = new(HdlcFrame)
@@ -2838,6 +2825,10 @@ mainLoop:
 
 			// Proccess received frame.
 
+			if STATE_CONNECTED_SEGMENT_WAIT == state {
+				panic("wrong state")
+			}
+
 			// Transmit if received the poll.
 			if frame.poll {
 				sending = true
@@ -2864,8 +2855,6 @@ mainLoop:
 							htran.writeAck <- map[string]interface{}{"err": nil}
 						}
 
-						lastReceivedIFrame = frame
-
 						if hdlcDebug {
 							if htran.client {
 								clientRcnt += len(segment.p)
@@ -2878,15 +2867,17 @@ mainLoop:
 
 						if nil != segmentToAck {
 							// acknoledge transmitted segment
-							segmentToAck = nil
+							segmentToAck = nil // set not yet acknowledged segment to nil to prevent retransmisson
 							htran.readAck <- map[string]interface{}{"err": nil}
 
 							htran.readQueueMtx.Lock()
 							if 0 == htran.readQueue.Len() {
 
-								if htran.cosem && ((nil != lastReceivedIFrame) && (false == lastReceivedIFrame.segmentation)) {
-									fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@ cp 120\n")
-									// This is optimization for cosem to avoid sending unnecessary RR frames. Transmitt buffer is empty so we must give cosem layer enough time for generating request/reply.
+								if htran.cosem && ((false == frame.segmentation) && frame.poll) {
+									/*
+										This is optimization for cosem to avoid sending unnecessary RR frames.
+										Transmit buffer is empty so we must give cosem layer enough time for generating request/reply.
+									*/
 
 									/*
 										If last received I-frame was end of segment we must have already received complete cosem request/reply (note: We make important assumption that the whole cosem request/reply
@@ -2896,10 +2887,14 @@ mainLoop:
 									*/
 									state = STATE_CONNECTED_SEGMENT_WAIT
 									segmentDeadline = time.Now().Add(htran.cosemWaitTime)
+									fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@ cp 500: STATE_CONNECTED_SEGMENT_WAIT\n") //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
-									// acknowledgement will be sent in next transmitted I frame
+									/*
+										Wait 'cosemWaitTime' long for next I frame to transmit, acknowledgement will be sent in that next transmitted I frame.
+										If I frame is not sent within cosemWaitTime  then acknowledgement will be sent in RR frame polling peer for data to transmit.
+									*/
 								} else {
-									// send to peer acknowledgement that we received in sequence frame
+									// Send to peer acknowledgement that we received in sequence frame.
 
 									frame = new(HdlcFrame)
 									if htran.client {
@@ -2914,7 +2909,7 @@ mainLoop:
 									framesToSend.PushBack(frame)
 								}
 							} else {
-								// acknowledgement will be sent in next I frame
+								// Acknowledgement will be sent in next I frame.
 							}
 							htran.readQueueMtx.Unlock()
 						}
@@ -2978,7 +2973,6 @@ mainLoop:
 							framesToSend.PushBack(segmentToAck)
 						}
 					}
-
 				} else {
 				}
 			} else if HDLC_CONTROL_RNR == frame.control {
@@ -3080,7 +3074,6 @@ mainLoop:
 					vs = 0
 					vr = 0
 					segmentToAck = nil
-					lastReceivedIFrame = nil
 					serverRcnt = 0
 					framesToSend.PushBack(frame)
 				} else {
