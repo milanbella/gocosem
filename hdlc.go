@@ -2476,8 +2476,6 @@ func (htran *HdlcTransport) handleHdlc() {
 		sending = false
 	}
 
-	fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@ cp 100: htran.cosem: %v\n", htran.cosem)
-
 mainLoop:
 	for {
 		if sending {
@@ -2887,7 +2885,6 @@ mainLoop:
 									*/
 									state = STATE_CONNECTED_SEGMENT_WAIT
 									segmentDeadline = time.Now().Add(htran.cosemWaitTime)
-									fmt.Printf("@@@@@@@@@@@@@@@@@@@@@@@ cp 500: STATE_CONNECTED_SEGMENT_WAIT\n") //@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@
 
 									/*
 										Wait 'cosemWaitTime' long for next I frame to transmit, acknowledgement will be sent in that next transmitted I frame.
@@ -3143,7 +3140,12 @@ mainLoop:
 						panic("windowSizeTransmit != htran.windowSizeReceive")
 					}
 
-					state = STATE_CONNECTED
+					if htran.cosem {
+						state = STATE_CONNECTED_SEGMENT_WAIT
+						segmentDeadline = time.Now().Add(htran.cosemWaitTime)
+					} else {
+						state = STATE_CONNECTED
+					}
 					vs = 0
 					vr = 0
 					segmentToAck = nil
