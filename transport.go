@@ -354,6 +354,7 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 		if nil != err {
 			errorLog("client.SendSNRM() failed: %v", err)
 			conn.Close()
+			client.Close()
 			return nil, err
 		} else {
 			dconn.HdlcClient = client
@@ -363,6 +364,7 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 		go func() { <-ch }()
 		errorLog("SendSNRM(): error timeout")
 		conn.Close()
+		client.Close()
 		return nil, ErrorDlmsTimeout
 	}
 
@@ -387,15 +389,18 @@ func (dconn *DlmsConn) Close() (err error) {
 			if nil != err {
 				errorLog("SendDISC() failed: %v", err)
 				dconn.hdlcRwc.Close()
+				dconn.HdlcClient.Close()
 				return err
 			} else {
 				dconn.hdlcRwc.Close()
+				dconn.rwc.Close()
 				return nil
 			}
 		case <-time.After(dconn.hdlcResponseTimeout * 3):
 			go func() { <-ch }()
 			errorLog("SendDISC(): error timeout")
 			dconn.hdlcRwc.Close()
+			dconn.HdlcClient.Close()
 			return ErrorDlmsTimeout
 		}
 	}
