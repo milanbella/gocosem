@@ -311,15 +311,12 @@ func TcpConnect(ipAddr string, port int) (dconn *DlmsConn, err error) {
 }
 
 /*
+'responseTimeout' should be set to network roundtrip time if hdlc is used over unreliable transport and it should be set to eternity hdlc is used over reliable tcp.
+This timeout is part of hdlc error recovery function in case of lost or delayed frames over unreliable transport. In case of hdlc over reliable tcp this 'responseTimeout' should be set to eterinty
+to avoid unnecessary sending of RR frames.
 
-'responseTimeout' should be set to network roundtrip time if hdlc is used over unreliable transport and it should be set to eternity if hdlc is used over reliable tcp.
-This timeout is part of hdlc error recovery function in case of lost or delayed frames over unreliable transport. In case of hdlc over reliable tcp this 'responseTimeout'
-should be set to eterinty to avoid unnecessary sending of RR frames.
-
-Optional 'cosemWaitTime' should be greater then longest time what it takes for cosem layer to generate request or reply. This should be used only if hdlc is used for cosem and it serves
-avoiding of sending unnecessary RR frames. If cosem layer does not generate request or reply within 'cosemWaitTime' period then possibly unnecessry RR frame will be sent to peer
-to poll it for data (most probably peer replies back with RR frame because it is waiting for cosem request or reply).
-
+Optional 'cosemWaitTime' should be set to average time what it takes for cosem layer to generate request or reply. This should be used only if hdlc is used for cosem and it serves
+avoiding of sending unnecessary RR frames.
 */
 func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevice uint16, physicalDevice *uint16, responseTimeout time.Duration, cosemWaitTime *time.Duration, snrmTimeout time.Duration, discTimeout time.Duration) (dconn *DlmsConn, err error) {
 	var (
@@ -389,16 +386,16 @@ func (dconn *DlmsConn) Close() (err error) {
 		case err = <-ch:
 			if nil != err {
 				errorLog("SendDISC() failed: %v", err)
-				dconn.rwc.Close()
+				dconn.hdlcRwc.Close()
 				return err
 			} else {
-				dconn.rwc.Close()
+				dconn.hdlcRwc.Close()
 				return nil
 			}
 		case <-time.After(dconn.hdlcResponseTimeout * 3):
 			go func() { <-ch }()
 			errorLog("SendDISC(): error timeout")
-			dconn.rwc.Close()
+			dconn.hdlcRwc.Close()
 			return ErrorDlmsTimeout
 		}
 	}
