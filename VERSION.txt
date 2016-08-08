@@ -57,3 +57,7 @@ but original asn1c encoder encode_AARQapdu()  is preserved and may be stil used,
 4.0.1
 ======
 - fixed bug with closing tcp socket used by hdlc
+
+4.0.2
+======
+- also explicitly close hdlc if hdcl tcp socket is closed
