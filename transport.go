@@ -396,7 +396,7 @@ func (dconn *DlmsConn) Close() (err error) {
 				dconn.rwc.Close()
 				return nil
 			}
-		case <-time.After(dconn.hdlcResponseTimeout * 3):
+		case <-time.After(dconn.discTimeout):
 			go func() { <-ch }()
 			errorLog("SendDISC(): error timeout")
 			dconn.hdlcRwc.Close()
