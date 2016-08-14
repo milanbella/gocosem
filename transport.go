@@ -16,6 +16,11 @@ const (
 	Transport_HDLC = int(3)
 )
 
+var (
+	ErrDlmsTimeout      = errors.New("dlms timeout")
+	ErrUnknownTransport = errors.New("unknown dlms transport")
+)
+
 type DlmsMessage struct {
 	Err  error
 	Data interface{}
@@ -64,8 +69,6 @@ type DlmsTransportReceiveRequestReply struct {
 	dst uint16 // destination address
 	pdu []byte
 }
-
-var ErrorDlmsTimeout = errors.New("ErrorDlmsTimeout")
 
 func makeWpdu(srcWport uint16, dstWport uint16, pdu []byte) (err error, wpdu []byte) {
 	var (
@@ -311,12 +314,18 @@ func TcpConnect(ipAddr string, port int) (dconn *DlmsConn, err error) {
 }
 
 /*
-'responseTimeout' should be set to network roundtrip time if hdlc is used over unreliable transport and it should be set to eternity hdlc is used over reliable tcp.
-This timeout is part of hdlc error recovery function in case of lost or delayed frames over unreliable transport. In case of hdlc over reliable tcp this 'responseTimeout' should be set to eterinty
-to avoid unnecessary sending of RR frames.
+'responseTimeout' should be set to network roundtrip time if hdlc is used over
+    unreliable transport and it should be set to eternity hdlc is used
+    over reliable tcp.
+    This timeout is part of hdlc error recovery function in case of lost or delayed
+    frames over unreliable transport. In case of hdlc over reliable tcp
+    this 'responseTimeout' should be set to eterinty
+    to avoid unnecessary sending of RR frames.
 
-Optional 'cosemWaitTime' should be set to average time what it takes for cosem layer to generate request or reply. This should be used only if hdlc is used for cosem and it serves
-avoiding of sending unnecessary RR frames.
+Optional 'cosemWaitTime' should be set to average time what it takes for
+    cosem layer to generate request or reply. This should be used only if hdlc
+    is used for cosem and it serves
+    avoiding of sending unnecessary RR frames.
 */
 func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevice uint16, physicalDevice *uint16, responseTimeout time.Duration, cosemWaitTime *time.Duration, snrmTimeout time.Duration, discTimeout time.Duration) (dconn *DlmsConn, err error) {
 	var (
@@ -344,11 +353,10 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 	}
 
 	// send SNRM
-	ch := make(chan error)
-	go func(ch chan error) {
-		err := client.SendSNRM(nil, nil)
-		ch <- err
-	}(ch)
+	ch := make(chan error, 1)
+	go func() {
+		ch <- client.SendSNRM(nil, nil)
+	}()
 	select {
 	case err = <-ch:
 		if nil != err {
@@ -356,53 +364,44 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 			conn.Close()
 			client.Close()
 			return nil, err
-		} else {
-			dconn.HdlcClient = client
-			dconn.rwc = client
 		}
+		dconn.HdlcClient = client
+		dconn.rwc = client
 	case <-time.After(dconn.snrmTimeout):
-		go func() { <-ch }()
 		errorLog("SendSNRM(): error timeout")
 		conn.Close()
 		client.Close()
-		return nil, ErrorDlmsTimeout
+		return nil, ErrDlmsTimeout
 	}
 
 	return dconn, nil
-
 }
 
 func (dconn *DlmsConn) Close() (err error) {
 	debugLog("closing transport connection")
-	if Transport_TCP == dconn.transportType {
+
+	switch dconn.transportType {
+	case Transport_TCP:
 		dconn.rwc.Close()
 		return nil
-	} else if Transport_HDLC == dconn.transportType {
+	case Transport_HDLC:
 		// send DISC
-		ch := make(chan error)
-		go func(ch chan error) {
-			err := dconn.HdlcClient.SendDISC()
-			ch <- err
-		}(ch)
+		ch := make(chan error, 1)
+		go func() {
+			ch <- dconn.HdlcClient.SendDISC()
+		}()
 		select {
 		case err = <-ch:
 			if nil != err {
 				errorLog("SendDISC() failed: %v", err)
-				dconn.hdlcRwc.Close()
-				dconn.HdlcClient.Close()
-				return err
-			} else {
-				dconn.hdlcRwc.Close()
-				dconn.rwc.Close()
-				return nil
 			}
 		case <-time.After(dconn.discTimeout):
-			go func() { <-ch }()
 			errorLog("SendDISC(): error timeout")
-			dconn.hdlcRwc.Close()
-			dconn.HdlcClient.Close()
-			return ErrorDlmsTimeout
+			err = ErrDlmsTimeout
 		}
+		dconn.hdlcRwc.Close()
+		dconn.HdlcClient.Close()
+		return err
 	}
-	return nil
+	return ErrUnknownTransport
 }
