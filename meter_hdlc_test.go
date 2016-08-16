@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-var hdlcTestMeterIp = "172.16.123.187"
+var hdlcTestMeterIp = "172.16.123.182"
 
 var hdlcTestResponseTimeout = time.Duration(1) * time.Hour
 var hdlcTestCosemWaitTime = time.Duration(5000) * time.Millisecond

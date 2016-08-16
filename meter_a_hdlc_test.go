@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-var hdlcTestMeterIpA = "172.16.123.187"
+var hdlcTestMeterIpA = "172.16.123.182"
 
 func TestMeterAHdlcHdlc_TcpConnect(t *testing.T) {
 	dconn, err := TcpConnect(hdlcTestMeterIpA, 4059)
