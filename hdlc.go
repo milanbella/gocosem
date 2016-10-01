@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-var hdlcDebug bool
+var HdlcDebug bool
 
 const (
 	HDLC_FRAME_DIRECTION_CLIENT_INBOUND  = 1
@@ -297,7 +297,7 @@ func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint16, maxInfo
 	command.snrm.windowSizeReceive = 1
 
 	htran.controlQueueMtx.Lock()
-	if hdlcDebug {
+	if HdlcDebug {
 		fmt.Printf("htran.SendSNRM(): sending command: %d\n", command.control)
 	}
 	htran.controlQueue.PushBack(command)
@@ -2025,7 +2025,7 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		frame.content = new(bytes.Buffer)
 
 		if false {
-			if hdlcDebug {
+			if HdlcDebug {
 				if htran.client {
 					fmt.Printf("client_inbound: frame.length: %d, waiting for frame content ...\n", frame.length)
 				} else {
@@ -2049,7 +2049,7 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 			return err, n
 		}
 
-		if hdlcDebug {
+		if HdlcDebug {
 			if htran.client {
 				fmt.Printf("client_inbound: 7E%0X%0X%0X\n", b0, b1, p)
 			} else {
@@ -2141,7 +2141,7 @@ func (htran *HdlcTransport) readFrameNormal(direction int) (err error, frame *Hd
 					return err, nil
 				}
 			} else {
-				if hdlcDebug {
+				if HdlcDebug {
 					htran.printFrame(frame)
 				}
 				return nil, frame
@@ -2184,14 +2184,14 @@ func (htran *HdlcTransport) readFrameTest1(direction int) (err error, frame *Hdl
 
 				htran.frameNum += 1
 				if 0 == htran.frameNum%5 {
-					if hdlcDebug {
+					if HdlcDebug {
 						fmt.Print("drop ")
 						htran.printFrame(frame)
 					}
 					// drop frame
 					continue
 				} else {
-					if hdlcDebug {
+					if HdlcDebug {
 						htran.printFrame(frame)
 					}
 				}
@@ -2234,14 +2234,14 @@ func (htran *HdlcTransport) readFrameTest2(direction int) (err error, frame *Hdl
 
 				htran.frameNum += 1
 				if 0 == htran.frameNum%3 {
-					if hdlcDebug {
+					if HdlcDebug {
 						fmt.Print("drop ")
 						htran.printFrame(frame)
 					}
 					// drop frame
 					continue
 				} else {
-					if hdlcDebug {
+					if HdlcDebug {
 						htran.printFrame(frame)
 					}
 				}
@@ -2285,14 +2285,14 @@ func (htran *HdlcTransport) readFrameTest3(direction int) (err error, frame *Hdl
 				htran.frameNum += 1
 				if rand.Intn(5) == htran.frameNum%5 {
 					//if 0 == htran.frameNum%2 {
-					if hdlcDebug {
+					if HdlcDebug {
 						fmt.Print("drop ")
 						htran.printFrame(frame)
 					}
 					// drop frame
 					continue
 				} else {
-					if hdlcDebug {
+					if HdlcDebug {
 						htran.printFrame(frame)
 					}
 				}
@@ -2366,7 +2366,7 @@ func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 		errorLog("w.Write() failed: %v", err)
 		return err
 	}
-	if hdlcDebug {
+	if HdlcDebug {
 		if htran.client {
 			fmt.Printf("client_outbound: %0X\n", p)
 		} else {
@@ -2572,7 +2572,7 @@ mainLoop:
 
 			if (nil != command) && (HDLC_CONTROL_SNRM == command.control) {
 				if STATE_DISCONNECTED == state {
-					if hdlcDebug {
+					if HdlcDebug {
 						fmt.Printf("hdlc.handleHdlc(): connecting\n")
 					}
 					snrmCommand = command
@@ -2786,7 +2786,7 @@ mainLoop:
 				break mainLoop
 			}
 
-			if hdlcDebug {
+			if HdlcDebug {
 				if htran.client {
 					if nil != segmentToAck {
 						fmt.Printf("client: vs %d, vr %d, akcWait[vs %d, vr %d]\n", vs, vr, segmentToAck.ns, segmentToAck.nr)
@@ -2853,7 +2853,7 @@ mainLoop:
 							htran.writeAck <- map[string]interface{}{"err": nil}
 						}
 
-						if hdlcDebug {
+						if HdlcDebug {
 							if htran.client {
 								clientRcnt += len(segment.p)
 								fmt.Fprintf(os.Stdout, "client: received bytes total: %d, segment: %02X\n", clientRcnt, segment.p)
