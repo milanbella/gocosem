@@ -750,3 +750,59 @@ func TestMeterHdlc_ProfileTimeRange(t *testing.T) {
 		t.Logf("\t%d: %s %s: ", i, DlmsDateTimeFromBytes(d0.GetOctetString()).PrintDateTime(), d.Print())
 	}
 }
+
+func TestMeterHdlc_ActCalendarDaytable(t *testing.T) {
+
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, &hdlcTestCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	if nil != err {
+		t.Fatal(err)
+	}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 4, "12345678")
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
+	}
+	t.Logf("application connected")
+	defer aconn.Close()
+
+	t.Logf("read day table...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 20
+	val.InstanceId = &DlmsOid{0, 0, 13, 0, 0, 255}
+	val.AttributeId = 5
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	if DATA_TYPE_ARRAY != data.GetType() {
+		t.Fatalf("wrong data type")
+	}
+	t.Logf("daytable:")
+	for i, st := range data.Arr {
+		if DATA_TYPE_STRUCTURE != st.GetType() {
+			t.Fatalf("wrong data type")
+		}
+		t.Logf("daytable [%d]: ", i)
+		t.Logf("\tid: %d", st.Arr[0].GetUnsigned())
+		for a, da := range st.Arr[1].Arr {
+			if DATA_TYPE_STRUCTURE != da.GetType() {
+				t.Fatalf("wrong data type: %v", da.GetType())
+			}
+			t.Logf("\taction [%d]:", a)
+			t.Logf("\t  start: %v", da.Arr[0].GetTime())
+			t.Logf("\t  script obis: %v", da.Arr[1].GetOctetString())
+			t.Logf("\t  script selector: %d", da.Arr[2].GetLongUnsigned())
+		}
+	}
+}
