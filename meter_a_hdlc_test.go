@@ -762,3 +762,61 @@ func TestMeterAHdlcHdlc_ProfileTimeRange(t *testing.T) {
 		t.Logf("\t%d: %s %s: ", i, DlmsDateTimeFromBytes(d0.GetOctetString()).PrintDateTime(), d.Print())
 	}
 }
+
+func TestMeterAHdlcHdlc_ActCalendarDaytable(t *testing.T) {
+
+	aare := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
+
+	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, &hdlcTestCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	if nil != err {
+		t.Fatal(err)
+	}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	aarq := []byte{0x60, 0x36, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0x8A, 0x02, 0x07, 0x80, 0x8B, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x02, 0x01, 0xAC, 0x0A, 0x80, 0x08, 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0xBE, 0x10, 0x04, 0x0E, 0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0xFF, 0xFF, 0xFF, 0x02, 0x00}
+	aconn, err := dconn.AppConnectRaw(01, 01, 4, aarq, aare)
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	t.Logf("read day table...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 20
+	val.InstanceId = &DlmsOid{0, 0, 13, 0, 0, 255}
+	val.AttributeId = 5
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	if DATA_TYPE_ARRAY != data.GetType() {
+		t.Fatalf("wrong data type")
+	}
+	t.Logf("daytable:")
+	for i, st := range data.Arr {
+		if DATA_TYPE_STRUCTURE != st.GetType() {
+			t.Fatalf("wrong data type")
+		}
+		t.Logf("daytable [%d]: ", i)
+		t.Logf("\tid: %d", st.Arr[0].GetUnsigned())
+		for a, da := range st.Arr[1].Arr {
+			if DATA_TYPE_STRUCTURE != da.GetType() {
+				t.Fatalf("wrong data type: %v", da.GetType())
+			}
+			t.Logf("\taction [%d]:", a)
+			t.Logf("\t  start: %v", da.Arr[0].GetTime())
+			t.Logf("\t  script obis: %v", da.Arr[1].GetOctetString())
+			t.Logf("\t  script selector: %d", da.Arr[2].GetLongUnsigned())
+		}
+	}
+}

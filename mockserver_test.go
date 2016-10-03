@@ -633,7 +633,9 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	// receive aarq
 	_, src, dst, err := ipTransportReceive(rwc, nil, nil)
 	if nil != err {
-		t.Errorf("%v\n", err)
+		if io.EOF != err {
+			t.Errorf("%v\n", err)
+		}
 		return err
 	}
 
