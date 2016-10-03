@@ -65,3 +65,9 @@ but original asn1c encoder encode_AARQapdu()  is preserved and may be stil used,
 4.0.3
 ======
 - merdged in Ondrej's fixes with hdlc close and some refactoring
+
+4.0.4
+======
+- Ondrej's refactoring - exporting hdlcDebug flag
+- Ondre's test - TestMeterHdlc_ActCalendarDaytable 
+- Milan's fix - mock server
