@@ -59,6 +59,7 @@ type DlmsClassId uint16
 type DlmsOid [6]uint8
 type DlmsAttributeId uint8
 type DlmsAccessSelector uint8
+type DlmsMethodId uint8
 
 type DlmsData struct {
 	Err error
@@ -2640,4 +2641,104 @@ func decode_SetResponseForLastDataBlockWithList(r io.Reader) (err error, dataAcc
 	}
 
 	return nil, dataAccessResults, blockNumber
+}
+
+func encode_actionRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, methodParameters *DlmsData) (err error) {
+
+	err = binary.Write(w, binary.BigEndian, classId)
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	err = binary.Write(w, binary.BigEndian, instanceId)
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	err = binary.Write(w, binary.BigEndian, methodId)
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	var isUsed uint8
+
+	if nil == methodParameters {
+
+		isUsed = 0
+		err = binary.Write(w, binary.BigEndian, isUsed)
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+
+	} else {
+
+		isUsed = 1
+		err = binary.Write(w, binary.BigEndian, isUsed)
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+		err := methodParameters.Encode(w)
+		if nil != err {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func decode_actionRequest(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, methodParameters *DlmsData) {
+	var _classId DlmsClassId
+	err = binary.Read(r, binary.BigEndian, &_classId)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, 0, nil, 0, nil
+	}
+
+	_instanceId := new(DlmsOid)
+	err = binary.Read(r, binary.BigEndian, _instanceId)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, _classId, nil, 0, nil
+	}
+
+	var _methodId DlmsMethodId
+	err = binary.Read(r, binary.BigEndian, &_methodId)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, _classId, _instanceId, 0, nil
+	}
+
+	var isUsed uint8
+	err = binary.Read(r, binary.BigEndian, &isUsed)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, _classId, _instanceId, _methodId, nil
+	}
+
+	var _methodParameters *DlmsData = nil
+
+	if isUsed > 0 {
+		data := new(DlmsData)
+		err = data.Decode(r)
+		if nil != err {
+			return err, _classId, _instanceId, _methodId, nil
+		}
+		_methodParameters = data
+		return err, _classId, _instanceId, _methodId, _methodParameters
+	} else {
+		return err, _classId, _instanceId, _methodId, nil
+	}
+}
+
+func encode_ActionRequestNormal(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, methodParameters *DlmsData) (err error) {
+	return encode_actionRequest(w, classId, instanceId, methodId, methodParameters)
+}
+
+func decode_ActionRequestNormal(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, methodParameters *DlmsData) {
+	return decode_actionRequest(r)
 }

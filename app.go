@@ -13,13 +13,14 @@ var ErrorRequestTimeout = errors.New("request timeout")
 var ErrorBlockTimeout = errors.New("block receive timeout")
 
 type DlmsRequest struct {
-	ClassId         DlmsClassId
-	InstanceId      *DlmsOid
-	AttributeId     DlmsAttributeId
-	AccessSelector  DlmsAccessSelector
-	AccessParameter *DlmsData
-	Data            *DlmsData // Data to be sent with SetRequest. Must be nil if GetRequest.
-	BlockSize       int       // If > 0 then data sent with SetReuqest are sent in bolocks.
+	ClassId          DlmsClassId
+	InstanceId       *DlmsOid
+	AttributeId      DlmsAttributeId
+	AccessSelector   DlmsAccessSelector
+	AccessParameter  *DlmsData
+	Data             *DlmsData // Data to be sent with SetRequest. Must be non-nil to force set SetRequest.
+	MethodParameters *DlmsData // Method invokation parameters. Must be non-nil to force ActionRequest.
+	BlockSize        int       // If > 0 then data sent with SetReuqest are sent in bolocks.
 
 	rawData     []byte // Remaining data to be sent using block transfer.
 	blockNumber uint32 // Number of last block sent.
@@ -477,17 +478,27 @@ func (aconn *AppConn) SendRequest(vals []*DlmsRequest) (response DlmsResultRespo
 
 	// encode application layer data pdu
 
-	if 1 == len(vals) {
+	if 1 == len(vals) { // normal request
+
 		if nil == vals[0].Data {
-			_, err = buf.Write([]byte{0xC0, 0x01, byte(invokeIdAndPriority)})
-			if nil != err {
-				errorLog("buf.Write() failed: %v\n", err)
-				return nil, err
+			if nil == vals[0].MethodParameters {
+
+				// get request normat
+				_, err = buf.Write([]byte{0xC0, 0x01, byte(invokeIdAndPriority)})
+				if nil != err {
+					errorLog("buf.Write() failed: %v\n", err)
+					return nil, err
+				}
+				err = encode_GetRequestNormal(buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
+				if nil != err {
+					return nil, err
+				}
+			} else {
+
+				// action request normal
+				//TODO:
 			}
-			err = encode_GetRequestNormal(buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter)
-			if nil != err {
-				return nil, err
-			}
+
 		} else {
 			if 0 == vals[0].BlockSize {
 				_, err = buf.Write([]byte{0xC1, 0x01, byte(invokeIdAndPriority)})
@@ -527,6 +538,7 @@ func (aconn *AppConn) SendRequest(vals []*DlmsRequest) (response DlmsResultRespo
 					lastBlock = true
 				}
 
+				// TODO: unit test
 				err = encode_SetRequestNormalBlock(buf, vals[0].ClassId, vals[0].InstanceId, vals[0].AttributeId, vals[0].AccessSelector, vals[0].AccessParameter, lastBlock, vals[0].blockNumber+1, rawData)
 				if nil != err {
 					return nil, err
@@ -535,7 +547,9 @@ func (aconn *AppConn) SendRequest(vals []*DlmsRequest) (response DlmsResultRespo
 				}
 			}
 		}
-	} else if len(vals) > 1 {
+
+	} else if len(vals) > 1 { // request with list
+
 		if nil == vals[0].Data {
 			_, err = buf.Write([]byte{0xC0, 0x03, byte(invokeIdAndPriority)})
 			if nil != err {
@@ -623,6 +637,7 @@ func (aconn *AppConn) SendRequest(vals []*DlmsRequest) (response DlmsResultRespo
 					lastBlock = true
 				}
 
+				// TODO: unit test
 				err = encode_SetRequestWithListBlock(buf, classIds, instanceIds, attributeIds, accessSelectors, accessParameters, lastBlock, vals[0].blockNumber+1, rawData)
 				if nil != err {
 					return nil, err
