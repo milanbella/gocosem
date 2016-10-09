@@ -1315,7 +1315,7 @@ func TestDlms_encode_ActionRequestWithFirstPblock(t *testing.T) {
 	rawData := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
 
 	var buf bytes.Buffer
-	err := encode_ActionRequestWithFirstPblock(&buf, 1, &DlmsOid{0, 0, 128, 0, 0, 255}, 8, false, rawData)
+	err := encode_ActionRequestWithFirstPblock(&buf, 1, &DlmsOid{0, 0, 128, 0, 0, 255}, 8, false, 1, rawData)
 	if nil != err {
 		t.Fatalf("encode_ActionRequestWithFirstPblock() failed, err: %v", err)
 	}
@@ -1329,7 +1329,7 @@ func TestDlms_decode_ActionRequestWithFirstPblock(t *testing.T) {
 	pdu := []byte{0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
 	buf := bytes.NewBuffer(pdu)
 
-	err, classId, instanceId, methodId, lastBlock, rawData := decode_ActionRequestWithFirstPblock(buf)
+	err, classId, instanceId, methodId, lastBlock, blockNumber, rawData := decode_ActionRequestWithFirstPblock(buf)
 	if nil != err {
 		t.Fatalf("decode_ActionRequestWithFirstPblock() failed, err %v", err)
 	}
@@ -1345,6 +1345,9 @@ func TestDlms_decode_ActionRequestWithFirstPblock(t *testing.T) {
 	}
 	if false != lastBlock {
 		t.Fatalf("lastBlock value wrong:  %v", lastBlock)
+	}
+	if 1 != blockNumber {
+		t.Fatalf("blockNumber value wrong:  %v", blockNumber)
 	}
 	if !bytes.Equal(rawData, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}) {
 		t.Fatalf("rawData, does not match")

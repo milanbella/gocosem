@@ -2755,7 +2755,7 @@ func decode_ActionRequestNormal(r io.Reader) (err error, classId DlmsClassId, in
 	}
 }
 
-func encode_ActionRequestWithFirstPblock(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, lastBlock bool, rawData []byte) (err error) {
+func encode_ActionRequestWithFirstPblock(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
 
 	err = encode_actionRequest(w, classId, instanceId, methodId)
 	if nil != err {
@@ -2766,7 +2766,6 @@ func encode_ActionRequestWithFirstPblock(w io.Writer, classId DlmsClassId, insta
 	if lastBlock {
 		_lastBlock = 1
 	}
-	blockNumber := uint32(1)
 
 	err = binary.Write(w, binary.BigEndian, _lastBlock)
 	if nil != err {
@@ -2794,18 +2793,18 @@ func encode_ActionRequestWithFirstPblock(w io.Writer, classId DlmsClassId, insta
 	return nil
 }
 
-func decode_ActionRequestWithFirstPblock(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, lastBlock bool, rawData []byte) {
+func decode_ActionRequestWithFirstPblock(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, lastBlock bool, blockNumber uint32, rawData []byte) {
 
 	err, classId, instanceId, methodId = decode_actionRequest(r)
 	if nil != err {
-		return err, classId, instanceId, methodId, false, nil
+		return err, classId, instanceId, methodId, false, 0, nil
 	}
 
 	var _lastBlock uint8
 	err = binary.Read(r, binary.BigEndian, &_lastBlock)
 	if nil != err {
 		errorLog("binary.Read() failed, err: %v", err)
-		return err, classId, instanceId, methodId, false, nil
+		return err, classId, instanceId, methodId, false, 0, nil
 	}
 	if _lastBlock > 0 {
 		lastBlock = true
@@ -2813,27 +2812,26 @@ func decode_ActionRequestWithFirstPblock(r io.Reader) (err error, classId DlmsCl
 		lastBlock = false
 	}
 
-	var blockNumber uint32
 	err = binary.Read(r, binary.BigEndian, &blockNumber)
 	if nil != err {
 		errorLog("binary.Read() failed, err: %v", err)
-		return err, classId, instanceId, methodId, lastBlock, nil
+		return err, classId, instanceId, methodId, lastBlock, 0, nil
 	}
 
 	err, length := decodeAxdrLength(r)
 	if nil != err {
 		errorLog("decodeAxdrLength() failed, err: %v\n", err)
-		return err, classId, instanceId, methodId, lastBlock, nil
+		return err, classId, instanceId, methodId, lastBlock, blockNumber, nil
 	}
 
 	rawData = make([]byte, length)
 	err = binary.Read(r, binary.BigEndian, rawData)
 	if nil != err {
 		errorLog("binary.Read() failed, err: %v", err)
-		return err, classId, instanceId, methodId, lastBlock, nil
+		return err, classId, instanceId, methodId, lastBlock, blockNumber, nil
 	}
 
-	return err, classId, instanceId, methodId, lastBlock, rawData
+	return err, classId, instanceId, methodId, lastBlock, blockNumber, rawData
 }
 
 func encode_ActionRequestWithPblock(w io.Writer, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
