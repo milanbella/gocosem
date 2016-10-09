@@ -761,7 +761,7 @@ func TestDlms_decode_SetRequestNormal(t *testing.T) {
 		0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30, 0x31, 0x32,
 		0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
 		0x49, 0x50}) {
-		t.Fatalf("data does nit match")
+		t.Fatalf("data does not match")
 	}
 
 }
@@ -860,7 +860,7 @@ func TestDlms_decode_SetRequestWithList(t *testing.T) {
 		0x17, 0x18, 0x19, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x30, 0x31, 0x32,
 		0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39, 0x40, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x48,
 		0x49, 0x50}) {
-		t.Fatalf("data does nit match")
+		t.Fatalf("data does not match")
 	}
 
 	if 1 != classIds[1] {
@@ -882,7 +882,7 @@ func TestDlms_decode_SetRequestWithList(t *testing.T) {
 		t.Fatalf("data type wrong:  %d", datas[1].Typ)
 	}
 	if !bytes.Equal(datas[1].GetOctetString(), []byte{0x30, 0x30, 0x30}) {
-		t.Fatalf("data does nit match")
+		t.Fatalf("data does not match")
 	}
 
 }
@@ -1263,5 +1263,154 @@ func TestDlms_decode_SetResponseForLastDataBlockWithList(t *testing.T) {
 	}
 	if 3 != blockNumber {
 		t.Fatalf("failed")
+	}
+}
+
+func TestDlms_encode_ActionRequestNormal(t *testing.T) {
+	b := []byte{0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x08, 0x01, 0x09, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
+
+	methodParameters := new(DlmsData)
+	methodParameters.SetOctetString([]byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06})
+
+	var buf bytes.Buffer
+	err := encode_ActionRequestNormal(&buf, 1, &DlmsOid{0, 0, 128, 0, 0, 255}, 8, methodParameters)
+	if nil != err {
+		t.Fatalf("encode_ActionRequestNormal() failed, err: %v", err)
+	}
+
+	if !bytes.Equal(buf.Bytes(), b) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestDlms_decode_ActionRequestNormal(t *testing.T) {
+	pdu := []byte{0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x08, 0x01, 0x09, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
+	buf := bytes.NewBuffer(pdu)
+
+	err, classId, instanceId, methodId, methodParameters := decode_ActionRequestNormal(buf)
+	if nil != err {
+		t.Fatalf("decode_ActionRequestNormal() failed, err %v", err)
+	}
+
+	if 1 != classId {
+		t.Fatalf("classId wrong:  %d", classId)
+	}
+	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
+		t.Fatalf("instanceId wrong:  %02X", *instanceId)
+	}
+	if 0x08 != methodId {
+		t.Fatalf("methodId, wrong:  %d", methodId)
+	}
+	if DATA_TYPE_OCTET_STRING != methodParameters.Typ {
+		t.Fatalf("methodParameters data type wrong:  %d", methodParameters.Typ)
+	}
+	if !bytes.Equal(methodParameters.GetOctetString(), []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}) {
+		t.Fatalf("methodParameters does not match")
+	}
+}
+
+func TestDlms_encode_ActionRequestWithFirstPblock(t *testing.T) {
+	b := []byte{0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
+
+	rawData := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
+
+	var buf bytes.Buffer
+	err := encode_ActionRequestWithFirstPblock(&buf, 1, &DlmsOid{0, 0, 128, 0, 0, 255}, 8, false, rawData)
+	if nil != err {
+		t.Fatalf("encode_ActionRequestWithFirstPblock() failed, err: %v", err)
+	}
+
+	if !bytes.Equal(buf.Bytes(), b) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestDlms_decode_ActionRequestWithFirstPblock(t *testing.T) {
+	pdu := []byte{0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x08, 0x00, 0x00, 0x00, 0x00, 0x01, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
+	buf := bytes.NewBuffer(pdu)
+
+	err, classId, instanceId, methodId, lastBlock, rawData := decode_ActionRequestWithFirstPblock(buf)
+	if nil != err {
+		t.Fatalf("decode_ActionRequestWithFirstPblock() failed, err %v", err)
+	}
+
+	if 1 != classId {
+		t.Fatalf("classId wrong:  %d", classId)
+	}
+	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
+		t.Fatalf("instanceId wrong:  %02X", *instanceId)
+	}
+	if 0x08 != methodId {
+		t.Fatalf("methodId, wrong:  %d", methodId)
+	}
+	if false != lastBlock {
+		t.Fatalf("lastBlock value wrong:  %v", lastBlock)
+	}
+	if !bytes.Equal(rawData, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}) {
+		t.Fatalf("rawData, does not match")
+	}
+}
+
+func TestDlms_encode_ActionRequestWithPblock(t *testing.T) {
+	b := []byte{0x00, 0x00, 0x00, 0x00, 0x07, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
+
+	rawData := []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
+
+	var buf bytes.Buffer
+	err := encode_ActionRequestWithPblock(&buf, false, 7, rawData)
+	if nil != err {
+		t.Fatalf("encode_ActionRequestWithPblock() failed, err: %v", err)
+	}
+
+	if !bytes.Equal(buf.Bytes(), b) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestDlms_decode_ActionRequestWithPblock(t *testing.T) {
+	pdu := []byte{0x00, 0x00, 0x00, 0x00, 0x07, 0x06, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06}
+	buf := bytes.NewBuffer(pdu)
+
+	err, lastBlock, blockNumber, rawData := decode_ActionRequestWithPblock(buf)
+	if nil != err {
+		t.Fatalf("decode_ActionRequestWithPblock() failed, err %v", err)
+	}
+
+	if false != lastBlock {
+		t.Fatalf("lastBlock value wrong:  %v", lastBlock)
+	}
+	if 7 != blockNumber {
+		t.Fatalf("blockNumber value wrong:  %v", blockNumber)
+	}
+	if !bytes.Equal(rawData, []byte{0x01, 0x02, 0x03, 0x04, 0x05, 0x06}) {
+		t.Fatalf("rawData, does not match")
+	}
+}
+
+func TestDlms_encode_ActionRequestNextPblock(t *testing.T) {
+	b := []byte{0x00, 0x00, 0x00, 0x07}
+
+	var buf bytes.Buffer
+	err := encode_ActionRequestNextPblock(&buf, 7)
+	if nil != err {
+		t.Fatalf("encode_ActionRequestNextPblock() failed, err: %v", err)
+	}
+
+	if !bytes.Equal(buf.Bytes(), b) {
+		t.Fatalf("bytes don't match")
+	}
+}
+
+func TestDlms_decode_ActionRequestNextPblock(t *testing.T) {
+	pdu := []byte{0x00, 0x00, 0x00, 0x07}
+	buf := bytes.NewBuffer(pdu)
+
+	err, blockNumber := decode_ActionRequestNextPblock(buf)
+	if nil != err {
+		t.Fatalf("decode_ActionRequestNextPblock() failed, err %v", err)
+	}
+
+	if 7 != blockNumber {
+		t.Fatalf("blockNumber value wrong:  %v", blockNumber)
 	}
 }

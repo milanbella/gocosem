@@ -62,7 +62,7 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 			b = b[l:]
 		}
 		blocks[i] = b
-		blocks = blocks[0 : i+1] // truncate sicnce we may have allocated more
+		blocks = blocks[0 : i+1] // truncate since we may have allocated more
 		conn.blocks[invokeId] = blocks
 
 		t.Logf("blocks count: %d", len(blocks))

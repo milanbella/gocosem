@@ -2643,7 +2643,7 @@ func decode_SetResponseForLastDataBlockWithList(r io.Reader) (err error, dataAcc
 	return nil, dataAccessResults, blockNumber
 }
 
-func encode_actionRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, methodParameters *DlmsData) (err error) {
+func encode_actionRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId) (err error) {
 
 	err = binary.Write(w, binary.BigEndian, classId)
 	if nil != err {
@@ -2660,6 +2660,42 @@ func encode_actionRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid,
 	err = binary.Write(w, binary.BigEndian, methodId)
 	if nil != err {
 		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	return nil
+}
+
+func decode_actionRequest(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId) {
+	var _classId DlmsClassId
+	err = binary.Read(r, binary.BigEndian, &_classId)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, 0, nil, 0
+	}
+
+	_instanceId := new(DlmsOid)
+	err = binary.Read(r, binary.BigEndian, _instanceId)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, _classId, nil, 0
+	}
+
+	var _methodId DlmsMethodId
+	err = binary.Read(r, binary.BigEndian, &_methodId)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, _classId, _instanceId, 0
+	}
+
+	return err, _classId, _instanceId, _methodId
+
+}
+
+func encode_ActionRequestNormal(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, methodParameters *DlmsData) (err error) {
+
+	err = encode_actionRequest(w, classId, instanceId, methodId)
+	if nil != err {
 		return err
 	}
 
@@ -2687,58 +2723,204 @@ func encode_actionRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid,
 			return err
 		}
 	}
-
 	return nil
 }
 
-func decode_actionRequest(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, methodParameters *DlmsData) {
-	var _classId DlmsClassId
-	err = binary.Read(r, binary.BigEndian, &_classId)
-	if nil != err {
-		errorLog("binary.Read() failed, err: %v", err)
-		return err, 0, nil, 0, nil
-	}
+func decode_ActionRequestNormal(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, methodParameters *DlmsData) {
 
-	_instanceId := new(DlmsOid)
-	err = binary.Read(r, binary.BigEndian, _instanceId)
+	err, classId, instanceId, methodId = decode_actionRequest(r)
 	if nil != err {
-		errorLog("binary.Read() failed, err: %v", err)
-		return err, _classId, nil, 0, nil
-	}
-
-	var _methodId DlmsMethodId
-	err = binary.Read(r, binary.BigEndian, &_methodId)
-	if nil != err {
-		errorLog("binary.Read() failed, err: %v", err)
-		return err, _classId, _instanceId, 0, nil
+		return err, classId, instanceId, methodId, nil
 	}
 
 	var isUsed uint8
 	err = binary.Read(r, binary.BigEndian, &isUsed)
 	if nil != err {
 		errorLog("binary.Read() failed, err: %v", err)
-		return err, _classId, _instanceId, _methodId, nil
+		return err, classId, instanceId, methodId, nil
 	}
 
-	var _methodParameters *DlmsData = nil
+	methodParameters = nil
 
 	if isUsed > 0 {
 		data := new(DlmsData)
 		err = data.Decode(r)
 		if nil != err {
-			return err, _classId, _instanceId, _methodId, nil
+			return err, classId, instanceId, methodId, nil
 		}
-		_methodParameters = data
-		return err, _classId, _instanceId, _methodId, _methodParameters
+		methodParameters = data
+		return err, classId, instanceId, methodId, methodParameters
 	} else {
-		return err, _classId, _instanceId, _methodId, nil
+		return err, classId, instanceId, methodId, nil
 	}
 }
 
-func encode_ActionRequestNormal(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, methodParameters *DlmsData) (err error) {
-	return encode_actionRequest(w, classId, instanceId, methodId, methodParameters)
+func encode_ActionRequestWithFirstPblock(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, lastBlock bool, rawData []byte) (err error) {
+
+	err = encode_actionRequest(w, classId, instanceId, methodId)
+	if nil != err {
+		return err
+	}
+
+	_lastBlock := uint8(0)
+	if lastBlock {
+		_lastBlock = 1
+	}
+	blockNumber := uint32(1)
+
+	err = binary.Write(w, binary.BigEndian, _lastBlock)
+	if nil != err {
+		errorLog("binary.Write() failed, err: %v", err)
+		return err
+	}
+
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog("binary.Write() failed, err: %v", err)
+		return err
+	}
+
+	err = encodeAxdrLength(w, uint16(len(rawData)))
+	if nil != err {
+		errorLog("encodeAxdrLength() failed, err: %v\n", err)
+		return err
+	}
+	_, err = w.Write(rawData)
+	if nil != err {
+		errorLog("w.Wite() failed, err: %v\n", err)
+		return err
+	}
+
+	return nil
 }
 
-func decode_ActionRequestNormal(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, methodParameters *DlmsData) {
-	return decode_actionRequest(r)
+func decode_ActionRequestWithFirstPblock(r io.Reader) (err error, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, lastBlock bool, rawData []byte) {
+
+	err, classId, instanceId, methodId = decode_actionRequest(r)
+	if nil != err {
+		return err, classId, instanceId, methodId, false, nil
+	}
+
+	var _lastBlock uint8
+	err = binary.Read(r, binary.BigEndian, &_lastBlock)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, classId, instanceId, methodId, false, nil
+	}
+	if _lastBlock > 0 {
+		lastBlock = true
+	} else {
+		lastBlock = false
+	}
+
+	var blockNumber uint32
+	err = binary.Read(r, binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, classId, instanceId, methodId, lastBlock, nil
+	}
+
+	err, length := decodeAxdrLength(r)
+	if nil != err {
+		errorLog("decodeAxdrLength() failed, err: %v\n", err)
+		return err, classId, instanceId, methodId, lastBlock, nil
+	}
+
+	rawData = make([]byte, length)
+	err = binary.Read(r, binary.BigEndian, rawData)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, classId, instanceId, methodId, lastBlock, nil
+	}
+
+	return err, classId, instanceId, methodId, lastBlock, rawData
+}
+
+func encode_ActionRequestWithPblock(w io.Writer, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
+
+	_lastBlock := uint8(0)
+	if lastBlock {
+		_lastBlock = 1
+	}
+
+	err = binary.Write(w, binary.BigEndian, _lastBlock)
+	if nil != err {
+		errorLog("binary.Write() failed, err: %v", err)
+		return err
+	}
+
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog("binary.Write() failed, err: %v", err)
+		return err
+	}
+
+	err = encodeAxdrLength(w, uint16(len(rawData)))
+	if nil != err {
+		errorLog("encodeAxdrLength() failed, err: %v\n", err)
+		return err
+	}
+	_, err = w.Write(rawData)
+	if nil != err {
+		errorLog("w.Wite() failed, err: %v\n", err)
+		return err
+	}
+
+	return nil
+}
+
+func decode_ActionRequestWithPblock(r io.Reader) (err error, lastBlock bool, blockNumber uint32, rawData []byte) {
+
+	var _lastBlock uint8
+	err = binary.Read(r, binary.BigEndian, &_lastBlock)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, false, 0, nil
+	}
+	if _lastBlock > 0 {
+		lastBlock = true
+	} else {
+		lastBlock = false
+	}
+
+	err = binary.Read(r, binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, lastBlock, 0, nil
+	}
+
+	err, length := decodeAxdrLength(r)
+	if nil != err {
+		errorLog("decodeAxdrLength() failed, err: %v\n", err)
+		return err, lastBlock, blockNumber, nil
+	}
+
+	rawData = make([]byte, length)
+	err = binary.Read(r, binary.BigEndian, rawData)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, lastBlock, blockNumber, nil
+	}
+
+	return err, lastBlock, blockNumber, rawData
+}
+
+func encode_ActionRequestNextPblock(w io.Writer, blockNumber uint32) (err error) {
+
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog("binary.Write() failed, err: %v", err)
+		return err
+	}
+	return nil
+}
+
+func decode_ActionRequestNextPblock(r io.Reader) (err error, blockNumber uint32) {
+	err = binary.Read(r, binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, 0
+	}
+
+	return err, blockNumber
 }
