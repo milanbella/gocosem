@@ -2924,3 +2924,217 @@ func decode_ActionRequestNextPblock(r io.Reader) (err error, blockNumber uint32)
 
 	return err, blockNumber
 }
+
+func encode_ActionRequestWithList(w io.Writer, classIds []DlmsClassId, instanceIds []*DlmsOid, methodIds []DlmsMethodId, methodParameters []*DlmsData) (err error) {
+	count := uint8(len(classIds)) // count of requests
+
+	err = binary.Write(w, binary.BigEndian, count)
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+	for i := uint8(0); i < count; i += 1 {
+		err = encode_actionRequest(w, classIds[i], instanceIds[i], methodIds[i])
+		if nil != err {
+			return err
+		}
+	}
+
+	err = binary.Write(w, binary.BigEndian, count)
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+	for i := uint8(0); i < count; i += 1 {
+		var isUsed uint8
+
+		if nil == methodParameters[i] {
+
+			isUsed = 0
+			err = binary.Write(w, binary.BigEndian, isUsed)
+			if nil != err {
+				errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+				return err
+			}
+
+		} else {
+
+			isUsed = 1
+			err = binary.Write(w, binary.BigEndian, isUsed)
+			if nil != err {
+				errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+				return err
+			}
+			err := methodParameters[i].Encode(w)
+			if nil != err {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func decode_ActionRequestWithList(r io.Reader) (err error, classIds []DlmsClassId, instanceIds []*DlmsOid, methodIds []DlmsMethodId, methodParameters []*DlmsData) {
+	var count uint8
+
+	err = binary.Read(r, binary.BigEndian, &count)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, nil, nil, nil, nil
+	}
+	classIds = make([]DlmsClassId, count)
+	instanceIds = make([]*DlmsOid, count)
+	methodIds = make([]DlmsMethodId, count)
+	methodParameters = make([]*DlmsData, count)
+
+	for i := uint8(0); i < count; i += 1 {
+		err, classId, instanceId, methodId := decode_actionRequest(r)
+		if nil != err {
+			return err, classIds[0:i], instanceIds[0:i], methodIds[0:i], nil
+		}
+		classIds[i] = classId
+		instanceIds[i] = instanceId
+		methodIds[i] = methodId
+	}
+
+	err = binary.Read(r, binary.BigEndian, &count)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, classIds, instanceIds, methodIds, nil
+	}
+	if int(count) < len(classIds) {
+		err = fmt.Errorf("missing data")
+		return err, classIds, instanceIds, methodIds, nil
+	}
+
+	methodParameters = make([]*DlmsData, count)
+
+	for i := uint8(0); i < count; i += 1 {
+		methodParameters[i] = nil
+
+		var isUsed uint8
+		err = binary.Read(r, binary.BigEndian, &isUsed)
+		if nil != err {
+			errorLog("binary.Read() failed, err: %v", err)
+			return err, classIds, instanceIds, methodIds, methodParameters
+		}
+
+		if isUsed > 0 {
+			data := new(DlmsData)
+			err = data.Decode(r)
+			if nil != err {
+				return err, classIds, instanceIds, methodIds, methodParameters
+			}
+			methodParameters[i] = data
+		} else {
+			methodParameters[i] = nil
+		}
+	}
+
+	return err, classIds, instanceIds, methodIds, methodParameters
+}
+
+func encode_ActionRequestWithListAndFirstPblock(w io.Writer, classIds []DlmsClassId, instanceIds []*DlmsOid, methodIds []DlmsMethodId, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
+	count := uint8(len(classIds)) // count of requests
+
+	err = binary.Write(w, binary.BigEndian, count)
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+	for i := uint8(0); i < count; i += 1 {
+		err = encode_actionRequest(w, classIds[i], instanceIds[i], methodIds[i])
+		if nil != err {
+			return err
+		}
+	}
+
+	_lastBlock := uint8(0)
+	if lastBlock {
+		_lastBlock = 1
+	}
+	blockNumber = uint32(1)
+
+	err = binary.Write(w, binary.BigEndian, _lastBlock)
+	if nil != err {
+		errorLog("binary.Write() failed, err: %v", err)
+		return err
+	}
+
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog("binary.Write() failed, err: %v", err)
+		return err
+	}
+
+	err = encodeAxdrLength(w, uint16(len(rawData)))
+	if nil != err {
+		errorLog("encodeAxdrLength() failed, err: %v\n", err)
+		return err
+	}
+	_, err = w.Write(rawData)
+	if nil != err {
+		errorLog("w.Wite() failed, err: %v\n", err)
+		return err
+	}
+
+	return nil
+}
+
+func decode_ActionRequestWithListAndFirstPblock(r io.Reader) (err error, classIds []DlmsClassId, instanceIds []*DlmsOid, methodIds []DlmsMethodId, lastBlock bool, blockNumber uint32, rawData []byte) {
+	var count uint8
+
+	err = binary.Read(r, binary.BigEndian, &count)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, nil, nil, nil, false, 0, nil
+	}
+	classIds = make([]DlmsClassId, count)
+	instanceIds = make([]*DlmsOid, count)
+	methodIds = make([]DlmsMethodId, count)
+
+	for i := uint8(0); i < count; i += 1 {
+		err, classId, instanceId, methodId := decode_actionRequest(r)
+		if nil != err {
+			return err, classIds[0:i], instanceIds[0:i], methodIds[0:i], false, 0, nil
+		}
+		classIds[i] = classId
+		instanceIds[i] = instanceId
+		methodIds[i] = methodId
+	}
+
+	var _lastBlock uint8
+	err = binary.Read(r, binary.BigEndian, &_lastBlock)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, classIds, instanceIds, methodIds, false, 0, nil
+	}
+	if _lastBlock > 0 {
+		lastBlock = true
+	} else {
+		lastBlock = false
+	}
+
+	err = binary.Read(r, binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, classIds, instanceIds, methodIds, lastBlock, 0, nil
+	}
+
+	err, length := decodeAxdrLength(r)
+	if nil != err {
+		errorLog("decodeAxdrLength() failed, err: %v\n", err)
+		return err, classIds, instanceIds, methodIds, lastBlock, blockNumber, nil
+	}
+
+	rawData = make([]byte, length)
+	err = binary.Read(r, binary.BigEndian, rawData)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, classIds, instanceIds, methodIds, lastBlock, blockNumber, nil
+	}
+
+	return err, classIds, instanceIds, methodIds, lastBlock, blockNumber, rawData
+
+}
