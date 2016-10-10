@@ -53,6 +53,22 @@ const (
 	dataAccessResult_otherReason             = 250
 )
 
+const (
+	actionResult_success                 = 0
+	actionResult_hardwareFault           = 1
+	actionResult_temporaryFailure        = 2
+	actionResult_readWriteDenied         = 3
+	actionResult_objectUndefined         = 4
+	actionResult_objectClassInconsistent = 9
+	actionResult_objectUnavailable       = 11
+	actionResult_typeUnmatched           = 12
+	actionResult_scopeOfAccessViolated   = 13
+	actionResult_dataBlockUnavailable    = 14
+	actionResult_longActionAborted       = 15
+	actionResult_noLongActionInProgress  = 16
+	actionResult_otherReason             = 250
+)
+
 type tDlmsInvokeIdAndPriority uint8
 
 type DlmsClassId uint16
@@ -70,6 +86,7 @@ type DlmsData struct {
 }
 
 type DlmsDataAccessResult uint8
+type DlmsActionResult uint8
 
 type DlmsDate struct {
 	Year       uint16
@@ -1713,15 +1730,29 @@ func decode_getRequest(r io.Reader) (err error, classId DlmsClassId, instanceId 
 
 func encode_getResponse(w io.Writer, dataAccessResult DlmsDataAccessResult, data *DlmsData) (err error) {
 
-	err = binary.Write(w, binary.BigEndian, dataAccessResult)
-	if nil != err {
-		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
-		return err
-	}
-
-	if nil != data {
-		err = data.Encode(w)
+	if dataAccessResult_success == dataAccessResult {
+		err = binary.Write(w, binary.BigEndian, uint8(0))
 		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+
+		if nil != data {
+			err = data.Encode(w)
+			if nil != err {
+				return err
+			}
+		}
+	} else {
+		err = binary.Write(w, binary.BigEndian, uint8(1))
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+
+		err = binary.Write(w, binary.BigEndian, dataAccessResult)
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
 			return err
 		}
 	}
@@ -1755,6 +1786,12 @@ func decode_getResponse(r io.Reader) (err error, dataAccessResult DlmsDataAccess
 		err = data.Decode(r)
 		if nil != err {
 			return err, dataAccessResult, data
+		}
+	} else {
+		err = binary.Read(r, binary.BigEndian, &dataAccessResult)
+		if nil != err {
+			errorLog("binary.Read() failed, err: %v", err)
+			return err, 0, nil
 		}
 	}
 
@@ -3015,7 +3052,7 @@ func decode_ActionRequestWithList(r io.Reader) (err error, classIds []DlmsClassI
 		err = binary.Read(r, binary.BigEndian, &isUsed)
 		if nil != err {
 			errorLog("binary.Read() failed, err: %v", err)
-			return err, classIds, instanceIds, methodIds, methodParameters
+			return err, classIds, instanceIds, methodIds, methodParameters[0:i]
 		}
 
 		if isUsed > 0 {
@@ -3030,7 +3067,7 @@ func decode_ActionRequestWithList(r io.Reader) (err error, classIds []DlmsClassI
 		}
 	}
 
-	return err, classIds, instanceIds, methodIds, methodParameters
+	return nil, classIds, instanceIds, methodIds, methodParameters
 }
 
 func encode_ActionRequestWithListAndFirstPblock(w io.Writer, classIds []DlmsClassId, instanceIds []*DlmsOid, methodIds []DlmsMethodId, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
@@ -3133,6 +3170,249 @@ func decode_ActionRequestWithListAndFirstPblock(r io.Reader) (err error, classId
 		return err, classIds, instanceIds, methodIds, lastBlock, blockNumber, nil
 	}
 
-	return err, classIds, instanceIds, methodIds, lastBlock, blockNumber, rawData
+	return nil, classIds, instanceIds, methodIds, lastBlock, blockNumber, rawData
+
+}
+
+func encode_ActionResponseNormal(w io.Writer, actionResult DlmsActionResult, dataAccessResult *DlmsDataAccessResult, data *DlmsData) (err error) {
+	//func encode_getResponse(w io.Writer, dataAccessResult DlmsDataAccessResult, data *DlmsData) (err error) {
+
+	err = binary.Write(w, binary.BigEndian, actionResult)
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	var isUsed uint8
+	if nil == dataAccessResult {
+		isUsed = 0
+		err = binary.Write(w, binary.BigEndian, isUsed)
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+	} else {
+		isUsed = 1
+
+		err = binary.Write(w, binary.BigEndian, isUsed)
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+
+		err = encode_getResponse(w, *dataAccessResult, data)
+	}
+
+	return err
+
+}
+
+func decode_ActionResponseNormal(r io.Reader) (err error, actionResult DlmsActionResult, dataAccessResult *DlmsDataAccessResult, data *DlmsData) {
+
+	err = binary.Read(r, binary.BigEndian, &actionResult)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, 0, nil, nil
+	}
+
+	var isUsed uint8
+	err = binary.Read(r, binary.BigEndian, &isUsed)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, actionResult, nil, nil
+	}
+
+	if 0 == isUsed {
+		return err, actionResult, nil, nil
+	} else {
+		err, _dataAccessResult, _data := decode_getResponse(r)
+		if nil == err {
+			dataAccessResult = new(DlmsDataAccessResult)
+			*dataAccessResult = _dataAccessResult
+			data = _data
+			return nil, actionResult, dataAccessResult, data
+		} else {
+			return err, actionResult, nil, nil
+		}
+	}
+
+}
+
+func encode_ActionResponseWithPblock(w io.Writer, lastBlock bool, blockNumber uint32, rawData []byte) (err error) {
+
+	_lastBlock := uint8(0)
+	if lastBlock {
+		_lastBlock = 1
+	}
+
+	err = binary.Write(w, binary.BigEndian, _lastBlock)
+	if nil != err {
+		errorLog("binary.Write() failed, err: %v", err)
+		return err
+	}
+
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog("binary.Write() failed, err: %v", err)
+		return err
+	}
+
+	err = encodeAxdrLength(w, uint16(len(rawData)))
+	if nil != err {
+		errorLog("encodeAxdrLength() failed, err: %v\n", err)
+		return err
+	}
+	_, err = w.Write(rawData)
+	if nil != err {
+		errorLog("w.Wite() failed, err: %v\n", err)
+		return err
+	}
+
+	return nil
+}
+
+func decode_ActionResponseWithPblock(r io.Reader) (err error, lastBlock bool, blockNumber uint32, rawData []byte) {
+
+	var _lastBlock uint8
+	err = binary.Read(r, binary.BigEndian, &_lastBlock)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, false, 0, nil
+	}
+	if _lastBlock > 0 {
+		lastBlock = true
+	} else {
+		lastBlock = false
+	}
+
+	err = binary.Read(r, binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, lastBlock, 0, nil
+	}
+
+	err, length := decodeAxdrLength(r)
+	if nil != err {
+		errorLog("decodeAxdrLength() failed, err: %v\n", err)
+		return err, lastBlock, blockNumber, nil
+	}
+
+	rawData = make([]byte, length)
+	err = binary.Read(r, binary.BigEndian, rawData)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, lastBlock, blockNumber, nil
+	}
+
+	return err, lastBlock, blockNumber, rawData
+}
+
+func encode_ActionResponseNextPblock(w io.Writer, blockNumber uint32) (err error) {
+
+	err = binary.Write(w, binary.BigEndian, blockNumber)
+	if nil != err {
+		errorLog("binary.Write() failed, err: %v", err)
+		return err
+	}
+	return nil
+}
+
+func decode_ActionResponseNextPblock(r io.Reader) (err error, blockNumber uint32) {
+	err = binary.Read(r, binary.BigEndian, &blockNumber)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, 0
+	}
+
+	return err, blockNumber
+}
+
+func encode_ActionResponseWithList(w io.Writer, actionResults []DlmsActionResult, dataAccessResults []*DlmsDataAccessResult, data []*DlmsData) (err error) {
+	count := uint8(len(actionResults)) // count of requests
+
+	err = binary.Write(w, binary.BigEndian, count)
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	for i := uint8(0); i < count; i++ {
+
+		err = binary.Write(w, binary.BigEndian, actionResults[i])
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+
+		var isUsed uint8
+		if nil == dataAccessResults[i] {
+			isUsed = 0
+			err = binary.Write(w, binary.BigEndian, isUsed)
+			if nil != err {
+				errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+				return err
+			}
+		} else {
+			isUsed = 1
+
+			err = binary.Write(w, binary.BigEndian, isUsed)
+			if nil != err {
+				errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+				return err
+			}
+
+			err = encode_getResponse(w, *(dataAccessResults[i]), data[i])
+			if nil != err {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+func decode_ActionResponseWithList(r io.Reader) (err error, actionResults []DlmsActionResult, dataAccessResults []*DlmsDataAccessResult, data []*DlmsData) {
+	var count uint8
+
+	err = binary.Read(r, binary.BigEndian, &count)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err, nil, nil, nil
+	}
+	actionResults = make([]DlmsActionResult, count)
+	dataAccessResults = make([]*DlmsDataAccessResult, count)
+	data = make([]*DlmsData, count)
+
+	for i := uint8(0); i < count; i++ {
+
+		err = binary.Read(r, binary.BigEndian, &actionResults[i])
+		if nil != err {
+			errorLog("binary.Read() failed, err: %v", err)
+			return err, nil, nil, nil
+		}
+
+		var isUsed uint8
+		err = binary.Read(r, binary.BigEndian, &isUsed)
+		if nil != err {
+			errorLog("binary.Read() failed, err: %v", err)
+			return err, actionResults[0:i], nil, nil
+		}
+
+		if 0 == isUsed {
+			continue
+		} else {
+			err, _dataAccessResult, _data := decode_getResponse(r)
+			if nil == err {
+				dataAccessResults[i] = new(DlmsDataAccessResult)
+				*(dataAccessResults[i]) = _dataAccessResult
+				data[i] = _data
+				continue
+			} else {
+				return err, actionResults[0:i], dataAccessResults[0:i], data[0:i]
+			}
+		}
+
+	}
+	return err, actionResults, dataAccessResults, data
 
 }
