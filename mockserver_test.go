@@ -12,9 +12,12 @@ import (
 	"time"
 )
 
+type tMockCosemObjectMethod func(*DlmsData) (DlmsActionResult, *DlmsDataAccessResult, *DlmsData)
+
 type tMockCosemObject struct {
 	classId    DlmsClassId
-	attributes map[DlmsAttributeId]*DlmsData
+	attributes map[DlmsAttributeId]*DlmsData           // all attributes with their values
+	methods    map[DlmsMethodId]tMockCosemObjectMethod // all methods
 }
 
 type tMockCosemServer struct {
@@ -35,15 +38,18 @@ type tMockCosemServerConnection struct {
 	rwc               io.ReadWriteCloser
 	logicalDevice     uint16
 	applicationClient uint16
-	blocks            map[uint8][][]byte             // blocks to be sent in case of outbound block transfer (key is invokeId)
-	rawData           map[uint8]*bytes.Buffer        // raw data received so far in case of inbound block transfer (key is invokeId)
-	classIds          map[uint8][]DlmsClassId        // key is invokeId
-	instanceIds       map[uint8][]*DlmsOid           // key is invokeId
-	attributeIds      map[uint8][]DlmsAttributeId    // key is invokeId
-	accessSelectors   map[uint8][]DlmsAccessSelector // key is invokeId
-	accessParameters  map[uint8][]*DlmsData          // key is invokeId
+	//TODO: refactor, create request structure instead indexing each item by invokeId
+	blocks           map[uint8][][]byte             // blocks to be sent in case of outbound block transfer (key is invokeId)
+	rawData          map[uint8]*bytes.Buffer        // raw data received so far in case of inbound block transfer (key is invokeId)
+	classIds         map[uint8][]DlmsClassId        // key is invokeId
+	instanceIds      map[uint8][]*DlmsOid           // key is invokeId
+	attributeIds     map[uint8][]DlmsAttributeId    // key is invokeId
+	methodIds        map[uint8][]DlmsAttributeId    // key is invokeId
+	accessSelectors  map[uint8][]DlmsAccessSelector // key is invokeId
+	accessParameters map[uint8][]*DlmsData          // key is invokeId
 }
 
+//TODO: refactor
 func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, b1 byte, invokeIdAndPriority tDlmsInvokeIdAndPriority, dataAccessResult DlmsDataAccessResult, reply []byte) (err error) {
 	var buf bytes.Buffer
 
@@ -519,6 +525,39 @@ func (conn *tMockCosemServerConnection) replyToRequest(t *testing.T, r io.Reader
 				return err
 			}
 		}
+	} else if bytes.Equal(p[0:2], []byte{0xC3, 0x01}) {
+		t.Logf("received ActionRequestNormal")
+
+		err, classId, instanceId, methodId, methodParameters := decode_ActionRequestNormal(r)
+		if nil != err {
+			t.Errorf("%v\n", err)
+			return err
+		}
+
+		actionResult, dataAccessResult, data := conn.srv.callMethod(t, classId, instanceId, methodId, methodParameters)
+		t.Logf("actionResult: %d", actionResult)
+
+		t.Logf("sending ActionResponseNormal")
+
+		var buf bytes.Buffer
+
+		_, err = buf.Write([]byte{0xC7, 0x01, byte(invokeIdAndPriority)})
+		if nil != err {
+			t.Errorf("%v\n", err)
+			return err
+		}
+
+		err = encode_ActionResponseNormal(&buf, actionResult, dataAccessResult, data)
+		if nil != err {
+			t.Errorf("%v\n", err)
+			return err
+		}
+
+		err = ipTransportSend(conn.rwc, conn.logicalDevice, conn.applicationClient, buf.Bytes())
+		if nil != err {
+			t.Errorf("%v\n", err)
+			return err
+		}
 
 	} else {
 		panic("assertion failed")
@@ -610,6 +649,30 @@ func (srv *tMockCosemServer) setData(t *testing.T, classId DlmsClassId, instance
 	}
 }
 
+func (srv *tMockCosemServer) callMethod(t *testing.T, classId DlmsClassId, instanceId *DlmsOid, methodId DlmsMethodId, methodParameters *DlmsData) (actionResult DlmsActionResult, dataAccessResult *DlmsDataAccessResult, data *DlmsData) {
+	if nil == instanceId {
+		panic("assertion failed")
+	}
+	key := srv.objectKey(instanceId)
+	obj, ok := srv.objects[key]
+	if !ok {
+		t.Logf("no such instance id: setting actionResult to 1")
+		return 1, nil, nil
+	} else {
+		if obj.classId == classId {
+			method, ok := obj.methods[methodId]
+			if !ok {
+				t.Logf("no such instance method: setting actionResult to 1")
+				return 1, nil, nil
+			}
+			return method(methodParameters)
+		} else {
+			t.Logf("instance class mismatch: setting actionResult to 1")
+			return 1, nil, nil
+		}
+	}
+}
+
 func (srv *tMockCosemServer) setAttribute(instanceId *DlmsOid, classId DlmsClassId, attributeId DlmsAttributeId, data *DlmsData) {
 
 	key := srv.objectKey(instanceId)
@@ -625,6 +688,31 @@ func (srv *tMockCosemServer) setAttribute(instanceId *DlmsOid, classId DlmsClass
 		obj.attributes = attributes
 	}
 	attributes[attributeId] = data
+}
+
+func (srv *tMockCosemServer) setMethod(instanceId *DlmsOid, classId DlmsClassId, methodId DlmsMethodId, method tMockCosemObjectMethod) {
+
+	key := srv.objectKey(instanceId)
+	obj := srv.objects[key]
+	if nil == obj {
+		obj = new(tMockCosemObject)
+		srv.objects[key] = obj
+	}
+	obj.classId = classId
+	methods := obj.methods
+	if nil == methods {
+		methods = make(map[DlmsMethodId]tMockCosemObjectMethod)
+		obj.methods = methods
+	}
+	if nil != method {
+		methods[methodId] = noopMethod
+	} else {
+		methods[methodId] = method
+	}
+}
+
+func noopMethod(methodParameters *DlmsData) (DlmsActionResult, *DlmsDataAccessResult, *DlmsData) {
+	return 0, nil, nil
 }
 
 func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aare []byte) (err error) {
@@ -662,6 +750,7 @@ func (srv *tMockCosemServer) acceptApp(t *testing.T, rwc io.ReadWriteCloser, aar
 	conn.classIds = make(map[uint8][]DlmsClassId)
 	conn.instanceIds = make(map[uint8][]*DlmsOid)
 	conn.attributeIds = make(map[uint8][]DlmsAttributeId)
+	conn.methodIds = make(map[uint8][]DlmsAttributeId)
 	conn.accessSelectors = make(map[uint8][]DlmsAccessSelector)
 	conn.accessParameters = make(map[uint8][]*DlmsData)
 

@@ -15,11 +15,12 @@ var ErrorBlockTimeout = errors.New("block receive timeout")
 type DlmsRequest struct {
 	ClassId          DlmsClassId
 	InstanceId       *DlmsOid
-	AttributeId      DlmsAttributeId
+	AttributeId      DlmsAttributeId // If > 0 then GetRequest or SetRequest is sent. SetRequest is sent if 'Data' is non nil otherwise GetRequest is sent.
+	MethodId         DlmsMethodId    // If > 0 then ActionRequest is sent.
 	AccessSelector   DlmsAccessSelector
 	AccessParameter  *DlmsData
-	Data             *DlmsData // Data to be sent with SetRequest. Must be non-nil to force set SetRequest.
-	MethodParameters *DlmsData // Method invokation parameters. Must be non-nil to force ActionRequest.
+	Data             *DlmsData // Data to be sent with SetRequest. If non-nil and 'AttributeId' > 0 then SetRequest is sent.
+	MethodParameters *DlmsData // Optional method invokation parameters used with ActionRequest.
 	BlockSize        int       // If > 0 then data sent with SetReuqest are sent in bolocks.
 
 	rawData     []byte // Remaining data to be sent using block transfer.
@@ -28,6 +29,7 @@ type DlmsRequest struct {
 
 type DlmsResponse struct {
 	DataAccessResult DlmsDataAccessResult
+	ActionResult     DlmsActionResult
 	Data             *DlmsData
 }
 
@@ -206,6 +208,26 @@ func (aconn *AppConn) processSetResponseWithList(rips []*DlmsRequestResponse, r 
 		rip.Rep = new(DlmsResponse)
 		rip.Rep.DataAccessResult = dataAccessResults[i]
 	}
+
+	if nil == err {
+		return nil
+	} else {
+		if nil != errr {
+			return errr
+		} else {
+			return err
+		}
+	}
+}
+
+func (aconn *AppConn) processActionResponseNormal(rips []*DlmsRequestResponse, r io.Reader, errr error) error {
+
+	err, actionResult, dataAccessResult, data := decode_ActionResponseNormal(r)
+
+	rips[0].Rep = new(DlmsResponse)
+	rips[0].Rep.ActionResult = actionResult
+	rips[0].Rep.DataAccessResult = *dataAccessResult
+	rips[0].Rep.Data = data
 
 	if nil == err {
 		return nil
@@ -431,6 +453,10 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 		}
 
 		return nil
+	} else if (0xC7 == p[0]) && (0x01 == p[1]) {
+		debugLog("processing ActionResponseNormal")
+
+		return aconn.processGetResponseNormal(rips, r, nil)
 
 	} else {
 		err := fmt.Errorf("received pdu discarded due to unknown tag: %02X %02X", p[0], p[1])
@@ -481,7 +507,7 @@ func (aconn *AppConn) SendRequest(vals []*DlmsRequest) (response DlmsResultRespo
 	if 1 == len(vals) { // normal request
 
 		if nil == vals[0].Data {
-			if nil == vals[0].MethodParameters {
+			if vals[0].AttributeId > 0 {
 
 				// get request normat
 				_, err = buf.Write([]byte{0xC0, 0x01, byte(invokeIdAndPriority)})
@@ -493,10 +519,20 @@ func (aconn *AppConn) SendRequest(vals []*DlmsRequest) (response DlmsResultRespo
 				if nil != err {
 					return nil, err
 				}
-			} else {
+			} else if vals[0].MethodId > 0 {
 
 				// action request normal
-				//TODO:
+				_, err = buf.Write([]byte{0xC3, 0x01, byte(invokeIdAndPriority)})
+				if nil != err {
+					errorLog("buf.Write() failed: %v\n", err)
+					return nil, err
+				}
+				err = encode_ActionRequestNormal(buf, vals[0].ClassId, vals[0].InstanceId, vals[0].MethodId, vals[0].MethodParameters)
+				if nil != err {
+					return nil, err
+				}
+			} else {
+				panic("assertion failed")
 			}
 
 		} else {
