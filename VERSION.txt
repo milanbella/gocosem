@@ -71,3 +71,7 @@ but original asn1c encoder encode_AARQapdu()  is preserved and may be stil used,
 - Ondrej's refactoring - exporting hdlcDebug flag
 - Ondre's test - TestMeterHdlc_ActCalendarDaytable 
 - Milan's fix - mock server
+
+4.1.0
+======
+- added ActionReuestNormal - ActionResponseNormal flow
