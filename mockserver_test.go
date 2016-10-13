@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-type tMockCosemObjectMethod func(*DlmsData) (DlmsActionResult, *DlmsDataAccessResult, *DlmsData)
+type tMockCosemObjectMethod func(*tMockCosemObject, *DlmsData) (DlmsActionResult, *DlmsDataAccessResult, *DlmsData)
 
 type tMockCosemObject struct {
 	classId    DlmsClassId
@@ -665,7 +665,7 @@ func (srv *tMockCosemServer) callMethod(t *testing.T, classId DlmsClassId, insta
 				t.Logf("no such instance method: setting actionResult to 1")
 				return 1, nil, nil
 			}
-			return method(methodParameters)
+			return method(obj, methodParameters)
 		} else {
 			t.Logf("instance class mismatch: setting actionResult to 1")
 			return 1, nil, nil
@@ -711,7 +711,7 @@ func (srv *tMockCosemServer) setMethod(instanceId *DlmsOid, classId DlmsClassId,
 	}
 }
 
-func noopMethod(methodParameters *DlmsData) (DlmsActionResult, *DlmsDataAccessResult, *DlmsData) {
+func noopMethod(obj *tMockCosemObject, methodParameters *DlmsData) (DlmsActionResult, *DlmsDataAccessResult, *DlmsData) {
 	return 0, nil, nil
 }
 

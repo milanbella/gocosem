@@ -74,6 +74,10 @@ func (rep DlmsResultResponse) DataAccessResultAt(i int) DlmsDataAccessResult {
 	return rep[i].Rep.DataAccessResult
 }
 
+func (rep DlmsResultResponse) ActionResultAt(i int) DlmsActionResult {
+	return rep[i].Rep.ActionResult
+}
+
 func (rep DlmsResultResponse) DeliveredIn() time.Duration {
 	return rep[0].ReplyDeliveredAt.Sub(rep[0].RequestSubmittedAt)
 }
@@ -226,8 +230,10 @@ func (aconn *AppConn) processActionResponseNormal(rips []*DlmsRequestResponse, r
 
 	rips[0].Rep = new(DlmsResponse)
 	rips[0].Rep.ActionResult = actionResult
-	rips[0].Rep.DataAccessResult = *dataAccessResult
-	rips[0].Rep.Data = data
+	if nil != dataAccessResult {
+		rips[0].Rep.DataAccessResult = *dataAccessResult
+		rips[0].Rep.Data = data
+	}
 
 	if nil == err {
 		return nil
@@ -456,7 +462,7 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 	} else if (0xC7 == p[0]) && (0x01 == p[1]) {
 		debugLog("processing ActionResponseNormal")
 
-		return aconn.processGetResponseNormal(rips, r, nil)
+		return aconn.processActionResponseNormal(rips, r, nil)
 
 	} else {
 		err := fmt.Errorf("received pdu discarded due to unknown tag: %02X %02X", p[0], p[1])
