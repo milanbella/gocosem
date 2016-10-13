@@ -695,7 +695,7 @@ func TestApp_SetRequestWithList_blockTransfer(t *testing.T) {
 	}
 }
 
-func no_TestApp_ActionRequestNormal(t *testing.T) {
+func TestApp_ActionRequestNormal(t *testing.T) {
 
 	ensureMockCosemServer(t)
 	defer mockCosemServer.Close()
