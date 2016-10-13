@@ -231,8 +231,13 @@ func (aconn *AppConn) processActionResponseNormal(rips []*DlmsRequestResponse, r
 	rips[0].Rep = new(DlmsResponse)
 	rips[0].Rep.ActionResult = actionResult
 	if nil != dataAccessResult {
+		// Method returns data (non-void method). Retuned data may stil be nil id dataAccessResult indicates error (if it is non 0).
 		rips[0].Rep.DataAccessResult = *dataAccessResult
 		rips[0].Rep.Data = data
+	} else {
+		// Method returns no data (void method). void method. Returned data is always nil.
+		rips[0].Rep.DataAccessResult = dataAccessResult_success
+		rips[0].Rep.Data = nil
 	}
 
 	if nil == err {

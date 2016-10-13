@@ -1731,20 +1731,18 @@ func decode_getRequest(r io.Reader) (err error, classId DlmsClassId, instanceId 
 func encode_getResponse(w io.Writer, dataAccessResult DlmsDataAccessResult, data *DlmsData) (err error) {
 
 	if dataAccessResult_success == dataAccessResult {
-		err = binary.Write(w, binary.BigEndian, uint8(0))
+		err = binary.Write(w, binary.BigEndian, uint8(0)) // choice [0] - data
 		if nil != err {
 			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
 			return err
 		}
 
-		if nil != data {
-			err = data.Encode(w)
-			if nil != err {
-				return err
-			}
+		err = data.Encode(w)
+		if nil != err {
+			return err
 		}
 	} else {
-		err = binary.Write(w, binary.BigEndian, uint8(1))
+		err = binary.Write(w, binary.BigEndian, uint8(1)) // choice [1] - dataAccessResult
 		if nil != err {
 			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
 			return err

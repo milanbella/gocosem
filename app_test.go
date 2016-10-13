@@ -695,7 +695,7 @@ func TestApp_SetRequestWithList_blockTransfer(t *testing.T) {
 	}
 }
 
-func noTestApp_ActionRequestNormal(t *testing.T) {
+func no_TestApp_ActionRequestNormal(t *testing.T) {
 
 	ensureMockCosemServer(t)
 	defer mockCosemServer.Close()
@@ -719,7 +719,6 @@ func noTestApp_ActionRequestNormal(t *testing.T) {
 	// Define remote_disconnect method.
 
 	methodRemoteDisconnect := func(obj *tMockCosemObject, methodParameters *DlmsData) (DlmsActionResult, *DlmsDataAccessResult, *DlmsData) {
-
 		if nil == methodParameters {
 			t.Fatal("no method parameter")
 		}
@@ -737,7 +736,7 @@ func noTestApp_ActionRequestNormal(t *testing.T) {
 
 	mockCosemServer.setMethod(instanceId, classId, methodIdRemoteDisconnect, methodRemoteDisconnect)
 
-	// Mock disconnect control set up. Start testing.
+	// Mock disconnect control was set up. Start testing now.
 
 	dconn, err := TcpConnect("localhost", 4059)
 	if nil != err {
@@ -798,6 +797,157 @@ func noTestApp_ActionRequestNormal(t *testing.T) {
 	}
 	if nil != rep.DataAt(0) {
 		t.Fatal("method returned data")
+	}
+
+	// Verify if state is disconncted now.
+
+	val = new(DlmsRequest)
+	val.ClassId = classId
+	val.InstanceId = instanceId
+	val.AttributeId = attributeIdControlState
+	vals = make([]*DlmsRequest, 1)
+	vals[0] = val
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	data = rep.DataAt(0)
+	if DATA_TYPE_ENUM != data.GetType() {
+		t.Fatalf("not integer")
+	}
+	if stateDisconnected != data.GetEnum() {
+		t.Fatalf("connected state")
+	}
+
+}
+
+func TestApp_ActionRequestNormalWithReturnedValue(t *testing.T) {
+
+	ensureMockCosemServer(t)
+	defer mockCosemServer.Close()
+	mockCosemServer.Init()
+
+	// Test is based on class id 70 (disconnect control) behaviour.
+
+	instanceId := &DlmsOid{0x00, 0x00, 0x60, 0x03, 0x0A, 0xFF}
+	classId := DlmsClassId(70)
+	attributeIdControlState := DlmsAttributeId(3)
+	methodIdRemoteDisconnect := DlmsMethodId(1)
+	stateDisconnected := uint8(0)
+	stateConnected := uint8(1)
+
+	// Set initial state to connected.
+
+	data := (new(DlmsData))
+	data.SetEnum(stateConnected)
+	mockCosemServer.setAttribute(instanceId, classId, attributeIdControlState, data)
+
+	// Define remote_disconnect method. Method returns back value.
+
+	methodRemoteDisconnect := func(obj *tMockCosemObject, methodParameters *DlmsData) (DlmsActionResult, *DlmsDataAccessResult, *DlmsData) {
+		if nil == methodParameters {
+			t.Fatal("no method parameter")
+		}
+
+		if DATA_TYPE_INTEGER != methodParameters.GetType() {
+			t.Fatal("parameter type is not integer")
+		}
+
+		data := (new(DlmsData))
+		data.SetEnum(stateDisconnected)
+		obj.attributes[attributeIdControlState] = data
+
+		DataAccessResult := DlmsDataAccessResult(0)
+
+		data = (new(DlmsData))
+		data.SetOctetString([]byte{0x11, 0x12, 0x13, 0x14, 0x15})
+
+		return 0, &DataAccessResult, data
+	}
+
+	mockCosemServer.setMethod(instanceId, classId, methodIdRemoteDisconnect, methodRemoteDisconnect)
+
+	// Mock disconnect control was set up. Start testing now.
+
+	dconn, err := TcpConnect("localhost", 4059)
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	aconn, err := dconn.AppConnectWithPassword(01, 01, 0, "12345678")
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	t.Logf("application connected")
+	defer aconn.Close()
+
+	// Read value, expect connected state.
+
+	val := new(DlmsRequest)
+	val.ClassId = classId
+	val.InstanceId = instanceId
+	val.AttributeId = attributeIdControlState
+	vals := make([]*DlmsRequest, 1)
+	vals[0] = val
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	data = rep.DataAt(0)
+	if DATA_TYPE_ENUM != data.GetType() {
+		t.Fatalf("not integer")
+	}
+	if stateConnected != data.GetEnum() {
+		t.Fatalf("not connected state")
+	}
+
+	// Call remote_disconnect method.
+
+	method := new(DlmsRequest)
+	method.ClassId = classId
+	method.InstanceId = instanceId
+	method.MethodId = methodIdRemoteDisconnect
+	methodParameters := new(DlmsData)
+	methodParameters.SetInteger(1)
+	method.MethodParameters = methodParameters
+	methods := make([]*DlmsRequest, 1)
+	methods[0] = method
+	rep, err = aconn.SendRequest(methods)
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.ActionResultAt(0) {
+		t.Fatalf("actionResult: %d\n", rep.ActionResultAt(0))
+	}
+
+	// Verify method returned value.
+
+	if DlmsDataAccessResult(0) == rep.DataAccessResultAt(0) {
+		if nil == rep.DataAt(0) {
+			t.Fatal("method returns no data (void method)")
+		} else {
+			data = rep.DataAt(0)
+			if DATA_TYPE_OCTET_STRING != data.GetType() {
+				t.Fatalf("method returned wrong type")
+			} else {
+				if !bytes.Equal([]byte{0x11, 0x12, 0x13, 0x14, 0x15}, rep.DataAt(0).GetOctetString()) {
+					t.Fatalf("method returned wrong value")
+				}
+			}
+		}
+	} else {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
 	}
 
 	// Verify if state is disconncted now.

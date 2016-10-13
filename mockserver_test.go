@@ -704,11 +704,7 @@ func (srv *tMockCosemServer) setMethod(instanceId *DlmsOid, classId DlmsClassId,
 		methods = make(map[DlmsMethodId]tMockCosemObjectMethod)
 		obj.methods = methods
 	}
-	if nil != method {
-		methods[methodId] = noopMethod
-	} else {
-		methods[methodId] = method
-	}
+	methods[methodId] = method
 }
 
 func noopMethod(obj *tMockCosemObject, methodParameters *DlmsData) (DlmsActionResult, *DlmsDataAccessResult, *DlmsData) {
