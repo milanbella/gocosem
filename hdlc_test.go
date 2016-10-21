@@ -130,6 +130,30 @@ func TestHdlc_SendSNRM(t *testing.T) {
 	client.SendDISC()
 }
 
+func TestHdlc_SendDSNRM(t *testing.T) {
+	hdlcTestInit(t)
+
+	crw, srw := createHdlcPipe(t)
+	defer crw.Close()
+	defer srw.Close()
+
+	clientId := uint8(1)
+	logicalDeviceId := uint16(2)
+	physicalDeviceId := new(uint16)
+	*physicalDeviceId = 3
+
+	client := NewHdlcTransport(crw, time.Duration(1)*time.Millisecond, true, clientId, logicalDeviceId, physicalDeviceId)
+	defer client.Close()
+	server := NewHdlcTransport(srw, time.Duration(1)*time.Millisecond, false, clientId, logicalDeviceId, physicalDeviceId)
+	defer server.Close()
+
+	err := client.SendDSNRM(nil, nil)
+	if nil != err {
+		t.Fatalf("%v", err)
+	}
+	client.SendDISC()
+}
+
 func TestHdlc_WriteRead(t *testing.T) {
 	hdlcTestInit(t)
 

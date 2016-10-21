@@ -332,6 +332,18 @@ func (htran *HdlcTransport) SendDISC() (err error) {
 	return err
 }
 
+// Send DISC and then SNRM
+
+func (htran *HdlcTransport) SendDSNRM(maxInfoFieldLengthTransmit *uint16, maxInfoFieldLengthReceive *uint16) (err error) {
+	err = htran.SendDISC()
+	if nil != err {
+		return err
+	}
+
+	err = htran.SendSNRM(maxInfoFieldLengthTransmit, maxInfoFieldLengthReceive)
+	return err
+}
+
 func (htran *HdlcTransport) Write(p []byte) (n int, err error) {
 
 	var segment *HdlcSegment
@@ -2605,7 +2617,7 @@ mainLoop:
 				}
 			} else if (nil != command) && (HDLC_CONTROL_DISC == command.control) {
 				if htran.client { // only client may disconnect the line.
-					if (STATE_CONNECTED == state) || (STATE_CONNECTED_SEGMENT_WAIT == state) {
+					if (STATE_CONNECTED == state) || (STATE_CONNECTED_SEGMENT_WAIT == state) || (STATE_DISCONNECTED == state) {
 						frame = new(HdlcFrame)
 						frame.poll = true
 						frame.direction = HDLC_FRAME_DIRECTION_CLIENT_OUTBOUND

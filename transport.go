@@ -355,7 +355,7 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 	// send SNRM
 	ch := make(chan error, 1)
 	go func() {
-		ch <- client.SendSNRM(nil, nil)
+		ch <- client.SendDSNRM(nil, nil)
 	}()
 	select {
 	case err = <-ch:
