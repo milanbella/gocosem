@@ -470,7 +470,7 @@ func (aconn *AppConn) processReply(rips []*DlmsRequestResponse, p []byte, r io.R
 		return aconn.processActionResponseNormal(rips, r, nil)
 
 	} else {
-		err := fmt.Errorf("received pdu discarded due to unknown tag: %02X %02X", p[0], p[1])
+		err := fmt.Errorf("received pdu discarded due to unknown tag: % 02X % 02X", p[0], p[1])
 		errorLog("%s", err)
 		return err
 	}

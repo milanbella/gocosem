@@ -2063,9 +2063,9 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 
 		if HdlcDebug {
 			if htran.client {
-				fmt.Printf("client_inbound: 7E%0X%0X%0X\n", b0, b1, p)
+				fmt.Printf("client_inbound: 7E% 02X% 02X% 02X\n", b0, b1, p)
 			} else {
-				fmt.Printf("server_inbound: 7E%0X%0X%0X\n", b0, b1, p)
+				fmt.Printf("server_inbound: 7E% 02X% 02X% 02X\n", b0, b1, p)
 			}
 		}
 
@@ -2073,7 +2073,7 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		n += nn
 		return err, n
 	} else {
-		warnLog("worng format field %02X", p)
+		warnLog("worng format field % 02X", p)
 		return HdlcErrorMalformedSegment, n
 	}
 }
@@ -2380,9 +2380,9 @@ func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 	}
 	if HdlcDebug {
 		if htran.client {
-			fmt.Printf("client_outbound: %0X\n", p)
+			fmt.Printf("client_outbound: % 02X\n", p)
 		} else {
-			fmt.Printf("server_outbound: %0X\n", p)
+			fmt.Printf("server_outbound: % 02X\n", p)
 		}
 		htran.printFrame(frame)
 	}
@@ -2868,10 +2868,10 @@ mainLoop:
 						if HdlcDebug {
 							if htran.client {
 								clientRcnt += len(segment.p)
-								fmt.Fprintf(os.Stdout, "client: received bytes total: %d, segment: %02X\n", clientRcnt, segment.p)
+								fmt.Fprintf(os.Stdout, "client: received bytes total: %d, segment: % 02X\n", clientRcnt, segment.p)
 							} else {
 								serverRcnt += len(segment.p)
-								fmt.Fprintf(os.Stdout, "server: received bytes total: %d, segment: %02X\n", serverRcnt, segment.p)
+								fmt.Fprintf(os.Stdout, "server: received bytes total: %d, segment: % 02X\n", serverRcnt, segment.p)
 							}
 						}
 

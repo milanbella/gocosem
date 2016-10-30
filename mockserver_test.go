@@ -74,7 +74,7 @@ func (conn *tMockCosemServerConnection) sendEncodedReply(t *testing.T, b0 byte, 
 		t.Logf("blocks count: %d", len(blocks))
 		/*
 			for i = 0; i < len(blocks); i += 1 {
-				t.Logf("block[%d]: %02X", i, blocks[i])
+				t.Logf("block[%d]: % 02X", i, blocks[i])
 			}
 		*/
 

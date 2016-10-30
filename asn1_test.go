@@ -15,7 +15,7 @@ func printBuffer(t *testing.T, inb []byte) {
 	for {
 		c, err := buf.ReadByte()
 		if nil == err {
-			str += fmt.Sprintf("%02X ", c)
+			str += fmt.Sprintf("% 02X ", c)
 		} else if io.EOF == err {
 			break
 		} else {

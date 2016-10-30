@@ -343,7 +343,7 @@ func (dateTime *DlmsDateTime) PrintDateTime() string {
 	} else {
 		deviation = fmt.Sprintf("%04d_dv", int16(dateTime.Deviation))
 	}
-	clockStatus = fmt.Sprintf("%02X_st", *(*[1]byte)(unsafe.Pointer(&dateTime.ClockStatus)))
+	clockStatus = fmt.Sprintf("% 02X_st", *(*[1]byte)(unsafe.Pointer(&dateTime.ClockStatus)))
 
 	return fmt.Sprintf("%s %s (%s, %s)", date, time, deviation, clockStatus)
 }
@@ -964,7 +964,7 @@ func (data *DlmsData) GetOctetString() []byte {
 }
 
 func (data *DlmsData) PrintOctetString() string {
-	return fmt.Sprintf("%02X (OctetString)", data.GetOctetString())
+	return fmt.Sprintf("% 02X (OctetString)", data.GetOctetString())
 }
 
 func (data *DlmsData) encodeOctetString(w io.Writer) (err error) {
@@ -1021,7 +1021,7 @@ func (data *DlmsData) GetVisibleString() []byte {
 }
 
 func (data *DlmsData) PrintVisibleString() string {
-	return fmt.Sprintf("%02X (VisibleString)", data.GetVisibleString())
+	return fmt.Sprintf("% 02X (VisibleString)", data.GetVisibleString())
 }
 
 func (data *DlmsData) encodeVisibleString(w io.Writer) (err error) {

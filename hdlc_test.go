@@ -87,14 +87,14 @@ func TestHdlc_pppfcs16(t *testing.T) {
 
 	fcs16 ^= 0xFFFF
 	p[0] = byte(fcs16 & 0x00FF)
-	t.Logf("fcs16: %02X", p[0])
+	t.Logf("fcs16: % 02X", p[0])
 	_, err = buf.Write(p)
 	if nil != err {
 		t.Fatalf("%v", err)
 	}
 
 	p[0] = byte(fcs16 & 0xFF00 >> 8)
-	t.Logf("fcs16: %02X", p[0])
+	t.Logf("fcs16: % 02X", p[0])
 	_, err = buf.Write(p)
 	if nil != err {
 		t.Fatalf("%v", err)

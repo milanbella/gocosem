@@ -366,7 +366,7 @@ func TestDlms_decode_GetRequestNormal(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classId)
 	}
 	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
-		t.Fatalf("instanceId wrong:  %02X", *instanceId)
+		t.Fatalf("instanceId wrong:  % 02X", *instanceId)
 	}
 	if 0x02 != attributeId {
 		t.Fatalf("attributeId wrong:  %d", attributeId)
@@ -743,7 +743,7 @@ func TestDlms_decode_SetRequestNormal(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classId)
 	}
 	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
-		t.Fatalf("instanceId wrong:  %02X", *instanceId)
+		t.Fatalf("instanceId wrong:  % 02X", *instanceId)
 	}
 	if 0x02 != attributeId {
 		t.Fatalf("attributeId wrong:  %d", attributeId)
@@ -842,7 +842,7 @@ func TestDlms_decode_SetRequestWithList(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classIds[0])
 	}
 	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceIds[0]) {
-		t.Fatalf("instanceId wrong:  %02X", *instanceIds[0])
+		t.Fatalf("instanceId wrong:  % 02X", *instanceIds[0])
 	}
 	if 0x02 != attributeIds[0] {
 		t.Fatalf("attributeId wrong:  %d", attributeIds[0])
@@ -867,7 +867,7 @@ func TestDlms_decode_SetRequestWithList(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classIds[1])
 	}
 	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x01, 0x00, 0xFF}, instanceIds[1]) {
-		t.Fatalf("instanceId wrong:  %02X", *instanceIds[1])
+		t.Fatalf("instanceId wrong:  % 02X", *instanceIds[1])
 	}
 	if 0x02 != attributeIds[1] {
 		t.Fatalf("attributeId wrong:  %d", attributeIds[1])
@@ -931,7 +931,7 @@ func TestDlms_decode_SetRequestNormalBlock(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classId)
 	}
 	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
-		t.Fatalf("instanceId wrong:  %02X", *instanceId)
+		t.Fatalf("instanceId wrong:  % 02X", *instanceId)
 	}
 	if 0x02 != attributeId {
 		t.Fatalf("attributeId wrong:  %d", attributeId)
@@ -1016,7 +1016,7 @@ func TestDlms_decode_SetRequestWithListBlock(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classIds[0])
 	}
 	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceIds[0]) {
-		t.Fatalf("instanceId wrong:  %02X", *instanceIds[0])
+		t.Fatalf("instanceId wrong:  % 02X", *instanceIds[0])
 	}
 	if 0x02 != attributeIds[0] {
 		t.Fatalf("attributeId wrong:  %d", attributeIds[0])
@@ -1032,7 +1032,7 @@ func TestDlms_decode_SetRequestWithListBlock(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classIds[1])
 	}
 	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x01, 0x00, 0xFF}, instanceIds[1]) {
-		t.Fatalf("instanceId wrong:  %02X", *instanceIds[1])
+		t.Fatalf("instanceId wrong:  % 02X", *instanceIds[1])
 	}
 	if 0x02 != attributeIds[1] {
 		t.Fatalf("attributeId wrong:  %d", attributeIds[1])
@@ -1296,7 +1296,7 @@ func TestDlms_decode_ActionRequestNormal(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classId)
 	}
 	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
-		t.Fatalf("instanceId wrong:  %02X", *instanceId)
+		t.Fatalf("instanceId wrong:  % 02X", *instanceId)
 	}
 	if 0x08 != methodId {
 		t.Fatalf("methodId, wrong:  %d", methodId)
@@ -1338,7 +1338,7 @@ func TestDlms_decode_ActionRequestWithFirstPblock(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classId)
 	}
 	if !oidEquals(&DlmsOid{0x00, 0x00, 0x80, 0x00, 0x00, 0xFF}, instanceId) {
-		t.Fatalf("instanceId wrong:  %02X", *instanceId)
+		t.Fatalf("instanceId wrong:  % 02X", *instanceId)
 	}
 	if 0x08 != methodId {
 		t.Fatalf("methodId, wrong:  %d", methodId)
@@ -1444,7 +1444,7 @@ func TestDlms_encode_ActionRequestWithList(t *testing.T) {
 	if nil != err {
 		t.Fatalf("encode_ActionRequestWithList() failed, err: %v", err)
 	}
-	//t.Logf("%02X", buf.Bytes())
+	//t.Logf("% 02X", buf.Bytes())
 
 	if !bytes.Equal(buf.Bytes(), b) {
 		t.Fatalf("bytes don't match")
@@ -1464,7 +1464,7 @@ func TestDlms_decode_ActionRequestWithList(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classIds[0])
 	}
 	if !oidEquals(&DlmsOid{0, 0, 128, 0, 0, 255}, instanceIds[0]) {
-		t.Fatalf("instanceId wrong:  %02X", *(instanceIds[0]))
+		t.Fatalf("instanceId wrong:  % 02X", *(instanceIds[0]))
 	}
 	if 8 != methodIds[0] {
 		t.Fatalf("methodId, wrong:  %d", methodIds[0])
@@ -1480,7 +1480,7 @@ func TestDlms_decode_ActionRequestWithList(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classIds[1])
 	}
 	if !oidEquals(&DlmsOid{0, 0, 129, 0, 0, 253}, instanceIds[1]) {
-		t.Fatalf("instanceId wrong:  %02X", *(instanceIds[1]))
+		t.Fatalf("instanceId wrong:  % 02X", *(instanceIds[1]))
 	}
 	if 7 != methodIds[1] {
 		t.Fatalf("methodId, wrong:  %d", methodIds[1])
@@ -1521,7 +1521,7 @@ func TestDlms_encode_ActionRequestWithListAndFirstPblock(t *testing.T) {
 	if nil != err {
 		t.Fatalf("encode_ActionRequestWithList() failed, err: %v", err)
 	}
-	//t.Logf("%02X", buf.Bytes())
+	//t.Logf("% 02X", buf.Bytes())
 
 	if !bytes.Equal(buf.Bytes(), b) {
 		t.Fatalf("bytes don't match")
@@ -1541,7 +1541,7 @@ func TestDlms_decode_ActionRequestWithListAndFirstPblock(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classIds[0])
 	}
 	if !oidEquals(&DlmsOid{0, 0, 128, 0, 0, 255}, instanceIds[0]) {
-		t.Fatalf("instanceId wrong:  %02X", *(instanceIds[0]))
+		t.Fatalf("instanceId wrong:  % 02X", *(instanceIds[0]))
 	}
 	if 8 != methodIds[0] {
 		t.Fatalf("methodId, wrong:  %d", methodIds[0])
@@ -1551,7 +1551,7 @@ func TestDlms_decode_ActionRequestWithListAndFirstPblock(t *testing.T) {
 		t.Fatalf("classId wrong:  %d", classIds[1])
 	}
 	if !oidEquals(&DlmsOid{0, 0, 129, 0, 0, 253}, instanceIds[1]) {
-		t.Fatalf("instanceId wrong:  %02X", *(instanceIds[1]))
+		t.Fatalf("instanceId wrong:  % 02X", *(instanceIds[1]))
 	}
 	if 7 != methodIds[1] {
 		t.Fatalf("methodId, wrong:  %d", methodIds[1])
@@ -1585,7 +1585,7 @@ func TestDlms_encode_ActionResponseNormal(t *testing.T) {
 	if nil != err {
 		t.Fatalf("encode_ActionRequestWithList() failed, err: %v", err)
 	}
-	//t.Logf("%02X", buf.Bytes())
+	//t.Logf("% 02X", buf.Bytes())
 
 	if !bytes.Equal(buf.Bytes(), b) {
 		t.Fatalf("bytes don't match")
@@ -1703,7 +1703,7 @@ func TestDlms_encode_ActionResponseWithList(t *testing.T) {
 	if nil != err {
 		t.Fatalf("encode_ActionResponseWithList() failed, err: %v", err)
 	}
-	//t.Logf("%02X", buf.Bytes())
+	//t.Logf("% 02X", buf.Bytes())
 
 	if !bytes.Equal(buf.Bytes(), b) {
 		t.Fatalf("bytes don't match")

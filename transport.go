@@ -126,7 +126,7 @@ func hdlcTransportSend(rwc io.ReadWriteCloser, pdu []byte) error {
 	}
 
 	p := buf.Bytes()
-	debugLog("sending: %02X\n", p)
+	debugLog("sending: % 02X\n", p)
 	_, err = rwc.Write(p)
 	if nil != err {
 		errorLog("io.Write() failed, err: %v\n", err)
