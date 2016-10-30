@@ -232,12 +232,14 @@ var HdlcErrorFrameRejected = errors.New("frame rejected")
 var HdlcErrorNotClient = errors.New("not a client")
 var HdlcErrorTransportClosed = errors.New("transport closed")
 
+var MaxInfoFieldLength = uint16(512)
+
 func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
 	htran := new(HdlcTransport)
 	htran.rw = rw
 	htran.modulus = 8
-	htran.maxInfoFieldLengthTransmit = 128
-	htran.maxInfoFieldLengthReceive = 128
+	htran.maxInfoFieldLengthTransmit = MaxInfoFieldLength
+	htran.maxInfoFieldLengthReceive = MaxInfoFieldLength
 	htran.windowSizeTransmit = 1
 	htran.windowSizeReceive = 1
 
@@ -284,13 +286,13 @@ func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint16, maxInfo
 	if nil != maxInfoFieldLengthTransmit {
 		command.snrm.maxInfoFieldLengthTransmit = *maxInfoFieldLengthTransmit
 	} else {
-		command.snrm.maxInfoFieldLengthTransmit = 128
+		command.snrm.maxInfoFieldLengthTransmit = htran.maxInfoFieldLengthTransmit
 	}
 
 	if nil != maxInfoFieldLengthReceive {
 		command.snrm.maxInfoFieldLengthReceive = *maxInfoFieldLengthReceive
 	} else {
-		command.snrm.maxInfoFieldLengthReceive = 128
+		command.snrm.maxInfoFieldLengthReceive = htran.maxInfoFieldLengthReceive
 	}
 
 	command.snrm.windowSizeTransmit = 1
@@ -3130,12 +3132,12 @@ mainLoop:
 					if nil != maxInfoFieldLengthTransmit {
 						htran.maxInfoFieldLengthTransmit = *maxInfoFieldLengthTransmit
 					} else {
-						htran.maxInfoFieldLengthTransmit = 128
+						htran.maxInfoFieldLengthTransmit = MaxInfoFieldLength
 					}
 					if nil != maxInfoFieldLengthReceive {
 						htran.maxInfoFieldLengthReceive = *maxInfoFieldLengthReceive
 					} else {
-						htran.maxInfoFieldLengthReceive = 128
+						htran.maxInfoFieldLengthReceive = MaxInfoFieldLength
 					}
 					if nil != windowSizeTransmit {
 						htran.windowSizeTransmit = *windowSizeTransmit
