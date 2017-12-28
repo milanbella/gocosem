@@ -100,19 +100,22 @@ void hlp__free(void *ptr) {
 
 void hlp__free_AARQ_apdu_t(AARQ_apdu_t *aarq) {
 	if (0 != aarq) {
-		asn_DEF_AARQ_apdu.free_struct(&asn_DEF_AARQ_apdu, aarq, 0);
+		//asn_DEF_AARQ_apdu.free_struct(&asn_DEF_AARQ_apdu, aarq, 0);
+		ASN_STRUCT_FREE(asn_DEF_AARQ_apdu, aarq);
 	}
 }
 
 void hlp__free_AARE_apdu_t(AARE_apdu_t *aare) {
 	if (0 != aare) {
-		asn_DEF_AARE_apdu.free_struct(&asn_DEF_AARE_apdu, aare, 0);
+		//asn_DEF_AARE_apdu.free_struct(&asn_DEF_AARE_apdu, aare, 0);
+		ASN_STRUCT_FREE(asn_DEF_AARE_apdu, aare);
 	}
 }
 
 void hlp__free_Data_t(Data_t *data) {
 	if (0 != data) {
-		asn_DEF_Data.free_struct(&asn_DEF_Data, data, 0);
+		//asn_DEF_Data.free_struct(&asn_DEF_Data, data, 0);
+		ASN_STRUCT_FREE(asn_DEF_Data, data);
 	}
 }
 
