@@ -1153,95 +1153,95 @@ func encode_uint32_base128(w io.Writer, val uint32) (err error) {
 
 	if val <= uint32(0x7f) {
 		b[0] = uint8(val & 0x7f)
-		n, err := w.Write(b)
+		_, err := w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 	} else if val <= uint32(0x3fff) {
 		b[0] = uint8((val&0x3f80)>>7) | 0x10
-		n, err := w.Write(b)
+		_, err := w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 		b[0] = uint8(val & 0x7f)
-		n, err = w.Write(b)
+		_, err = w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 	} else if val <= uint32(0x1fffff) {
 		b[0] = uint8((val&0x1fc000)>>14) | 0x10
-		n, err := w.Write(b)
+		_, err := w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 		b[0] = uint8((val&0x3f80)>>7) | 0x10
-		n, err = w.Write(b)
+		_, err = w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 		b[0] = uint8(val & 0x7f)
-		n, err = w.Write(b)
+		_, err = w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 	} else if val <= uint32(0x0fffffff) {
 		b[0] = uint8((val&0xfe00000)>>21) | 0x10
-		n, err := w.Write(b)
+		_, err := w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 		b[0] = uint8((val&0x1fc000)>>14) | 0x10
-		n, err = w.Write(b)
+		_, err = w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 		b[0] = uint8((val&0x3f80)>>7) | 0x10
-		n, err = w.Write(b)
+		_, err = w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 		b[0] = uint8(val & 0x7f)
-		n, err = w.Write(b)
+		_, err = w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 	} else if val <= uint32(0xffffffff) {
 		b[0] = uint8(val&0x00000000>>28) | 0x10
-		n, err := w.Write(b)
+		_, err := w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 		b[0] = uint8(val&0xfe00000>>21) | 0x10
-		n, err = w.Write(b)
+		_, err = w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 		b[0] = uint8(val&0x1fc000>>14) | 0x10
-		n, err = w.Write(b)
+		_, err = w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 		b[0] = uint8(val&0x3f80>>7) | 0x10
-		n, err = w.Write(b)
+		_, err = w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 		b[0] = uint8(val & 0x7f)
-		n, err = w.Write(b)
+		_, err = w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
@@ -1254,55 +1254,54 @@ func encode_uint32_base128(w io.Writer, val uint32) (err error) {
 	return nil
 }
 
-func decode_uint32_base128(r io.Reader) (err error, _val uint32) {
+func decode_uint32_base128(r io.Reader) (err error, val uint32) {
 
-	var val uint32
 	b := make([]byte, 1)
 
-	n, err := r.Read(b)
+	_, err = r.Read(b)
 	if nil != err {
 		errorLog("io.Read(): %v", err)
 		return err, 0
 	}
 	val = uint32(0x7f & b[0])
 	if 1 == b[0]&0x80 {
-		n, err := r.Read(b)
+		_, err = r.Read(b)
 		if nil != err {
 			errorLog("io.Read(): %v", err)
-			return err, 0
+			return err, val
 		}
 		val = (val << 7) | uint32(0x7f&b[0])
 		if 1 == uint32(b[0]&0x80) {
-			n, err := r.Read(b)
+			_, err = r.Read(b)
 			if nil != err {
 				errorLog("io.Read(): %v", err)
-				return err, 0
+				return err, val
 			}
 			val = (val << 7) | uint32(0x7f&b[0])
 			if 1 == b[0]&0x80 {
-				n, err := r.Read(b)
+				_, err = r.Read(b)
 				if nil != err {
 					errorLog("io.Read(): %v", err)
-					return err, 0
+					return err, val
 				}
 				val = (val << 7) | uint32(0x7f&b[0])
 				if 1 == b[0]&0x80 {
-					n, err := r.Read(b)
+					_, err = r.Read(b)
 					if nil != err {
 						errorLog("io.Read(): %v", err)
-						return err, 0
+						return err, val
 					}
 					if b[0] > 0x0f {
 						err = fmt.Errorf("value of tag exceeds limit: %v", math.MaxUint32)
 						errorLog("%s", err)
-						return err, 0
+						return err, val
 					}
 					val = (val << 4) | uint32(0x7f&b[0])
 				}
 			}
 		}
 	}
-	return nil, val
+	return err, val
 }
 
 func der_encode_Integer(i tAsn1Integer) []uint8 {
@@ -1518,14 +1517,14 @@ func der_encode_chunk(w io.Writer, ch *t_der_chunk) (err error) {
 
 	if ch.asn1_tag < 31 {
 		b[0] |= uint8(ch.asn1_tag)
-		n, err := w.Write(b)
+		_, err := w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 	} else {
 		b[0] |= 0x1f
-		n, err := w.Write(b)
+		_, err := w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
@@ -1542,7 +1541,7 @@ func der_encode_chunk(w io.Writer, ch *t_der_chunk) (err error) {
 
 	if length <= 0x7f {
 		b[0] = uint8(length)
-		n, err := w.Write(b)
+		_, err := w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
@@ -1566,17 +1565,17 @@ func der_encode_chunk(w io.Writer, ch *t_der_chunk) (err error) {
 		} else if length <= 0xffffffffffffffff {
 			m = 8
 		} else {
-			panic()
+			panic("")
 		}
 		b[0] = uint8(m) | 0x10
-		n, err := w.Write(b)
+		_, err := w.Write(b)
 		if nil != err {
 			errorLog("io.Write(): %v", err)
 			return err
 		}
 		for i := 0; i < m; i++ {
 			b[0] = uint8((length >> uint(i)) & 0xff)
-			n, err := w.Write(b)
+			_, err := w.Write(b)
 			if nil != err {
 				errorLog("io.Write(): %v", err)
 				return err
@@ -1588,11 +1587,11 @@ func der_encode_chunk(w io.Writer, ch *t_der_chunk) (err error) {
 }
 
 func der_decode_chunk(r io.Reader) (err error, _ch *t_der_chunk) {
-	var n, m int
+	var m int
 	var ch t_der_chunk
 
 	b := make([]byte, 1)
-	n, err = r.Read(b)
+	_, err = r.Read(b)
 	if nil != err {
 		errorLog("io.Read(): %v", err)
 		return err, nil
@@ -1631,7 +1630,7 @@ func der_decode_chunk(r io.Reader) (err error, _ch *t_der_chunk) {
 
 	var length uint64
 
-	n, err = r.Read(b)
+	_, err = r.Read(b)
 	if nil != err {
 		errorLog("io.Read(): %v", err)
 		return err, nil
@@ -1649,14 +1648,14 @@ func der_decode_chunk(r io.Reader) (err error, _ch *t_der_chunk) {
 			errorLog("%s", err)
 			return err, nil
 		}
-		n, err := r.Read(b)
+		_, err := r.Read(b)
 		if nil != err {
 			errorLog("io.Read(): %v", err)
 			return err, nil
 		}
 		length = uint64(b[0])
 		for i := 0; i < m-1; m-- {
-			n, err := r.Read(b)
+			_, err := r.Read(b)
 			if nil != err {
 				errorLog("io.Read(): %v", err)
 				return err, nil
@@ -1671,7 +1670,7 @@ func der_decode_chunk(r io.Reader) (err error, _ch *t_der_chunk) {
 		return err, nil
 	}
 	ch.content = make([]byte, length)
-	n, err = r.Read(b)
+	_, err = r.Read(b)
 	if nil != err {
 		errorLog("io.Read(): %v", err)
 		return err, nil
@@ -2203,7 +2202,7 @@ func decode_AAREapdu_protocolVersion(ch *t_der_chunk, aarq *AARQapdu) (err error
 		return err, found
 	}
 
-	err, _found := decode_AAREapdu_applicationContextName(ch, aarq)
+	err, _found := decode_AAREapdu_applicationContextName(ch1, aarq)
 	if nil != err {
 		return err, found
 	}
@@ -2809,19 +2808,19 @@ func decode_AAREapdu_callingAuthenticationValue(ch *t_der_chunk, aarq *AARQapdu)
 			return err, found
 		}
 		if !_found {
-			err, _found := decode_AAREapdu_callingAuthenticationValue_bitstring(ch1, aarq)
+			err, _found = decode_AAREapdu_callingAuthenticationValue_bitstring(ch1, aarq)
 			if nil != err {
 				return err, found
 			}
 		}
 		if !_found {
-			err, _found := decode_AAREapdu_callingAuthenticationValue_external(ch1, aarq)
+			err, _found = decode_AAREapdu_callingAuthenticationValue_external(ch1, aarq)
 			if nil != err {
 				return err, found
 			}
 		}
 		if !_found {
-			err, _found := decode_AAREapdu_callingAuthenticationValue_other(ch1, aarq)
+			err, _found = decode_AAREapdu_callingAuthenticationValue_other(ch1, aarq)
 			if nil != err {
 				return err, found
 			}
@@ -2978,16 +2977,17 @@ func decode_AAREapdu_userInformation(ch *t_der_chunk, aarq *AARQapdu) (err error
 
 func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	//func der_decode_chunk(r io.Reader) (err error, _ch *t_der_chunk) {
+	aarq = new(AARQapdu)
 
 	err, ch := der_decode_chunk(r)
 	if nil != err {
-		return err, nil
+		return err, aarq
 	}
 
 	// AARQ-apdu ::= [APPLICATION 0] IMPLICIT SEQUENCE
 	if 0 != ch.asn1_tag {
 		err = fmt.Errorf("decoding error")
-		return err, nil
+		return err, aarq
 	}
 	buf := bytes.NewReader(ch.content)
 
@@ -2995,12 +2995,9 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 
 	err, ch = der_decode_chunk(buf)
 	if nil != err {
-		return err, nil
+		return err, aarq
 	}
-	if 0 == ch.asn1_tag {
-		err = fmt.Errorf("decoding error")
-		return err, nil
-	}
+	err, _ = decode_AAREapdu_protocolVersion(ch, aarq)
 
-	return nil, nil
+	return err, aarq
 }
