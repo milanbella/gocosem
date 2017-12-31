@@ -1344,7 +1344,7 @@ func decode_uint32_base128(r io.Reader) (err error, val uint32) {
 	return err, val
 }
 
-func der_encode_Integer(i tAsn1Integer) []uint8 {
+func der_encode_Integer(i tAsn1Integer) (err error, content []uint8) {
 
 	var _i int64 = int64(i)
 
@@ -1361,12 +1361,12 @@ func der_encode_Integer(i tAsn1Integer) []uint8 {
 		i >>= 8
 	}
 
-	content := make([]uint8, n)
+	content = make([]uint8, n)
 	for j := 0; j < n; j++ {
 		content[j] = uint8(_i >> uint((n-1-j)*8))
 	}
 
-	return content
+	return nil, content
 
 }
 
@@ -1413,29 +1413,30 @@ func der_decode_Integer(content []uint8) (err error, i tAsn1Integer) {
 	return nil, tAsn1Integer(_i)
 }
 
-func der_encode_BitString(bs *tAsn1BitString) []uint8 {
-	var content []uint8
+func der_encode_BitString(bs *tAsn1BitString) (err error, content []uint8) {
 
 	if nil == bs || nil == bs.buf {
 		content = make([]uint8, 0)
-		return content
+		return nil, content
 	}
 
 	if 0 == len(bs.buf) {
 		content = make([]uint8, 1)
 		content[0] = 0
-		return content
+		return nil, content
 	}
 
 	content = make([]uint8, len(bs.buf)+1)
 	if bs.bitsUnused > 7 {
-		panic("wrong count of unused bits")
+		err = fmt.Errorf("wrong count of unused bits")
+		errorLog("%v", err)
+		return err, nil
 	}
 	content[0] = uint8(bs.bitsUnused)
 	for i := 0; i < len(bs.buf); i++ {
 		content[i+1] = bs.buf[i]
 	}
-	return content
+	return nil, content
 }
 
 func der_decode_BitString(content []uint8) (err error, bs *tAsn1BitString) {
@@ -1455,19 +1456,18 @@ func der_decode_BitString(content []uint8) (err error, bs *tAsn1BitString) {
 
 }
 
-func der_encode_ObjectIdentifier(oi *tAsn1ObjectIdentifier) []uint8 {
-	var content []uint8
+func der_encode_ObjectIdentifier(oi *tAsn1ObjectIdentifier) (err error, content []uint8) {
 
 	if nil == oi {
 		content = make([]uint8, 0)
-		return content
+		return nil, content
 	}
 
 	_oi := ([]uint32)(*oi)
 
 	if 0 == len(_oi) {
 		content = make([]uint8, 0)
-		return content
+		return nil, content
 	}
 
 	if len(_oi) < 2 {
@@ -1483,20 +1483,20 @@ func der_encode_ObjectIdentifier(oi *tAsn1ObjectIdentifier) []uint8 {
 	}
 
 	var buf bytes.Buffer
-	err := encode_uint32_base128(&buf, 40*_oi[0]+_oi[1])
+	err = encode_uint32_base128(&buf, 40*_oi[0]+_oi[1])
 	if nil != err {
 		panic(err)
 	}
 	for i := 2; i < len(_oi); i++ {
 		err := encode_uint32_base128(&buf, _oi[i])
 		if nil != err {
-			panic(err)
+			return err, nil
 		}
 	}
 
 	content = buf.Bytes()
 
-	return content
+	return nil, content
 }
 
 func der_decode_ObjectIdentifier(content []uint8) (err error, oi *tAsn1ObjectIdentifier) {
@@ -1541,7 +1541,9 @@ func der_decode_ObjectIdentifier(content []uint8) (err error, oi *tAsn1ObjectIde
 
 	if i == len(components) {
 		if buf.Len() > 0 { // there are still some components remaining to be read
-			panic("COMPONENTS_BUFFER_SIZE small")
+			err = fmt.Errorf("COMPONENTS_BUFFER_SIZE small")
+			errorLog("%v", err)
+			return err, nil
 		}
 	}
 	components = components[0:i]
@@ -1617,7 +1619,9 @@ func der_encode_chunk(w io.Writer, ch *t_der_chunk) (err error) {
 		} else if length <= 0xffffffffffffffff {
 			m = 8
 		} else {
-			panic("")
+			err = fmt.Errorf("asserion failed")
+			errorLog("%v", err)
+			return err
 		}
 		b[0] = uint8(m) | 0x10
 		_, err := w.Write(b)
@@ -1798,7 +1802,10 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_PRIMITIVE
 		ch.asn1_tag = 0
-		ch.content = der_encode_BitString(aarq.protocolVersion)
+		err, ch.content = der_encode_BitString(aarq.protocolVersion)
+		if nil != err {
+			return err
+		}
 
 		err = der_encode_chunk(bufAARQ, ch)
 		if nil != err {
@@ -1818,7 +1825,10 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 6
-		ch1.content = der_encode_ObjectIdentifier(&aarq.applicationContextName)
+		err, ch1.content = der_encode_ObjectIdentifier(&aarq.applicationContextName)
+		if nil != err {
+			return err
+		}
 		buf = new(bytes.Buffer)
 		err = der_encode_chunk(buf, ch1)
 		if nil != err {
@@ -1903,7 +1913,10 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 2
-		ch1.content = der_encode_Integer(*aarq.calledAPinvocationId)
+		err, ch1.content = der_encode_Integer(*aarq.calledAPinvocationId)
+		if nil != err {
+			return err
+		}
 		buf = new(bytes.Buffer)
 		err = der_encode_chunk(buf, ch1)
 		if nil != err {
@@ -1930,7 +1943,10 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 2
-		ch1.content = der_encode_Integer(*aarq.calledAEinvocationId)
+		err, ch1.content = der_encode_Integer(*aarq.calledAEinvocationId)
+		if nil != err {
+			return err
+		}
 		buf = new(bytes.Buffer)
 		err = der_encode_chunk(buf, ch1)
 		if nil != err {
@@ -2015,7 +2031,10 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 2
-		ch1.content = der_encode_Integer(*aarq.callingAPinvocationId)
+		err, ch1.content = der_encode_Integer(*aarq.callingAPinvocationId)
+		if nil != err {
+			return err
+		}
 		buf = new(bytes.Buffer)
 		err = der_encode_chunk(buf, ch1)
 		if nil != err {
@@ -2042,7 +2061,10 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 2
-		ch1.content = der_encode_Integer(*aarq.callingAEinvocationId)
+		err, ch1.content = der_encode_Integer(*aarq.callingAEinvocationId)
+		if nil != err {
+			return err
+		}
 		buf = new(bytes.Buffer)
 		err = der_encode_chunk(buf, ch1)
 		if nil != err {
@@ -2064,7 +2086,10 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_PRIMITIVE
 		ch.asn1_tag = 10
-		ch.content = der_encode_BitString(aarq.senderAcseRequirements)
+		err, ch.content = der_encode_BitString(aarq.senderAcseRequirements)
+		if nil != err {
+			return err
+		}
 
 		err = der_encode_chunk(bufAARQ, ch)
 		if nil != err {
@@ -2078,7 +2103,10 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_PRIMITIVE
 		ch.asn1_tag = 11
-		ch.content = der_encode_ObjectIdentifier(aarq.mechanismName)
+		err, ch.content = der_encode_ObjectIdentifier(aarq.mechanismName)
+		if nil != err {
+			return err
+		}
 
 		err = der_encode_chunk(bufAARQ, ch)
 		if nil != err {
@@ -2116,7 +2144,10 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 			ch1.encoding = BER_ENCODING_PRIMITIVE
 			ch1.asn1_tag = 1
 			bitString := aarq.callingAuthenticationValue.val.(tAsn1BitString)
-			ch1.content = der_encode_BitString(&bitString)
+			err, ch1.content = der_encode_BitString(&bitString)
+			if nil != err {
+				return err
+			}
 		} else if 2 == aarq.callingAuthenticationValue.tag {
 			// external [2] IMPLICIT OCTET STRING,
 			ch1.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
@@ -2145,7 +2176,10 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 			ch2.asn1_class = ASN1_CLASS_UNIVERSAL
 			ch2.encoding = BER_ENCODING_PRIMITIVE
 			ch2.asn1_tag = 6
-			ch2.content = der_encode_ObjectIdentifier(&authenticationValueOther.otherMechanismName)
+			err, ch2.content = der_encode_ObjectIdentifier(&authenticationValueOther.otherMechanismName)
+			if nil != err {
+				return err
+			}
 
 			ch3 = new(t_der_chunk)
 			ch3.asn1_class = ASN1_CLASS_UNIVERSAL
@@ -2167,7 +2201,9 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 
 			ch1.content = buf.Bytes()
 		} else {
-			panic("no tag")
+			err = fmt.Errorf("no tag")
+			errorLog("%v", err)
+			return err
 		}
 
 		buf = new(bytes.Buffer)
@@ -2242,7 +2278,7 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 
 }
 
-func decode_AAREapdu_protocolVersion(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_protocolVersion(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	// protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1},
 	if 0 == ch.asn1_tag {
 		found = true
@@ -2254,7 +2290,7 @@ func decode_AAREapdu_protocolVersion(ch *t_der_chunk, aarq *AARQapdu) (err error
 	return err, found
 }
 
-func decode_AAREapdu_applicationContextName(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_applicationContextName(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//application-context-name [1] Application-context-name,
 	if 1 == ch.asn1_tag {
 		found = true
@@ -2270,6 +2306,7 @@ func decode_AAREapdu_applicationContextName(ch *t_der_chunk, aarq *AARQapdu) (er
 
 		if 6 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		err, applicationContextName := der_decode_ObjectIdentifier(ch.content)
@@ -2281,7 +2318,7 @@ func decode_AAREapdu_applicationContextName(ch *t_der_chunk, aarq *AARQapdu) (er
 	return err, found
 }
 
-func decode_AAREapdu_calledAPtitle(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_calledAPtitle(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//called-AP-title [2] AP-title OPTIONAL,
 	if 2 == ch.asn1_tag {
 		found = true
@@ -2297,6 +2334,7 @@ func decode_AAREapdu_calledAPtitle(ch *t_der_chunk, aarq *AARQapdu) (err error, 
 
 		if 4 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		octetString := make([]uint8, len(ch.content))
@@ -2307,7 +2345,7 @@ func decode_AAREapdu_calledAPtitle(ch *t_der_chunk, aarq *AARQapdu) (err error, 
 	return err, found
 }
 
-func decode_AAREapdu_calledAEqualifier(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_calledAEqualifier(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//called-AE-qualifier [3] AE-qualifier OPTIONAL,
 	if 3 == ch.asn1_tag {
 		found = true
@@ -2323,6 +2361,7 @@ func decode_AAREapdu_calledAEqualifier(ch *t_der_chunk, aarq *AARQapdu) (err err
 
 		if 4 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		octetString := make([]uint8, len(ch.content))
@@ -2332,7 +2371,7 @@ func decode_AAREapdu_calledAEqualifier(ch *t_der_chunk, aarq *AARQapdu) (err err
 	return err, found
 }
 
-func decode_AAREapdu_calledAPinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_calledAPinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//called-AP-invocation-id [4] AP-invocation-identifier OPTIONAL,
 	if 4 == ch.asn1_tag {
 		found = true
@@ -2348,6 +2387,7 @@ func decode_AAREapdu_calledAPinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err 
 
 		if 2 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		err, calledAPinvocationId := der_decode_Integer(ch.content)
@@ -2359,7 +2399,7 @@ func decode_AAREapdu_calledAPinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err 
 	return err, found
 }
 
-func decode_AAREapdu_calledAEinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_calledAEinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//called-AE-invocation-id [5] AE-invocation-identifier OPTIONAL,
 	if 5 == ch.asn1_tag {
 		found = true
@@ -2375,6 +2415,7 @@ func decode_AAREapdu_calledAEinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err 
 
 		if 2 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		err, calledAEinvocationId := der_decode_Integer(ch.content)
@@ -2386,7 +2427,7 @@ func decode_AAREapdu_calledAEinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err 
 	return err, found
 }
 
-func decode_AAREapdu_callingAPtitle(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_callingAPtitle(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//calling-AP-title [6] AP-title OPTIONAL,
 	if 6 == ch.asn1_tag {
 		found = true
@@ -2402,6 +2443,7 @@ func decode_AAREapdu_callingAPtitle(ch *t_der_chunk, aarq *AARQapdu) (err error,
 
 		if 4 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		octetString := make([]uint8, len(ch.content))
@@ -2411,7 +2453,7 @@ func decode_AAREapdu_callingAPtitle(ch *t_der_chunk, aarq *AARQapdu) (err error,
 	return err, found
 }
 
-func decode_AAREapdu_callingAEqualifier(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_callingAEqualifier(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//calling-AE-qualifier [7] AE-qualifier OPTIONAL,
 	if 7 == ch.asn1_tag {
 		found = true
@@ -2427,6 +2469,7 @@ func decode_AAREapdu_callingAEqualifier(ch *t_der_chunk, aarq *AARQapdu) (err er
 
 		if 4 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		octetString := make([]uint8, len(ch.content))
@@ -2436,7 +2479,7 @@ func decode_AAREapdu_callingAEqualifier(ch *t_der_chunk, aarq *AARQapdu) (err er
 	return err, found
 }
 
-func decode_AAREapdu_callingAPinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_callingAPinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//calling-AP-invocation-id [8] AP-invocation-identifier OPTIONAL,
 	if 8 == ch.asn1_tag {
 		found = true
@@ -2452,6 +2495,7 @@ func decode_AAREapdu_callingAPinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err
 
 		if 2 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		err, callingAPinvocationId := der_decode_Integer(ch.content)
@@ -2463,7 +2507,7 @@ func decode_AAREapdu_callingAPinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err
 	return err, found
 }
 
-func decode_AAREapdu_callingAEinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_callingAEinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//calling-AE-invocation-id [9] AE-invocation-identifier OPTIONAL,
 	if 9 == ch.asn1_tag {
 		found = true
@@ -2479,6 +2523,7 @@ func decode_AAREapdu_callingAEinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err
 
 		if 2 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		err, callingAEinvocationId := der_decode_Integer(ch.content)
@@ -2491,7 +2536,7 @@ func decode_AAREapdu_callingAEinvocationId(ch *t_der_chunk, aarq *AARQapdu) (err
 	return err, found
 }
 
-func decode_AAREapdu_senderAcseRequirements(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_senderAcseRequirements(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//sender-acse-requirements [10] IMPLICIT ACSE-requirements OPTIONAL,
 	if 10 == ch.asn1_tag {
 		found = true
@@ -2503,7 +2548,7 @@ func decode_AAREapdu_senderAcseRequirements(ch *t_der_chunk, aarq *AARQapdu) (er
 	return err, found
 }
 
-func decode_AAREapdu_mechanismName(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_mechanismName(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//mechanism-name [11] IMPLICIT Mechanism-name OPTIONAL,
 	//mechanismName *tAsn1ObjectIdentifier
 	if 11 == ch.asn1_tag {
@@ -2516,7 +2561,7 @@ func decode_AAREapdu_mechanismName(ch *t_der_chunk, aarq *AARQapdu) (err error, 
 	return err, found
 }
 
-func decode_AAREapdu_callingAuthenticationValue(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_callingAuthenticationValue(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//calling-authentication-value [12] EXPLICIT Authentication-value OPTIONAL,
 	if 12 == ch.asn1_tag {
 		found = true
@@ -2544,30 +2589,31 @@ func decode_AAREapdu_callingAuthenticationValue(ch *t_der_chunk, aarq *AARQapdu)
 		}
 		content = content[ch.length:]
 
-		err, _found := decode_AAREapdu_callingAuthenticationValue_charstring(ch, aarq)
+		err, _found := decode_AARQapdu_callingAuthenticationValue_charstring(ch, aarq)
 		if nil != err {
 			return err, found
 		}
 		if !_found {
-			err, _found = decode_AAREapdu_callingAuthenticationValue_bitstring(ch, aarq)
+			err, _found = decode_AARQapdu_callingAuthenticationValue_bitstring(ch, aarq)
 			if nil != err {
 				return err, found
 			}
 		}
 		if !_found {
-			err, _found = decode_AAREapdu_callingAuthenticationValue_external(ch, aarq)
+			err, _found = decode_AARQapdu_callingAuthenticationValue_external(ch, aarq)
 			if nil != err {
 				return err, found
 			}
 		}
 		if !_found {
-			err, _found = decode_AAREapdu_callingAuthenticationValue_other(ch, aarq)
+			err, _found = decode_AARQapdu_callingAuthenticationValue_other(ch, aarq)
 			if nil != err {
 				return err, found
 			}
 		}
 		if !_found {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 
@@ -2576,7 +2622,7 @@ func decode_AAREapdu_callingAuthenticationValue(ch *t_der_chunk, aarq *AARQapdu)
 	return err, found
 }
 
-func decode_AAREapdu_callingAuthenticationValue_charstring(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_callingAuthenticationValue_charstring(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	// charstring [0] IMPLICIT GraphicString,
 	if 0 == ch.asn1_tag {
 		found = true
@@ -2591,7 +2637,7 @@ func decode_AAREapdu_callingAuthenticationValue_charstring(ch *t_der_chunk, aarq
 	return err, found
 }
 
-func decode_AAREapdu_callingAuthenticationValue_bitstring(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_callingAuthenticationValue_bitstring(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//bitstring [1] IMPLICIT BIT STRING,
 	if 1 == ch.asn1_tag {
 		found = true
@@ -2608,7 +2654,7 @@ func decode_AAREapdu_callingAuthenticationValue_bitstring(ch *t_der_chunk, aarq 
 	return err, found
 }
 
-func decode_AAREapdu_callingAuthenticationValue_external(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_callingAuthenticationValue_external(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	// external [2] IMPLICIT OCTET STRING,
 	if 2 == ch.asn1_tag {
 		found = true
@@ -2623,7 +2669,7 @@ func decode_AAREapdu_callingAuthenticationValue_external(ch *t_der_chunk, aarq *
 	return err, found
 }
 
-func decode_AAREapdu_callingAuthenticationValue_other(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_callingAuthenticationValue_other(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	/*
 		other [3] IMPLICIT SEQUENCE
 		{
@@ -2644,17 +2690,19 @@ func decode_AAREapdu_callingAuthenticationValue_other(ch *t_der_chunk, aarq *AAR
 		content = content[ch.length:]
 
 		callingAuthenticationValue := new(tAsn1Choice)
-		callingAuthenticationValue.tag = 1
+		callingAuthenticationValue.tag = 3
 
 		var authenticationValueOther tAsn1CosemAuthenticationValueOther
 
 		if 6 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		err, objectIdentifier := der_decode_ObjectIdentifier(ch.content)
 		if nil != err {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		authenticationValueOther.otherMechanismName = *objectIdentifier
@@ -2668,6 +2716,7 @@ func decode_AAREapdu_callingAuthenticationValue_other(ch *t_der_chunk, aarq *AAR
 
 		if 4 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		authenticationValueOther.otherMechanismValue = make([]uint8, len(ch.content))
@@ -2679,7 +2728,7 @@ func decode_AAREapdu_callingAuthenticationValue_other(ch *t_der_chunk, aarq *AAR
 	return err, found
 }
 
-func decode_AAREapdu_implementationInformation(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_implementationInformation(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
 	if 29 == ch.asn1_tag {
 		found = true
@@ -2691,7 +2740,7 @@ func decode_AAREapdu_implementationInformation(ch *t_der_chunk, aarq *AARQapdu) 
 	return err, found
 }
 
-func decode_AAREapdu_userInformation(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
+func decode_AARQapdu_userInformation(ch *t_der_chunk, aarq *AARQapdu) (err error, found bool) {
 	//user-information [30] EXPLICIT Association-information OPTIONAL
 	if 30 == ch.asn1_tag {
 		found = true
@@ -2707,6 +2756,7 @@ func decode_AAREapdu_userInformation(ch *t_der_chunk, aarq *AARQapdu) (err error
 
 		if 4 != ch.asn1_tag {
 			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
 			return err, found
 		}
 		octetString := make([]uint8, len(ch.content))
@@ -2724,25 +2774,27 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	if nil != err {
 		return err, aarq
 	}
+	content := ch.content[0:]
 
 	// AARQ-apdu ::= [APPLICATION 0] IMPLICIT SEQUENCE
 	if 0 == ch.asn1_tag {
 		found = true
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aarq
+		}
+		content = content[ch.length:]
 	} else {
 		err = fmt.Errorf("decoding error")
+		errorLog("%v", err)
 		return err, aarq
 	}
-
-	content := ch.content[0:]
-	r = bytes.NewReader(content)
-	err, ch = der_decode_chunk(r)
-	if nil != err {
-		return err, aarq
-	}
-	content = content[ch.length:]
 
 	// protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1},
-	err, found = decode_AAREapdu_protocolVersion(ch, aarq)
+	err, found = decode_AARQapdu_protocolVersion(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2756,7 +2808,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//application-context-name [1] Application-context-name,
-	err, found = decode_AAREapdu_applicationContextName(ch, aarq)
+	err, found = decode_AARQapdu_applicationContextName(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2769,11 +2821,12 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 		content = content[ch.length:]
 	} else {
 		err = fmt.Errorf("decoding error")
+		errorLog("%v", err)
 		return err, aarq
 	}
 
 	//called-AP-title [2] AP-title OPTIONAL,
-	err, found = decode_AAREapdu_calledAPtitle(ch, aarq)
+	err, found = decode_AARQapdu_calledAPtitle(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2787,7 +2840,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//called-AE-qualifier [3] AE-qualifier OPTIONAL,
-	err, found = decode_AAREapdu_calledAEqualifier(ch, aarq)
+	err, found = decode_AARQapdu_calledAEqualifier(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2801,7 +2854,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//called-AP-invocation-id [4] AP-invocation-identifier OPTIONAL,
-	err, found = decode_AAREapdu_calledAPinvocationId(ch, aarq)
+	err, found = decode_AARQapdu_calledAPinvocationId(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2815,7 +2868,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//called-AE-invocation-id [5] AE-invocation-identifier OPTIONAL,
-	err, found = decode_AAREapdu_calledAEinvocationId(ch, aarq)
+	err, found = decode_AARQapdu_calledAEinvocationId(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2829,7 +2882,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//calling-AP-title [6] AP-title OPTIONAL,
-	err, found = decode_AAREapdu_callingAPtitle(ch, aarq)
+	err, found = decode_AARQapdu_callingAPtitle(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2843,7 +2896,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//calling-AE-qualifier [7] AE-qualifier OPTIONAL,
-	err, found = decode_AAREapdu_callingAEqualifier(ch, aarq)
+	err, found = decode_AARQapdu_callingAEqualifier(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2857,7 +2910,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//calling-AP-invocation-id [8] AP-invocation-identifier OPTIONAL,
-	err, found = decode_AAREapdu_callingAPinvocationId(ch, aarq)
+	err, found = decode_AARQapdu_callingAPinvocationId(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2871,7 +2924,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//calling-AE-invocation-id [9] AE-invocation-identifier OPTIONAL,
-	err, found = decode_AAREapdu_callingAEinvocationId(ch, aarq)
+	err, found = decode_AARQapdu_callingAEinvocationId(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2885,7 +2938,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//sender-acse-requirements [10] IMPLICIT ACSE-requirements OPTIONAL,
-	err, found = decode_AAREapdu_senderAcseRequirements(ch, aarq)
+	err, found = decode_AARQapdu_senderAcseRequirements(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2899,7 +2952,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//mechanism-name [11] IMPLICIT Mechanism-name OPTIONAL,
-	err, found = decode_AAREapdu_mechanismName(ch, aarq)
+	err, found = decode_AARQapdu_mechanismName(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2913,7 +2966,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//calling-authentication-value [12] EXPLICIT Authentication-value OPTIONAL,
-	err, found = decode_AAREapdu_callingAuthenticationValue(ch, aarq)
+	err, found = decode_AARQapdu_callingAuthenticationValue(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2927,7 +2980,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
-	err, found = decode_AAREapdu_implementationInformation(ch, aarq)
+	err, found = decode_AARQapdu_implementationInformation(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2941,7 +2994,7 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	//user-information [30] EXPLICIT Association-information OPTIONAL
-	err, found = decode_AAREapdu_userInformation(ch, aarq)
+	err, found = decode_AARQapdu_userInformation(ch, aarq)
 	if nil != err {
 		return err, aarq
 	}
@@ -2972,7 +3025,10 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_PRIMITIVE
 		ch.asn1_tag = 0
-		ch.content = der_encode_BitString(aare.protocolVersion)
+		err, ch.content = der_encode_BitString(aare.protocolVersion)
+		if nil != err {
+			return err
+		}
 
 		err = der_encode_chunk(bufAARE, ch)
 		if nil != err {
@@ -2992,7 +3048,10 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 6
-		ch1.content = der_encode_ObjectIdentifier(&aare.applicationContextName)
+		err, ch1.content = der_encode_ObjectIdentifier(&aare.applicationContextName)
+		if nil != err {
+			return err
+		}
 		buf = new(bytes.Buffer)
 		err = der_encode_chunk(buf, ch1)
 		if nil != err {
@@ -3018,7 +3077,10 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 	ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 	ch1.encoding = BER_ENCODING_PRIMITIVE
 	ch1.asn1_tag = 2
-	ch1.content = der_encode_Integer(aare.result)
+	err, ch1.content = der_encode_Integer(aare.result)
+	if nil != err {
+		return err
+	}
 	buf = new(bytes.Buffer)
 	err = der_encode_chunk(buf, ch1)
 	if nil != err {
@@ -3071,7 +3133,10 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 		ch2.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch2.encoding = BER_ENCODING_PRIMITIVE
 		ch2.asn1_tag = 2
-		ch2.content = der_encode_Integer(aare.resultSourceDiagnostic.val.(tAsn1Integer))
+		err, ch2.content = der_encode_Integer(aare.resultSourceDiagnostic.val.(tAsn1Integer))
+		if nil != err {
+			return err
+		}
 		buf = new(bytes.Buffer)
 		err = der_encode_chunk(buf, ch2)
 		if nil != err {
@@ -3089,7 +3154,10 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 		ch2.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch2.encoding = BER_ENCODING_PRIMITIVE
 		ch2.asn1_tag = 2
-		ch2.content = der_encode_Integer(aare.resultSourceDiagnostic.val.(tAsn1Integer))
+		err, ch2.content = der_encode_Integer(aare.resultSourceDiagnostic.val.(tAsn1Integer))
+		if nil != err {
+			return err
+		}
 		buf = new(bytes.Buffer)
 		err = der_encode_chunk(buf, ch2)
 		if nil != err {
@@ -3185,7 +3253,10 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 2
-		ch1.content = der_encode_Integer(*aare.respondingAPinvocationId)
+		err, ch1.content = der_encode_Integer(*aare.respondingAPinvocationId)
+		if nil != err {
+			return err
+		}
 		buf = new(bytes.Buffer)
 		err = der_encode_chunk(buf, ch1)
 		if nil != err {
@@ -3212,7 +3283,10 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 2
-		ch1.content = der_encode_Integer(*aare.respondingAEinvocationId)
+		err, ch1.content = der_encode_Integer(*aare.respondingAEinvocationId)
+		if nil != err {
+			return err
+		}
 		buf = new(bytes.Buffer)
 		err = der_encode_chunk(buf, ch1)
 		if nil != err {
@@ -3234,7 +3308,10 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_PRIMITIVE
 		ch.asn1_tag = 8
-		ch.content = der_encode_BitString(aare.responderAcseRequirements)
+		err, ch.content = der_encode_BitString(aare.responderAcseRequirements)
+		if nil != err {
+			return err
+		}
 
 		err = der_encode_chunk(bufAARE, ch)
 		if nil != err {
@@ -3249,7 +3326,10 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_PRIMITIVE
 		ch.asn1_tag = 9
-		ch.content = der_encode_ObjectIdentifier(aare.mechanismName)
+		err, ch.content = der_encode_ObjectIdentifier(aare.mechanismName)
+		if nil != err {
+			return err
+		}
 
 		err = der_encode_chunk(bufAARE, ch)
 		if nil != err {
@@ -3295,7 +3375,10 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 			ch1.encoding = BER_ENCODING_PRIMITIVE
 			ch1.asn1_tag = 1
 			bitString := aare.respondingAuthenticationValue.val.(tAsn1BitString)
-			ch1.content = der_encode_BitString(&bitString)
+			err, ch1.content = der_encode_BitString(&bitString)
+			if nil != err {
+				return err
+			}
 		} else if 2 == aare.respondingAuthenticationValue.tag {
 			// external [2] IMPLICIT OCTET STRING,
 			ch1.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
@@ -3324,7 +3407,10 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 			ch2.asn1_class = ASN1_CLASS_UNIVERSAL
 			ch2.encoding = BER_ENCODING_PRIMITIVE
 			ch2.asn1_tag = 6
-			ch2.content = der_encode_ObjectIdentifier(&authenticationValueOther.otherMechanismName)
+			err, ch2.content = der_encode_ObjectIdentifier(&authenticationValueOther.otherMechanismName)
+			if nil != err {
+				return err
+			}
 
 			ch3 = new(t_der_chunk)
 			ch3.asn1_class = ASN1_CLASS_UNIVERSAL
@@ -3346,7 +3432,9 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 
 			ch1.content = buf.Bytes()
 		} else {
-			panic("no tag")
+			err = fmt.Errorf("no tag")
+			errorLog("%v", err)
+			return err
 		}
 
 		buf = new(bytes.Buffer)
@@ -3416,4 +3504,734 @@ func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
 	}
 
 	return err
+}
+
+func decode_AAREapdu_protocolVersion(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1},
+	if 0 == ch.asn1_tag {
+		found = true
+		err, aare.protocolVersion = der_decode_BitString(ch.content)
+		if nil != err {
+			return err, found
+		}
+	}
+	return err, found
+}
+
+func decode_AAREapdu_applicationContextName(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//application-context-name [1] Application-context-name,
+	if 1 == ch.asn1_tag {
+		found = true
+
+		content := ch.content[0:]
+
+		r := bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		if 6 != ch.asn1_tag {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+		err, applicationContextName := der_decode_ObjectIdentifier(ch.content)
+		if nil != err {
+			return err, found
+		}
+		aare.applicationContextName = *applicationContextName
+	}
+	return err, found
+}
+
+func decode_AAREapdu_result(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//result [2] Association-result,
+
+	if 2 == ch.asn1_tag {
+		found = true
+
+		content := ch.content[0:]
+
+		r := bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		if 2 != ch.asn1_tag {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+		err, result := der_decode_Integer(ch.content)
+		if nil != err {
+			return err, found
+		}
+		aare.result = result
+	}
+	return err, found
+}
+
+func decode_AAREapdu_resultSourceDiagnostic(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//result-source-diagnostic [3] Associate-source-diagnostic,
+	if 3 == ch.asn1_tag {
+		found = true
+
+		content := ch.content[0:]
+
+		r := bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		/*
+			Associate-source-diagnostic ::= CHOICE
+			{
+				acse-service-user [1] INTEGER
+				{
+					null (0),
+					no-reason-given (1),
+					application-context-name-not-supported (2),
+					authentication-mechanism-name-not-recognised (11),
+					authentication-mechanism-name-required (12),
+					authentication-failure (13),
+					authentication-required (14)
+				},
+				acse-service-provider [2] INTEGER
+				{
+					null (0),
+					no-reason-given (1),
+					no-common-acse-version (2)
+				}
+			}
+		*/
+
+		if 1 == ch.asn1_tag {
+			// acse-service-user [1] INTEGER
+			content := ch.content[0:]
+
+			r := bytes.NewReader(content)
+			err, ch = der_decode_chunk(r)
+			if nil != err {
+				return err, found
+			}
+			content = content[ch.length:]
+
+			if 2 != ch.asn1_tag {
+				err = fmt.Errorf("decoding error")
+				errorLog("%v", err)
+				return err, found
+			}
+			err, val := der_decode_Integer(ch.content)
+			if nil != err {
+				return err, found
+			}
+			aare.resultSourceDiagnostic.tag = 1
+			aare.resultSourceDiagnostic.val = val
+		} else if 2 == ch.asn1_tag {
+			// acse-service-provider [2] INTEGER
+			content := ch.content[0:]
+
+			r := bytes.NewReader(content)
+			err, ch = der_decode_chunk(r)
+			if nil != err {
+				return err, found
+			}
+			content = content[ch.length:]
+
+			if 2 != ch.asn1_tag {
+				err = fmt.Errorf("decoding error")
+				errorLog("%v", err)
+				return err, found
+			}
+			err, val := der_decode_Integer(ch.content)
+			if nil != err {
+				return err, found
+			}
+			aare.resultSourceDiagnostic.tag = 2
+			aare.resultSourceDiagnostic.val = val
+		} else {
+			err = fmt.Errorf("unknown tag")
+			errorLog("%v", err)
+			return err, found
+		}
+
+	}
+	return err, found
+}
+
+func decode_AAREapdu_respondingAPtitle(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//responding-AP-title [4] AP-title OPTIONAL,
+	if 4 == ch.asn1_tag {
+		found = true
+
+		content := ch.content[0:]
+
+		r := bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		if 4 != ch.asn1_tag {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+		octetString := make([]uint8, len(ch.content))
+		copy(octetString, ch.content)
+		aare.respondingAPtitle = (*tAsn1OctetString)(&octetString)
+	}
+	return err, found
+}
+
+func decode_AAREapdu_respondingAEqualifier(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//responding-AE-qualifier [5] AE-qualifier OPTIONAL,
+	if 5 == ch.asn1_tag {
+		found = true
+
+		content := ch.content[0:]
+
+		r := bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		if 4 != ch.asn1_tag {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+		octetString := make([]uint8, len(ch.content))
+		copy(octetString, ch.content)
+		aare.respondingAEqualifier = (*tAsn1OctetString)(&octetString)
+	}
+	return err, found
+}
+
+func decode_AAREapdu_respondingAPinvocationId(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//responding-AP-invocation-id [6] AP-invocation-identifier OPTIONAL,
+	if 6 == ch.asn1_tag {
+		found = true
+
+		content := ch.content[0:]
+
+		r := bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		if 2 != ch.asn1_tag {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+		var i tAsn1Integer
+		err, i = der_decode_Integer(ch.content)
+		if nil != err {
+			return err, found
+		}
+		aare.respondingAPinvocationId = &i
+	}
+	return err, found
+}
+
+func decode_AAREapdu_respondingAEinvocationId(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//responding-AE-invocation-id [7] AE-invocation-identifier OPTIONAL,
+	if 7 == ch.asn1_tag {
+		found = true
+
+		content := ch.content[0:]
+
+		r := bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		if 2 != ch.asn1_tag {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+		var i tAsn1Integer
+		err, i = der_decode_Integer(ch.content)
+		if nil != err {
+			return err, found
+		}
+		aare.respondingAEinvocationId = &i
+	}
+	return err, found
+}
+
+func decode_AAREapdu_responderAcseRequirements(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//responder-acse-requirements [8] IMPLICIT ACSE-requirements OPTIONAL,
+	if 8 == ch.asn1_tag {
+		found = true
+
+		content := ch.content[0:]
+
+		r := bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		if 3 != ch.asn1_tag {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+		err, aare.responderAcseRequirements = der_decode_BitString(ch.content)
+		if nil != err {
+			return err, found
+		}
+	}
+	return err, found
+}
+
+func decode_AAREapdu_mechanismName(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//mechanism-name [9] IMPLICIT Mechanism-name OPTIONAL,
+	if 9 == ch.asn1_tag {
+		found = true
+
+		err, aare.mechanismName = der_decode_ObjectIdentifier(ch.content)
+		if nil != err {
+			return err, found
+		}
+	}
+	return err, found
+}
+
+func decode_AAREapdu_respondingAuthenticationValue(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//responding-authentication-value [10] EXPLICIT Authentication-value OPTIONAL,
+	if 10 == ch.asn1_tag {
+		found = true
+
+		/*
+			Authentication-value ::= CHOICE
+			{
+				charstring [0] IMPLICIT GraphicString,
+				bitstring [1] IMPLICIT BIT STRING,
+				external [2] IMPLICIT OCTET STRING,
+				other [3] IMPLICIT SEQUENCE
+				{
+					other-mechanism-name Mechanism-name,
+					other-mechanism-value ANY DEFINED BY other-mechanism-name
+				}
+			}
+		*/
+
+		content := ch.content[0:]
+
+		r := bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		err, _found := decode_AAREapdu_respondingAuthenticationValue_charstring(ch, aare)
+		if nil != err {
+			return err, found
+		}
+		if !_found {
+			err, _found = decode_AAREapdu_respondingAuthenticationValue_bitstring(ch, aare)
+			if nil != err {
+				return err, found
+			}
+		}
+		if !_found {
+			err, _found = decode_AAREapdu_respondingAuthenticationValue_external(ch, aare)
+			if nil != err {
+				return err, found
+			}
+		}
+		if !_found {
+			err, _found = decode_AAREapdu_respondingAuthenticationValue_other(ch, aare)
+			if nil != err {
+				return err, found
+			}
+		}
+		if !_found {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+
+	}
+
+	return err, found
+}
+
+func decode_AAREapdu_respondingAuthenticationValue_charstring(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	// charstring [0] IMPLICIT GraphicString,
+	if 0 == ch.asn1_tag {
+		found = true
+		respondingAuthenticationValue := new(tAsn1Choice)
+		respondingAuthenticationValue.tag = 0
+		octetString := make([]uint8, len(ch.content))
+		copy(octetString, ch.content)
+		respondingAuthenticationValue.val = tAsn1GraphicString(octetString)
+		aare.respondingAuthenticationValue = respondingAuthenticationValue
+		return err, found
+	}
+	return err, found
+}
+
+func decode_AAREapdu_respondingAuthenticationValue_bitstring(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//bitstring [1] IMPLICIT BIT STRING,
+	if 1 == ch.asn1_tag {
+		found = true
+		respondingAuthenticationValue := new(tAsn1Choice)
+		respondingAuthenticationValue.tag = 1
+		err, bitString := der_decode_BitString(ch.content)
+		if nil != err {
+			return err, found
+		}
+		respondingAuthenticationValue.val = bitString
+		aare.respondingAuthenticationValue = respondingAuthenticationValue
+		return err, found
+	}
+	return err, found
+}
+
+func decode_AAREapdu_respondingAuthenticationValue_external(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	// external [2] IMPLICIT OCTET STRING,
+	if 2 == ch.asn1_tag {
+		found = true
+		respondingAuthenticationValue := new(tAsn1Choice)
+		respondingAuthenticationValue.tag = 2
+		octetString := make([]uint8, len(ch.content))
+		copy(octetString, ch.content)
+		respondingAuthenticationValue.val = octetString
+		aare.respondingAuthenticationValue = respondingAuthenticationValue
+		return err, found
+	}
+	return err, found
+}
+
+func decode_AAREapdu_respondingAuthenticationValue_other(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	/*
+		other [3] IMPLICIT SEQUENCE
+		{
+			other-mechanism-name Mechanism-name,
+			other-mechanism-value ANY DEFINED BY other-mechanism-name
+		}
+	*/
+	if 3 == ch.asn1_tag {
+		found = true
+
+		content := ch.content[0:]
+
+		r := bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		respondingAuthenticationValue := new(tAsn1Choice)
+		respondingAuthenticationValue.tag = 3
+
+		var authenticationValueOther tAsn1CosemAuthenticationValueOther
+
+		if 6 != ch.asn1_tag {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+		err, objectIdentifier := der_decode_ObjectIdentifier(ch.content)
+		if nil != err {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+		authenticationValueOther.otherMechanismName = *objectIdentifier
+
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		if 4 != ch.asn1_tag {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+		authenticationValueOther.otherMechanismValue = make([]uint8, len(ch.content))
+		copy(authenticationValueOther.otherMechanismValue, ch.content)
+
+		respondingAuthenticationValue.val = authenticationValueOther
+		aare.respondingAuthenticationValue = respondingAuthenticationValue
+	}
+	return err, found
+}
+
+func decode_AAREapdu_implementationInformation(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
+	if 29 == ch.asn1_tag {
+		found = true
+		octetString := make([]uint8, len(ch.content))
+		copy(octetString, ch.content)
+		aare.implementationInformation = (*tAsn1GraphicString)(&octetString)
+		return err, found
+	}
+	return err, found
+}
+
+func decode_AAREapdu_userInformation(ch *t_der_chunk, aare *AAREapdu) (err error, found bool) {
+	//user-information [30] EXPLICIT Association-information OPTIONAL
+	if 30 == ch.asn1_tag {
+		found = true
+
+		content := ch.content[0:]
+
+		r := bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, found
+		}
+		content = content[ch.length:]
+
+		if 4 != ch.asn1_tag {
+			err = fmt.Errorf("decoding error")
+			errorLog("%v", err)
+			return err, found
+		}
+		octetString := make([]uint8, len(ch.content))
+		copy(octetString, ch.content)
+		aare.userInformation = (*tAsn1OctetString)(&octetString)
+	}
+	return err, found
+}
+
+func decode_AAREapdu_1(r io.Reader) (err error, aare *AAREapdu) {
+	var found bool
+	aare = new(AAREapdu)
+
+	err, ch := der_decode_chunk(r)
+	if nil != err {
+		return err, aare
+	}
+	content := ch.content[0:]
+
+	//AARE-apdu ::= [APPLICATION 1] IMPLICIT SEQUENCE
+	if 0 == ch.asn1_tag {
+		found = true
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	} else {
+		err = fmt.Errorf("decoding error")
+		errorLog("%v", err)
+		return err, aare
+	}
+
+	//protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1},
+	err, found = decode_AAREapdu_protocolVersion(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	}
+
+	//application-context-name [1] Application-context-name,
+	err, found = decode_AAREapdu_protocolVersion(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	} else {
+		err = fmt.Errorf("decoding error")
+		errorLog("%v", err)
+		return err, aare
+	}
+
+	//result [2] Association-result,
+	err, found = decode_AAREapdu_result(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	} else {
+		err = fmt.Errorf("decoding error")
+		errorLog("%v", err)
+		return err, aare
+	}
+
+	//result-source-diagnostic [3] Associate-source-diagnostic,
+	err, found = decode_AAREapdu_resultSourceDiagnostic(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	} else {
+		err = fmt.Errorf("decoding error")
+		errorLog("%v", err)
+		return err, aare
+	}
+
+	//responding-AP-title [4] AP-title OPTIONAL,
+	err, found = decode_AAREapdu_respondingAPtitle(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	}
+
+	//responding-AE-qualifier [5] AE-qualifier OPTIONAL,
+	err, found = decode_AAREapdu_respondingAEqualifier(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	}
+
+	//responding-AP-invocation-id [6] AP-invocation-identifier OPTIONAL,
+	err, found = decode_AAREapdu_respondingAPinvocationId(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	}
+
+	//responding-AE-invocation-id [7] AE-invocation-identifier OPTIONAL,
+	err, found = decode_AAREapdu_respondingAEinvocationId(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	}
+
+	//responder-acse-requirements [8] IMPLICIT ACSE-requirements OPTIONAL,
+	err, found = decode_AAREapdu_responderAcseRequirements(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	}
+
+	//mechanism-name [9] IMPLICIT Mechanism-name OPTIONAL,
+	err, found = decode_AAREapdu_mechanismName(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	}
+
+	//responding-authentication-value [10] EXPLICIT Authentication-value OPTIONAL,
+	err, found = decode_AAREapdu_respondingAuthenticationValue(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	}
+
+	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
+	err, found = decode_AAREapdu_implementationInformation(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+	if found {
+		r = bytes.NewReader(content)
+		err, ch = der_decode_chunk(r)
+		if nil != err {
+			return err, aare
+		}
+		content = content[ch.length:]
+	}
+
+	//user-information [30] EXPLICIT Association-information OPTIONAL
+	err, found = decode_AAREapdu_userInformation(ch, aare)
+	if nil != err {
+		return err, aare
+	}
+
+	return err, aare
 }
