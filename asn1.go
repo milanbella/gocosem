@@ -1775,269 +1775,315 @@ func der_decode_chunk(r io.Reader) (err error, _ch *t_der_chunk) {
 }
 
 func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
+	var ch, ch1, ch2, ch3, chAARQ *t_der_chunk
+	var buf, bufAARQ *bytes.Buffer
+
 	if nil == aarq {
 		return nil
 	}
 
+	// AARQ-apdu ::= [APPLICATION 0] IMPLICIT SEQUENCE
+
+	chAARQ = new(t_der_chunk)
+	chAARQ.asn1_class = ASN1_CLASS_APPLICATION
+	chAARQ.encoding = BER_ENCODING_CONSTRUCTED
+	chAARQ.asn1_tag = 0
+
+	bufAARQ = new(bytes.Buffer)
+
 	// protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1}
 
-	var protocolVersion *t_der_chunk
 	if nil != aarq.protocolVersion {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_PRIMITIVE
 		ch.asn1_tag = 0
 		ch.content = der_encode_BitString(aarq.protocolVersion)
-		protocolVersion = ch
+
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// application-context-name [1] Application-context-name,
 
-	var applicationContextName *t_der_chunk
 	if nil != aarq.applicationContextName {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_CONSTRUCTED
 		ch.asn1_tag = 1
 
-		ch1 := new(t_der_chunk)
+		ch1 = new(t_der_chunk)
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 6
 		ch1.content = der_encode_ObjectIdentifier(&aarq.applicationContextName)
-		var buf bytes.Buffer
-		err = der_encode_chunk(&buf, ch1)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
 		if nil != err {
 			return err
 		}
 
 		ch.content = buf.Bytes()
-		applicationContextName = ch
+
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// called-AP-title [2] AP-title OPTIONAL,
 
-	var calledAPtitle *t_der_chunk
 	if nil != aarq.calledAPtitle {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_CONSTRUCTED
 		ch.asn1_tag = 2
 
-		ch1 := new(t_der_chunk)
+		ch1 = new(t_der_chunk)
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 4
 		octetString := ([]uint8)(*aarq.calledAPtitle)
 		ch1.content = make([]uint8, len(octetString))
 		copy(ch1.content, octetString)
-		var buf bytes.Buffer
-		err = der_encode_chunk(&buf, ch1)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
 		if nil != err {
 			return err
 		}
 
 		ch.content = buf.Bytes()
-		calledAPtitle = ch
+
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// called-AE-qualifier [3] AE-qualifier OPTIONAL,
 
-	var calledAEqualifier *t_der_chunk
 	if nil != aarq.calledAEqualifier {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_CONSTRUCTED
 		ch.asn1_tag = 3
 
-		ch1 := new(t_der_chunk)
+		ch1 = new(t_der_chunk)
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 4
 		octetString := ([]uint8)(*aarq.calledAEqualifier)
 		ch1.content = make([]uint8, len(octetString))
 		copy(ch1.content, octetString)
-		var buf bytes.Buffer
-		err = der_encode_chunk(&buf, ch1)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
 		if nil != err {
 			return err
 		}
 
 		ch.content = buf.Bytes()
-		calledAEqualifier = ch
+
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// called-AP-invocation-id [4] AP-invocation-identifier OPTIONAL,
 
-	var calledAPinvocationId *t_der_chunk
 	if nil != aarq.calledAPinvocationId {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_CONSTRUCTED
 		ch.asn1_tag = 4
 
-		ch1 := new(t_der_chunk)
+		ch1 = new(t_der_chunk)
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 2
 		ch1.content = der_encode_Integer(*aarq.calledAPinvocationId)
-		var buf bytes.Buffer
-		err = der_encode_chunk(&buf, ch1)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
 		if nil != err {
 			return err
 		}
 
 		ch.content = buf.Bytes()
-		calledAPinvocationId = ch
+
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// called-AE-invocation-id [5] AE-invocation-identifier OPTIONAL,
 
-	var calledAEinvocationId *t_der_chunk
 	if nil != aarq.calledAEinvocationId {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_CONSTRUCTED
 		ch.asn1_tag = 5
 
-		ch1 := new(t_der_chunk)
+		ch1 = new(t_der_chunk)
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 2
 		ch1.content = der_encode_Integer(*aarq.calledAEinvocationId)
-		var buf bytes.Buffer
-		err = der_encode_chunk(&buf, ch1)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
 		if nil != err {
 			return err
 		}
 
 		ch.content = buf.Bytes()
-		calledAEinvocationId = ch
+
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// calling-AP-title [6] AP-title OPTIONAL,
 
-	var callingAPtitle *t_der_chunk
 	if nil != aarq.callingAPtitle {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_CONSTRUCTED
 		ch.asn1_tag = 6
 
-		ch1 := new(t_der_chunk)
+		ch1 = new(t_der_chunk)
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 4
 		octetString := ([]uint8)(*aarq.callingAPtitle)
 		ch1.content = make([]uint8, len(octetString))
 		copy(ch1.content, octetString)
-		var buf bytes.Buffer
-		err = der_encode_chunk(&buf, ch1)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
 		if nil != err {
 			return err
 		}
 
 		ch.content = buf.Bytes()
-		callingAPtitle = ch
+
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// calling-AE-qualifier [7] AE-qualifier OPTIONAL,
 
-	var callingAEqualifier *t_der_chunk
 	if nil != aarq.callingAEqualifier {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_CONSTRUCTED
 		ch.asn1_tag = 7
 
-		ch1 := new(t_der_chunk)
+		ch1 = new(t_der_chunk)
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 4
 		octetString := ([]uint8)(*aarq.callingAEqualifier)
 		ch1.content = make([]uint8, len(octetString))
 		copy(ch1.content, octetString)
-		var buf bytes.Buffer
-		err = der_encode_chunk(&buf, ch1)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
 		if nil != err {
 			return err
 		}
 
 		ch.content = buf.Bytes()
-		callingAEqualifier = ch
+
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// calling-AP-invocation-id [8] AP-invocation-identifier OPTIONAL,
 
-	var callingAPinvocationId *t_der_chunk
 	if nil != aarq.callingAPinvocationId {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_CONSTRUCTED
 		ch.asn1_tag = 8
 
-		ch1 := new(t_der_chunk)
+		ch1 = new(t_der_chunk)
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 2
 		ch1.content = der_encode_Integer(*aarq.callingAPinvocationId)
-		var buf bytes.Buffer
-		err = der_encode_chunk(&buf, ch1)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
 		if nil != err {
 			return err
 		}
 
 		ch.content = buf.Bytes()
-		callingAPinvocationId = ch
+
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// calling-AE-invocation-id [9] AE-invocation-identifier OPTIONAL,
 
-	var callingAEinvocationId *t_der_chunk
 	if nil != aarq.callingAEinvocationId {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_CONSTRUCTED
 		ch.asn1_tag = 9
 
-		ch1 := new(t_der_chunk)
+		ch1 = new(t_der_chunk)
 		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
 		ch1.encoding = BER_ENCODING_PRIMITIVE
 		ch1.asn1_tag = 2
 		ch1.content = der_encode_Integer(*aarq.callingAEinvocationId)
-		var buf bytes.Buffer
-		err = der_encode_chunk(&buf, ch1)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
 		if nil != err {
 			return err
 		}
 
 		ch.content = buf.Bytes()
-		callingAEinvocationId = ch
+
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// sender-acse-requirements [10] IMPLICIT ACSE-requirements OPTIONAL,
 
-	var senderAcseRequirements *t_der_chunk
 	if nil != aarq.senderAcseRequirements {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_PRIMITIVE
 		ch.asn1_tag = 10
 		ch.content = der_encode_BitString(aarq.senderAcseRequirements)
 
-		senderAcseRequirements = ch
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// mechanism-name [11] IMPLICIT Mechanism-name OPTIONAL,
-	var mechanismName *t_der_chunk
 	if nil != aarq.mechanismName {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_PRIMITIVE
 		ch.asn1_tag = 11
 		ch.content = der_encode_ObjectIdentifier(aarq.mechanismName)
 
-		mechanismName = ch
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// calling-authentication-value [12] EXPLICIT Authentication-value OPTIONAL,
@@ -2048,14 +2094,13 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 	   	val interface{}
 	   }
 	*/
-	var callingAuthenticationValue *t_der_chunk
 	if nil != aarq.callingAuthenticationValue {
-		ch := new(t_der_chunk)
+		ch = new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
 		ch.encoding = BER_ENCODING_CONSTRUCTED
 		ch.asn1_tag = 12
 
-		ch1 := new(t_der_chunk)
+		ch1 = new(t_der_chunk)
 
 		if 0 == aarq.callingAuthenticationValue.tag {
 			// charstring [0] IMPLICIT GraphicString,
@@ -2096,13 +2141,13 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 
 			authenticationValueOther := aarq.callingAuthenticationValue.val.(tAsn1CosemAuthenticationValueOther)
 
-			ch2 := new(t_der_chunk)
+			ch2 = new(t_der_chunk)
 			ch2.asn1_class = ASN1_CLASS_UNIVERSAL
 			ch2.encoding = BER_ENCODING_PRIMITIVE
 			ch2.asn1_tag = 6
 			ch2.content = der_encode_ObjectIdentifier(&authenticationValueOther.otherMechanismName)
 
-			ch3 := new(t_der_chunk)
+			ch3 = new(t_der_chunk)
 			ch3.asn1_class = ASN1_CLASS_UNIVERSAL
 			ch3.encoding = BER_ENCODING_PRIMITIVE
 			ch3.asn1_tag = 4
@@ -2110,12 +2155,12 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 			ch3.content = make([]uint8, len(octetString))
 			copy(ch3.content, octetString)
 
-			var buf bytes.Buffer
-			err = der_encode_chunk(&buf, ch2)
+			buf = new(bytes.Buffer)
+			err = der_encode_chunk(buf, ch2)
 			if nil != err {
 				return err
 			}
-			err = der_encode_chunk(&buf, ch3)
+			err = der_encode_chunk(buf, ch3)
 			if nil != err {
 				return err
 			}
@@ -2125,19 +2170,21 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 			panic("no tag")
 		}
 
-		var buf bytes.Buffer
-		err = der_encode_chunk(&buf, ch1)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
 		if nil != err {
 			return err
 		}
 		ch.content = buf.Bytes()
 
-		callingAuthenticationValue = ch
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
 
-	var implementationInformation *t_der_chunk
 	if nil != aarq.implementationInformation {
 		ch := new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
@@ -2148,12 +2195,14 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 		ch.content = make([]uint8, len(octetString))
 		copy(ch.content, octetString)
 
-		implementationInformation = ch
+		err = der_encode_chunk(bufAARQ, ch)
+		if nil != err {
+			return err
+		}
 	}
 
 	// user-information [30] EXPLICIT Association-information OPTIONAL
 
-	var userInformation *t_der_chunk
 	if nil != aarq.userInformation {
 		ch := new(t_der_chunk)
 		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
@@ -2168,117 +2217,23 @@ func encode_AARQapdu_1(w io.Writer, aarq *AARQapdu) (err error) {
 		ch1.content = make([]uint8, len(octetString))
 		copy(ch1.content, octetString)
 
-		var buf bytes.Buffer
-		err = der_encode_chunk(&buf, ch1)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
 		if nil != err {
 			return err
 		}
 
 		ch.content = buf.Bytes()
-		userInformation = ch
-	}
 
-	// AARQ-apdu ::= [APPLICATION 0] IMPLICIT SEQUENCE
-
-	ch := new(t_der_chunk)
-	ch.asn1_class = ASN1_CLASS_APPLICATION
-	ch.encoding = BER_ENCODING_CONSTRUCTED
-	ch.asn1_tag = 0
-
-	var buf bytes.Buffer
-	if nil != protocolVersion {
-		err = der_encode_chunk(&buf, protocolVersion)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != applicationContextName {
-		err = der_encode_chunk(&buf, applicationContextName)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != calledAPtitle {
-		err = der_encode_chunk(&buf, calledAPtitle)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != calledAEqualifier {
-		err = der_encode_chunk(&buf, calledAEqualifier)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != calledAPinvocationId {
-		err = der_encode_chunk(&buf, calledAPinvocationId)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != calledAEinvocationId {
-		err = der_encode_chunk(&buf, calledAEinvocationId)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != callingAPtitle {
-		err = der_encode_chunk(&buf, callingAPtitle)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != callingAEqualifier {
-		err = der_encode_chunk(&buf, callingAEqualifier)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != callingAPinvocationId {
-		err = der_encode_chunk(&buf, callingAPinvocationId)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != callingAEinvocationId {
-		err = der_encode_chunk(&buf, callingAEinvocationId)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != senderAcseRequirements {
-		err = der_encode_chunk(&buf, senderAcseRequirements)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != mechanismName {
-		err = der_encode_chunk(&buf, mechanismName)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != callingAuthenticationValue {
-		err = der_encode_chunk(&buf, callingAuthenticationValue)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != implementationInformation {
-		err = der_encode_chunk(&buf, implementationInformation)
-		if nil != err {
-			return err
-		}
-	}
-	if nil != userInformation {
-		err = der_encode_chunk(&buf, userInformation)
+		err = der_encode_chunk(bufAARQ, ch)
 		if nil != err {
 			return err
 		}
 	}
 
-	ch.content = buf.Bytes()
-	err = der_encode_chunk(w, ch)
+	chAARQ.content = bufAARQ.Bytes()
+
+	err = der_encode_chunk(w, chAARQ)
 	if nil != err {
 		return err
 	}
@@ -2992,4 +2947,473 @@ func decode_AARQapdu_1(r io.Reader) (err error, aarq *AARQapdu) {
 	}
 
 	return err, aarq
+}
+
+func encode_AAREapdu_1(w io.Writer, aare *AAREapdu) (err error) {
+	var ch, ch1, ch2, ch3, chAARE *t_der_chunk
+	var buf, bufAARE *bytes.Buffer
+
+	if nil == aare {
+		return nil
+	}
+
+	// AARE-apdu ::= [APPLICATION 1] IMPLICIT SEQUENCE
+
+	chAARE = new(t_der_chunk)
+	chAARE.asn1_class = ASN1_CLASS_APPLICATION
+	chAARE.encoding = BER_ENCODING_CONSTRUCTED
+	chAARE.asn1_tag = 1
+	bufAARE = new(bytes.Buffer)
+
+	// protocol-version [0] IMPLICIT T-protocol-version DEFAULT {version1}
+
+	if nil != aare.protocolVersion {
+		ch = new(t_der_chunk)
+		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch.encoding = BER_ENCODING_PRIMITIVE
+		ch.asn1_tag = 0
+		ch.content = der_encode_BitString(aare.protocolVersion)
+
+		err = der_encode_chunk(bufAARE, ch)
+		if nil != err {
+			return err
+		}
+	}
+
+	// application-context-name [1] Application-context-name,
+
+	if nil != aare.applicationContextName {
+		ch = new(t_der_chunk)
+		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch.encoding = BER_ENCODING_CONSTRUCTED
+		ch.asn1_tag = 1
+
+		ch1 = new(t_der_chunk)
+		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
+		ch1.encoding = BER_ENCODING_PRIMITIVE
+		ch1.asn1_tag = 6
+		ch1.content = der_encode_ObjectIdentifier(&aare.applicationContextName)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
+		if nil != err {
+			return err
+		}
+
+		ch.content = buf.Bytes()
+
+		err = der_encode_chunk(bufAARE, ch)
+		if nil != err {
+			return err
+		}
+	}
+
+	// result [2] Association-result,
+
+	ch = new(t_der_chunk)
+	ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+	ch.encoding = BER_ENCODING_CONSTRUCTED
+	ch.asn1_tag = 2
+
+	ch1 = new(t_der_chunk)
+	ch1.asn1_class = ASN1_CLASS_UNIVERSAL
+	ch1.encoding = BER_ENCODING_PRIMITIVE
+	ch1.asn1_tag = 2
+	ch1.content = der_encode_Integer(aare.result)
+	buf = new(bytes.Buffer)
+	err = der_encode_chunk(buf, ch1)
+	if nil != err {
+		return err
+	}
+
+	ch.content = buf.Bytes()
+
+	err = der_encode_chunk(bufAARE, ch)
+	if nil != err {
+		return err
+	}
+
+	// result-source-diagnostic [3] Associate-source-diagnostic
+
+	ch = new(t_der_chunk)
+	ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+	ch.encoding = BER_ENCODING_CONSTRUCTED
+	ch.asn1_tag = 3
+
+	/*
+		Associate-source-diagnostic ::= CHOICE
+		{
+			acse-service-user [1] INTEGER
+			{
+				null (0),
+				no-reason-given (1),
+				application-context-name-not-supported (2),
+				authentication-mechanism-name-not-recognised (11),
+				authentication-mechanism-name-required (12),
+				authentication-failure (13),
+				authentication-required (14)
+			},
+			acse-service-provider [2] INTEGER
+			{
+				null (0),
+				no-reason-given (1),
+				no-common-acse-version (2)
+			}
+		}
+	*/
+
+	if 1 == aare.resultSourceDiagnostic.tag {
+		ch1 = new(t_der_chunk)
+		ch1.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch1.encoding = BER_ENCODING_CONSTRUCTED
+		ch1.asn1_tag = 1
+
+		ch2 = new(t_der_chunk)
+		ch2.asn1_class = ASN1_CLASS_UNIVERSAL
+		ch2.encoding = BER_ENCODING_PRIMITIVE
+		ch2.asn1_tag = 2
+		ch2.content = der_encode_Integer(aare.resultSourceDiagnostic.val.(tAsn1Integer))
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch2)
+		if nil != err {
+			return err
+		}
+
+		ch1.content = buf.Bytes()
+	} else if 2 == aare.resultSourceDiagnostic.tag {
+		ch1 = new(t_der_chunk)
+		ch1.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch1.encoding = BER_ENCODING_CONSTRUCTED
+		ch1.asn1_tag = 2
+
+		ch2 = new(t_der_chunk)
+		ch2.asn1_class = ASN1_CLASS_UNIVERSAL
+		ch2.encoding = BER_ENCODING_PRIMITIVE
+		ch2.asn1_tag = 2
+		ch2.content = der_encode_Integer(aare.resultSourceDiagnostic.val.(tAsn1Integer))
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch2)
+		if nil != err {
+			return err
+		}
+
+		ch1.content = buf.Bytes()
+	} else {
+		err = fmt.Errorf("unknown tag")
+		errorLog("unknown tag")
+		return err
+	}
+
+	buf = new(bytes.Buffer)
+	err = der_encode_chunk(buf, ch1)
+	if nil != err {
+		return err
+	}
+	ch.content = buf.Bytes()
+
+	err = der_encode_chunk(bufAARE, ch)
+	if nil != err {
+		return err
+	}
+
+	// responding-AP-title [4] AP-title OPTIONAL,
+
+	if nil != aare.respondingAPtitle {
+		ch = new(t_der_chunk)
+		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch.encoding = BER_ENCODING_CONSTRUCTED
+		ch.asn1_tag = 4
+
+		ch1 = new(t_der_chunk)
+		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
+		ch1.encoding = BER_ENCODING_PRIMITIVE
+		ch1.asn1_tag = 4
+		octetString := ([]uint8)(*aare.respondingAPtitle)
+		ch1.content = make([]uint8, len(octetString))
+		copy(ch1.content, octetString)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
+		if nil != err {
+			return err
+		}
+
+		ch.content = buf.Bytes()
+
+		err = der_encode_chunk(bufAARE, ch)
+		if nil != err {
+			return err
+		}
+	}
+
+	// responding-AE-qualifier [5] AE-qualifier OPTIONAL,
+
+	if nil != aare.respondingAEqualifier {
+		ch = new(t_der_chunk)
+		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch.encoding = BER_ENCODING_CONSTRUCTED
+		ch.asn1_tag = 5
+
+		ch1 = new(t_der_chunk)
+		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
+		ch1.encoding = BER_ENCODING_PRIMITIVE
+		ch1.asn1_tag = 4
+		octetString := ([]uint8)(*aare.respondingAPtitle)
+		ch1.content = make([]uint8, len(octetString))
+		copy(ch1.content, octetString)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
+		if nil != err {
+			return err
+		}
+
+		ch.content = buf.Bytes()
+
+		err = der_encode_chunk(bufAARE, ch)
+		if nil != err {
+			return err
+		}
+	}
+
+	//responding-AP-invocation-id [6] AP-invocation-identifier OPTIONAL,
+
+	if nil != aare.respondingAPinvocationId {
+		ch = new(t_der_chunk)
+		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch.encoding = BER_ENCODING_CONSTRUCTED
+		ch.asn1_tag = 6
+
+		ch1 = new(t_der_chunk)
+		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
+		ch1.encoding = BER_ENCODING_PRIMITIVE
+		ch1.asn1_tag = 2
+		ch1.content = der_encode_Integer(*aare.respondingAPinvocationId)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
+		if nil != err {
+			return err
+		}
+
+		ch.content = buf.Bytes()
+
+		err = der_encode_chunk(bufAARE, ch)
+		if nil != err {
+			return err
+		}
+	}
+
+	//responding-AE-invocation-id [7] AE-invocation-identifier OPTIONAL,
+
+	if nil != aare.respondingAEinvocationId {
+		ch = new(t_der_chunk)
+		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch.encoding = BER_ENCODING_CONSTRUCTED
+		ch.asn1_tag = 7
+
+		ch1 = new(t_der_chunk)
+		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
+		ch1.encoding = BER_ENCODING_PRIMITIVE
+		ch1.asn1_tag = 2
+		ch1.content = der_encode_Integer(*aare.respondingAEinvocationId)
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
+		if nil != err {
+			return err
+		}
+
+		ch.content = buf.Bytes()
+
+		err = der_encode_chunk(bufAARE, ch)
+		if nil != err {
+			return err
+		}
+	}
+
+	//responder-acse-requirements [8] IMPLICIT ACSE-requirements OPTIONAL,
+
+	if nil != aare.responderAcseRequirements {
+		ch = new(t_der_chunk)
+		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch.encoding = BER_ENCODING_PRIMITIVE
+		ch.asn1_tag = 8
+		ch.content = der_encode_BitString(aare.responderAcseRequirements)
+
+		err = der_encode_chunk(bufAARE, ch)
+		if nil != err {
+			return err
+		}
+	}
+
+	//mechanism-name [9] IMPLICIT Mechanism-name OPTIONAL,
+
+	if nil != aare.mechanismName {
+		ch = new(t_der_chunk)
+		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch.encoding = BER_ENCODING_PRIMITIVE
+		ch.asn1_tag = 9
+		ch.content = der_encode_ObjectIdentifier(aare.mechanismName)
+
+		err = der_encode_chunk(bufAARE, ch)
+		if nil != err {
+			return err
+		}
+	}
+
+	//responding-authentication-value [10] EXPLICIT Authentication-value OPTIONAL,
+
+	if nil != aare.respondingAuthenticationValue {
+		ch = new(t_der_chunk)
+		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch.encoding = BER_ENCODING_CONSTRUCTED
+		ch.asn1_tag = 10
+
+		/*
+			Authentication-value ::= CHOICE
+			{
+				charstring [0] IMPLICIT GraphicString,
+				bitstring [1] IMPLICIT BIT STRING,
+				external [2] IMPLICIT OCTET STRING,
+				other [3] IMPLICIT SEQUENCE
+				{
+					other-mechanism-name Mechanism-name,
+					other-mechanism-value ANY DEFINED BY other-mechanism-name
+				}
+			}
+		*/
+
+		ch1 = new(t_der_chunk)
+
+		if 0 == aare.respondingAuthenticationValue.tag {
+			// charstring [0] IMPLICIT GraphicString,
+			ch1.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+			ch1.encoding = BER_ENCODING_PRIMITIVE
+			ch1.asn1_tag = 0
+			octetString := ([]uint8)(aare.respondingAuthenticationValue.val.(tAsn1GraphicString))
+			ch1.content = make([]uint8, len(octetString))
+			copy(ch1.content, octetString)
+		} else if 1 == aare.respondingAuthenticationValue.tag {
+			// bitstring [1] IMPLICIT BIT STRING,
+			ch1.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+			ch1.encoding = BER_ENCODING_PRIMITIVE
+			ch1.asn1_tag = 1
+			bitString := aare.respondingAuthenticationValue.val.(tAsn1BitString)
+			ch1.content = der_encode_BitString(&bitString)
+		} else if 2 == aare.respondingAuthenticationValue.tag {
+			// external [2] IMPLICIT OCTET STRING,
+			ch1.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+			ch1.encoding = BER_ENCODING_PRIMITIVE
+			ch1.asn1_tag = 2
+			octetString := aare.respondingAuthenticationValue.val.([]uint8)
+			ch1.content = make([]uint8, len(octetString))
+			copy(ch1.content, octetString)
+		} else if 3 == aare.respondingAuthenticationValue.tag {
+
+			/*
+				other [3] IMPLICIT SEQUENCE
+				{
+					other-mechanism-name Mechanism-name,
+					other-mechanism-value ANY DEFINED BY other-mechanism-name
+				}
+			*/
+
+			ch1.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+			ch1.encoding = BER_ENCODING_CONSTRUCTED
+			ch1.asn1_tag = 3
+
+			authenticationValueOther := aare.respondingAuthenticationValue.val.(tAsn1CosemAuthenticationValueOther)
+
+			ch2 = new(t_der_chunk)
+			ch2.asn1_class = ASN1_CLASS_UNIVERSAL
+			ch2.encoding = BER_ENCODING_PRIMITIVE
+			ch2.asn1_tag = 6
+			ch2.content = der_encode_ObjectIdentifier(&authenticationValueOther.otherMechanismName)
+
+			ch3 = new(t_der_chunk)
+			ch3.asn1_class = ASN1_CLASS_UNIVERSAL
+			ch3.encoding = BER_ENCODING_PRIMITIVE
+			ch3.asn1_tag = 4
+			octetString := ([]uint8)(authenticationValueOther.otherMechanismValue)
+			ch3.content = make([]uint8, len(octetString))
+			copy(ch3.content, octetString)
+
+			buf = new(bytes.Buffer)
+			err = der_encode_chunk(buf, ch2)
+			if nil != err {
+				return err
+			}
+			err = der_encode_chunk(buf, ch3)
+			if nil != err {
+				return err
+			}
+
+			ch1.content = buf.Bytes()
+		} else {
+			panic("no tag")
+		}
+
+		buf = new(bytes.Buffer)
+		err = der_encode_chunk(buf, ch1)
+		if nil != err {
+			return err
+		}
+		ch.content = buf.Bytes()
+
+		err = der_encode_chunk(bufAARE, ch)
+		if nil != err {
+			return err
+		}
+	}
+
+	//implementation-information [29] IMPLICIT Implementation-data OPTIONAL,
+
+	if nil != aare.implementationInformation {
+		ch := new(t_der_chunk)
+		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch.encoding = BER_ENCODING_PRIMITIVE
+		ch.asn1_tag = 29
+
+		octetString := ([]uint8)(*aare.implementationInformation)
+		ch.content = make([]uint8, len(octetString))
+		copy(ch.content, octetString)
+
+		err = der_encode_chunk(bufAARE, ch)
+		if nil != err {
+			return err
+		}
+	}
+
+	//user-information [30] EXPLICIT Association-information OPTIONAL
+
+	if nil != aare.userInformation {
+		ch := new(t_der_chunk)
+		ch.asn1_class = ASN1_CLASS_CONTEXT_SPECIFIC
+		ch.encoding = BER_ENCODING_CONSTRUCTED
+		ch.asn1_tag = 30
+
+		ch1 := new(t_der_chunk)
+		ch1.asn1_class = ASN1_CLASS_UNIVERSAL
+		ch1.encoding = BER_ENCODING_PRIMITIVE
+		ch1.asn1_tag = 4
+		octetString := ([]uint8)(*aare.userInformation)
+		ch1.content = make([]uint8, len(octetString))
+		copy(ch1.content, octetString)
+		var buf bytes.Buffer
+		err = der_encode_chunk(&buf, ch1)
+		if nil != err {
+			return err
+		}
+
+		ch.content = buf.Bytes()
+
+		err = der_encode_chunk(bufAARE, ch)
+		if nil != err {
+			return err
+		}
+	}
+
+	chAARE.content = bufAARE.Bytes()
+	err = der_encode_chunk(w, chAARE)
+	if nil != err {
+		return err
+	}
+
+	return err
 }
