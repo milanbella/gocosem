@@ -440,3 +440,127 @@ func TestAsn1_decode_AAREapdu_for_hdlc_meter(t *testing.T) {
 		t.Fatalf(" are.userInformation don't match")
 	}
 }
+
+func TestAsn1_encode_AAREapdu_1_for_hdlc_meter(t *testing.T) {
+	t.Logf("TestAsn1_encode_AAREapdu_1_for_hdlc_meter()")
+	/*
+
+
+			0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07
+			61 29 A1 09 06 07 60 85 74 05 08 01 01 A2 03 02 01 00 A3 05 A1 03 02 01 00 BE 10 04 0E 08 00 06 5F 1F 04 00 00 FE 1D 00 EF 00 07
+
+
+		-APDU CHOICE
+		  aare AARE-apdu SEQUENCE: tag = [APPLICATION 1] constructed; length = 41
+			application-context-name : tag = [1] constructed; length = 9
+			  Application-context-name OBJECT IDENTIFIER: tag = [UNIVERSAL 6] primitive; length = 7
+				{ 2 16 756 5 8 1 1 }
+			result : tag = [2] constructed; length = 3
+			  Association-result INTEGER: tag = [UNIVERSAL 2] primitive; length = 1
+				0
+			result-source-diagnostic : tag = [3] constructed; length = 5
+			  Associate-source-diagnostic CHOICE
+				acse-service-user : tag = [1] constructed; length = 3
+				  INTEGER: tag = [UNIVERSAL 2] primitive; length = 1
+					0
+			user-information : tag = [30] constructed; length = 16
+			  Association-information OCTET STRING: tag = [UNIVERSAL 4] primitive; length = 14
+				0x0800065f1f040000fe1d00ef0007
+		Successfully decoded 43 bytes.
+		rec1value XDLMS-APDU ::= aare :
+		  {
+			application-context-name { 2 16 756 5 8 1 1 },
+			result accepted,
+			result-source-diagnostic acse-service-user : null,
+			user-information '0800065F1F040000FE1D00EF0007'H
+		  }
+
+
+
+	*/
+	var aare AAREapdu
+	aareBytes := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
+
+	aare.applicationContextName = tAsn1ObjectIdentifier([]uint32{2, 16, 756, 5, 8, 1, 1})
+	aare.result = tAsn1Integer(0)
+	aare.resultSourceDiagnostic.tag = 1
+	aare.resultSourceDiagnostic.val = tAsn1Integer(0)
+	userInformation := tAsn1OctetString([]byte{0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07})
+	aare.userInformation = &userInformation
+
+	var buf bytes.Buffer
+	err := encode_AAREapdu_1(&buf, &aare)
+	if nil != err {
+		t.Fatalf("encode_AAREapdu_1() failed")
+	}
+
+	b := buf.Bytes()
+	if !byteEquals(t, b, aareBytes, true) {
+		t.Logf("%X\n", b)
+		t.Fatalf("encode_AAREapdu_1() failed")
+	}
+
+}
+
+func TestAsn1_decode_AAREapdu_1_for_hdlc_meter(t *testing.T) {
+	t.Logf("TestAsn1_decode_AAREapdu_1_for_hdlc_meter()")
+	/*
+
+
+			0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07
+			61 29 A1 09 06 07 60 85 74 05 08 01 01 A2 03 02 01 00 A3 05 A1 03 02 01 00 BE 10 04 0E 08 00 06 5F 1F 04 00 00 FE 1D 00 EF 00 07
+
+
+		-APDU CHOICE
+		  aare AARE-apdu SEQUENCE: tag = [APPLICATION 1] constructed; length = 41
+			application-context-name : tag = [1] constructed; length = 9
+			  Application-context-name OBJECT IDENTIFIER: tag = [UNIVERSAL 6] primitive; length = 7
+				{ 2 16 756 5 8 1 1 }
+			result : tag = [2] constructed; length = 3
+			  Association-result INTEGER: tag = [UNIVERSAL 2] primitive; length = 1
+				0
+			result-source-diagnostic : tag = [3] constructed; length = 5
+			  Associate-source-diagnostic CHOICE
+				acse-service-user : tag = [1] constructed; length = 3
+				  INTEGER: tag = [UNIVERSAL 2] primitive; length = 1
+					0
+			user-information : tag = [30] constructed; length = 16
+			  Association-information OCTET STRING: tag = [UNIVERSAL 4] primitive; length = 14
+				0x0800065f1f040000fe1d00ef0007
+		Successfully decoded 43 bytes.
+		rec1value XDLMS-APDU ::= aare :
+		  {
+			application-context-name { 2 16 756 5 8 1 1 },
+			result accepted,
+			result-source-diagnostic acse-service-user : null,
+			user-information '0800065F1F040000FE1D00EF0007'H
+		  }
+
+
+
+	*/
+	aareBytes := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
+
+	buf := bytes.NewReader(aareBytes)
+	err, aare := decode_AAREapdu_1(buf)
+	if nil != err {
+		t.Fatalf("decode_AAREapdu_1() failed")
+	}
+
+	if !uint32Equals(t, aare.applicationContextName, []uint32{2, 16, 756, 5, 8, 1, 1}, true) {
+		t.Fatalf("aare.applicationContextName don't match")
+	}
+	if aare.result != 0 {
+		t.Fatalf("aare.result don't match")
+	}
+	if 1 != aare.resultSourceDiagnostic.tag {
+		t.Fatalf("aare.resultSourceDiagnostic.tag don't match")
+	}
+	if 0 != aare.resultSourceDiagnostic.val.(tAsn1Integer) {
+		t.Fatalf("aare.resultSourceDiagnostic.val don't match")
+	}
+	if !byteEquals(t, *aare.userInformation, []byte{0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}, true) {
+		t.Fatalf(" are.userInformation don't match")
+	}
+
+}

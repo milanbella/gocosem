@@ -4031,7 +4031,7 @@ func decode_AAREapdu_1(r io.Reader) (err error, aare *AAREapdu) {
 	content := ch.content[0:]
 
 	//AARE-apdu ::= [APPLICATION 1] IMPLICIT SEQUENCE
-	if 0 == ch.asn1_tag {
+	if 1 == ch.asn1_tag {
 		found = true
 	}
 	if found {
@@ -4062,7 +4062,7 @@ func decode_AAREapdu_1(r io.Reader) (err error, aare *AAREapdu) {
 	}
 
 	//application-context-name [1] Application-context-name,
-	err, found = decode_AAREapdu_protocolVersion(ch, aare)
+	err, found = decode_AAREapdu_applicationContextName(ch, aare)
 	if nil != err {
 		return err, aare
 	}
