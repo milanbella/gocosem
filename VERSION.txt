@@ -88,6 +88,6 @@ but original asn1c encoder encode_AARQapdu()  is preserved and may be stil used,
 ======
 - when connecting to hdlc meter send always DISC before SNRM
 
-4.1.4
+4.2.0
 ======
 - asn1 parser for AARQ, AARE
