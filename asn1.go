@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const DEBUG_ASN1 = false
+const DEBUG_ASN1 = true
 
 // asn1 simple types
 
@@ -2819,20 +2819,6 @@ func decode_AAREapdu_responderAcseRequirements(ch *t_der_chunk, aare *AAREapdu) 
 	if 8 == ch.asn1_tag {
 		found = true
 
-		content := ch.content[0:]
-
-		r := bytes.NewReader(content)
-		err, ch = der_decode_chunk(r)
-		if nil != err {
-			return err, found
-		}
-		content = content[ch.length:]
-
-		if 3 != ch.asn1_tag {
-			err = fmt.Errorf("decoding error")
-			errorLog("%v", err)
-			return err, found
-		}
 		err, aare.responderAcseRequirements = der_decode_BitString(ch.content)
 		if nil != err {
 			return err, found
