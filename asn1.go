@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const DEBUG_ASN1 = true
+const DEBUG_ASN1 = false
 
 // asn1 simple types
 
