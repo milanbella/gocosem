@@ -275,6 +275,76 @@ func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalD
 
 }
 
+func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logicalDevice uint16, invokeId uint8, applicationContextName []uint32, callingAPtitle []byte, clientToServerChallenge string, userInformation []byte) (aconn *AppConn, err error) {
+
+	var aarq AARQapdu
+
+	aarq.applicationContextName = tAsn1ObjectIdentifier(applicationContextName)
+	_callingAPtitle := tAsn1OctetString(callingAPtitle)
+	aarq.callingAPtitle = &_callingAPtitle
+	aarq.senderAcseRequirements = &tAsn1BitString{
+		buf:        []byte{0x80},
+		bitsUnused: 7,
+	}
+	mechanismName := (tAsn1ObjectIdentifier)([]uint32{2, 16, 756, 5, 8, 2, 5})
+	aarq.mechanismName = &mechanismName
+	aarq.callingAuthenticationValue = new(tAsn1Choice)
+	aarq.callingAuthenticationValue.setVal(0, tAsn1GraphicString([]byte(clientToServerChallenge)))
+	_userInformation := tAsn1OctetString(userInformation)
+	aarq.userInformation = &_userInformation
+
+	var buf *bytes.Buffer
+	buf = new(bytes.Buffer)
+	err = encode_AARQapdu(buf, &aarq)
+	if nil != err {
+		return nil, err
+	}
+	pdu := buf.Bytes()
+
+	err = dconn.transportSend(applicationClient, logicalDevice, pdu)
+	if nil != err {
+		return nil, err
+	}
+	pdu, err = dconn.transportReceive(logicalDevice, applicationClient)
+	if nil != err {
+		return nil, err
+	}
+
+	buf = bytes.NewBuffer(pdu)
+	err, aare := decode_AAREapdu(buf)
+	if nil != err {
+		return nil, err
+	}
+
+	// verify AARE
+
+	if aare.result != 0 {
+		err = fmt.Errorf("app connect failed: verify AARE: result %v", aare.result)
+		errorLog("%s", err)
+		return nil, err
+	}
+	if !(aare.resultSourceDiagnostic.tag == 1 && aare.resultSourceDiagnostic.val.(tAsn1Integer) == tAsn1Integer(14)) { // 14 - authentication-required
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not require authentication")
+		errorLog("%s", err)
+		return nil, err
+	}
+	if aare.mechanismName == nil {
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not require proper authentication mechanism: HLS authentication_mechanism_id(5)")
+		errorLog("%s", err)
+		return nil, err
+	}
+	oi := ([]uint32)(*aare.mechanismName)
+	if !(oi[0] == 2 && oi[1] == 16 && oi[2] == 756 && oi[3] == 5 && oi[4] == 8 && oi[5] == 2 && oi[6] == 5) {
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not require proper authentication mechanism: HLS authentication_mechanism_id(5)")
+		errorLog("%s", err)
+		return nil, err
+	}
+
+	aconn = NewAppConn(dconn, applicationClient, logicalDevice, invokeId)
+	return aconn, nil
+
+}
+
 func (dconn *DlmsConn) AppConnectRaw(applicationClient uint16, logicalDevice uint16, invokeId uint8, aarq []byte, aare []byte) (aconn *AppConn, err error) {
 	err = dconn.transportSend(applicationClient, logicalDevice, aarq)
 	if nil != err {
