@@ -3,10 +3,10 @@ package gocosem
 import (
 	"bytes"
 	"crypto/aes"
-	"crypto/cipher"
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"gocosem/crypto/cipher"
 	"io"
 	"net"
 	"time"
