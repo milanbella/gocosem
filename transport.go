@@ -2,11 +2,9 @@ package gocosem
 
 import (
 	"bytes"
-	"crypto/aes"
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"gocosem/crypto/cipher"
 	"io"
 	"net"
 	"time"
@@ -362,6 +360,7 @@ func gsmTagToCosemTag(tag1 byte) (err error, tag byte) {
 	errorLog("%s", err)
 	return err, 0
 }
+
 func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 
 	// enforce 128 bit keys
@@ -407,20 +406,14 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 	AAD[0] = SC
 	copy(AAD[1:], dconn.AK)
 
-	block, err := aes.NewCipher(dconn.EK)
+	err, ciphertext, authTag := aesgcm(dconn.EK, IV, AAD, pdu, 0)
 	if err != nil {
 		return err, nil
 	}
 
-	aesgcm, err := cipher.NewGCMWithNonceSize(block, len(IV))
-	if err != nil {
-		return err, nil
-	}
-	ciphertext := aesgcm.Seal(nil, IV, pdu, AAD)
+	length := 1 + len(FC) + len(ciphertext) + GCM_TAG_LEN
 
-	length := 1 + len(FC) + len(ciphertext)
-
-	epdu = make([]byte, 1+1+1+len(FC)+len(ciphertext))
+	epdu = make([]byte, 1+1+1+len(FC)+len(ciphertext)+GCM_TAG_LEN)
 
 	epdu[0] = tag
 	if length > 0xFF {
@@ -430,6 +423,7 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 	epdu[2] = SC
 	copy(epdu[3:], FC)
 	copy(epdu[3+len(FC):], ciphertext)
+	copy(epdu[3+len(FC)+len(ciphertext):], authTag)
 
 	return nil, epdu
 }
