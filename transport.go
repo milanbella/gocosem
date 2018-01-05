@@ -61,7 +61,8 @@ type DlmsConn struct {
 	securityMechanismId int
 	AK                  []byte // authentication key
 	EK                  []byte // encryption key
-	frameCounter        uint32
+	frameCounterEncrypt uint32
+	frameCounterDecrypt uint32
 }
 
 type DlmsTransportSendRequest struct {
@@ -385,15 +386,15 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 	SC := byte(0x30) // security control
 
 	// frame counter
-	dconn.frameCounter += 1
+	dconn.frameCounterEncrypt += 1
 	FC := make([]byte, 4)
-	FC[0] = byte(dconn.frameCounter >> 24 & 0xFF)
-	FC[1] = byte(dconn.frameCounter >> 16 & 0xFF)
-	FC[2] = byte(dconn.frameCounter >> 8 & 0xFF)
-	FC[3] = byte(dconn.frameCounter & 0xFF)
+	FC[0] = byte(dconn.frameCounterEncrypt >> 24 & 0xFF)
+	FC[1] = byte(dconn.frameCounterEncrypt >> 16 & 0xFF)
+	FC[2] = byte(dconn.frameCounterEncrypt >> 8 & 0xFF)
+	FC[3] = byte(dconn.frameCounterEncrypt & 0xFF)
 
 	// initialization vector
-	IV := make([]byte, 12) // initialization vector
+	IV := make([]byte, 24) // initialization vector
 	if len(dconn.systemTitle) != 8 {
 		err = fmt.Errorf("system title length is not 8")
 		errorLog("%s", err)
@@ -426,6 +427,81 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 	copy(epdu[3+len(FC)+len(ciphertext):], authTag)
 
 	return nil, epdu
+}
+
+func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
+	// enforce 128 bit keys
+	if len(dconn.AK) != 16 {
+		err = fmt.Errorf("authentication key length is not 16")
+		errorLog("%s", err)
+		return err, nil
+	}
+	if len(dconn.EK) != 16 {
+		err = fmt.Errorf("encryption key length is not 16")
+		errorLog("%s", err)
+		return err, nil
+	}
+
+	// tag
+	err, _ = cosemTagToGsmTag(pdu[0])
+	if nil != err {
+		return err, nil
+	}
+
+	//length := int(pdu[1])
+
+	// security control
+	SC := pdu[1] // security control
+	if SC != 0x30 {
+		err = fmt.Errorf("unexpected security control")
+		errorLog("%s", err)
+		return err, nil
+	}
+
+	// frame counter
+	dconn.frameCounterDecrypt += 1
+	var frameCounter uint32
+	frameCounter |= uint32(pdu[2]) << 24
+	frameCounter |= uint32(pdu[3]) << 16
+	frameCounter |= uint32(pdu[4]) << 8
+	frameCounter |= uint32(pdu[5])
+	if dconn.frameCounterDecrypt != frameCounter {
+		err = fmt.Errorf("received unexpected frame")
+		errorLog("%s", err)
+		return err, nil
+	}
+
+	// initialization vector
+	IV := make([]byte, 24) // initialization vector
+	if len(dconn.systemTitle) != 8 {
+		err = fmt.Errorf("system title length is not 8")
+		errorLog("%s", err)
+		return err, nil
+	}
+	copy(IV, dconn.systemTitle)
+
+	// additional authenticated data
+	AAD := make([]byte, 1+len(dconn.AK))
+	AAD[0] = SC
+	copy(AAD[1:], dconn.AK)
+
+	ciphertext := pdu[3+4 : len(pdu)-GCM_TAG_LEN]
+	receivedAuthTag := pdu[len(pdu)-GCM_TAG_LEN-1 : GCM_TAG_LEN]
+
+	err, dpdu, authTag := aesgcm(dconn.EK, IV, AAD, ciphertext, 1)
+	if err != nil {
+		return err, nil
+	}
+
+	for i := 0; i < GCM_TAG_LEN; i++ {
+		if authTag[i] != receivedAuthTag[i] {
+			err = fmt.Errorf("unexpected authentication tag")
+			errorLog("%s", err)
+			return err, nil
+		}
+	}
+
+	return nil, dpdu
 }
 
 func (dconn *DlmsConn) encryptPdu(authenticationMechanismId int, pdu []byte) (err error, epdu []byte) {

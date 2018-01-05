@@ -4,6 +4,7 @@ package gocosem
 // #cgo LDFLAGS: -L${SRCDIR}/c/cosem_crypto -lcosemcrypto
 // #include <stdio.h>
 // #include <errno.h>
+// #include <stdlib.h>
 // #include "tomcrypt.h"
 import "C"
 
@@ -17,17 +18,23 @@ const GCM_TAG_LEN = 12
 func aesgcm(key []byte, IV []byte, adata []byte, pdu []byte, direction int) (err error, opdu []byte, tag []byte) {
 
 	ckey := C.CBytes(key)
+	defer C.free(ckey)
 	ckeyLen := len(key)
 	cIV := C.CBytes(IV)
+	defer C.free(cIV)
 	cIVLen := len(IV)
 	cadata := C.CBytes(adata)
+	defer C.free(cadata)
 	cadataLen := len(adata)
 	cpdu := C.CBytes(pdu)
+	defer C.free(cpdu)
 	cpduLen := len(pdu)
 	ctag := C.CBytes(make([]byte, GCM_TAG_LEN))
+	defer C.free(ctag)
 	ctagLen := C.ulong(GCM_TAG_LEN)
 
 	cipher := C.CBytes(make([]byte, len(pdu)))
+	defer C.free(cipher)
 
 	var res C.int
 	if !(direction == 0) || (direction == 1) {
