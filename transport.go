@@ -2,6 +2,8 @@ package gocosem
 
 import (
 	"bytes"
+	"crypto/aes"
+	"crypto/cipher"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -14,6 +16,15 @@ const (
 	Transport_TCP  = int(1)
 	Transport_UDP  = int(2)
 	Transport_HDLC = int(3)
+)
+
+const (
+	lowest_level_security_mechanism           = int(0)
+	low_level_security_mechanism              = int(1)
+	high_level_security_mechanism             = int(2)
+	high_level_security_mechanism_using_MD5   = int(3)
+	high_level_security_mechanism_using_SHA_1 = int(4)
+	high_level_security_mechanism_using_GMAC  = int(5)
 )
 
 var (
@@ -48,6 +59,11 @@ type DlmsConn struct {
 	hdlcResponseTimeout time.Duration
 	snrmTimeout         time.Duration
 	discTimeout         time.Duration
+	systemTitle         []byte
+	securityMechanismId int
+	AK                  []byte // authentication key
+	EK                  []byte // encryption key
+	frameCounter        uint32
 }
 
 type DlmsTransportSendRequest struct {
@@ -239,6 +255,195 @@ func (dconn *DlmsConn) transportReceive(src uint16, dst uint16) (pdu []byte, err
 	}
 }
 
+func cosemTagToGsmTag(tag1 byte) (err error, tag byte) {
+	if tag1 == 1 {
+		return nil, 33
+	}
+	if tag1 == 5 {
+		return nil, 37
+	}
+	if tag1 == 6 {
+		return nil, 38
+	}
+	if tag1 == 8 {
+		return nil, 40
+	}
+	if tag1 == 12 {
+		return nil, 44
+	}
+	if tag1 == 13 {
+		return nil, 45
+	}
+	if tag1 == 14 {
+		return nil, 46
+	}
+	if tag1 == 22 {
+		return nil, 54
+	}
+	if tag1 == 24 {
+		return nil, 56
+	}
+	if tag1 == 192 {
+		return nil, 200
+	}
+	if tag1 == 193 {
+		return nil, 201
+	}
+	if tag1 == 194 {
+		return nil, 202
+	}
+	if tag1 == 199 {
+		return nil, 203
+	}
+	if tag1 == 196 {
+		return nil, 204
+	}
+	if tag1 == 197 {
+		return nil, 205
+	}
+	if tag1 == 199 {
+		return nil, 207
+	}
+	err = fmt.Errorf("unknown tag")
+	errorLog("%s", err)
+	return err, 0
+}
+
+func gsmTagToCosemTag(tag1 byte) (err error, tag byte) {
+	if tag1 == 33 {
+		return nil, 1
+	}
+	if tag1 == 37 {
+		return nil, 5
+	}
+	if tag1 == 38 {
+		return nil, 6
+	}
+	if tag1 == 40 {
+		return nil, 8
+	}
+	if tag1 == 44 {
+		return nil, 12
+	}
+	if tag1 == 45 {
+		return nil, 13
+	}
+	if tag1 == 46 {
+		return nil, 14
+	}
+	if tag1 == 54 {
+		return nil, 22
+	}
+	if tag1 == 56 {
+		return nil, 24
+	}
+	if tag1 == 200 {
+		return nil, 192
+	}
+	if tag1 == 201 {
+		return nil, 193
+	}
+	if tag1 == 202 {
+		return nil, 194
+	}
+	if tag1 == 203 {
+		return nil, 199
+	}
+	if tag1 == 204 {
+		return nil, 196
+	}
+	if tag1 == 205 {
+		return nil, 197
+	}
+	if tag1 == 207 {
+		return nil, 199
+	}
+	err = fmt.Errorf("unknown tag")
+	errorLog("%s", err)
+	return err, 0
+}
+func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
+
+	// enforce 128 bit keys
+	if len(dconn.AK) != 16 {
+		err = fmt.Errorf("authentication key length is not 16")
+		errorLog("%s", err)
+		return err, nil
+	}
+	if len(dconn.EK) != 16 {
+		err = fmt.Errorf("encryption key length is not 16")
+		errorLog("%s", err)
+		return err, nil
+	}
+
+	// tag
+	err, tag := cosemTagToGsmTag(pdu[0])
+	if nil != err {
+		return err, nil
+	}
+
+	// security control
+	SC := byte(0x30) // security control
+
+	// frame counter
+	dconn.frameCounter += 1
+	FC := make([]byte, 4)
+	FC[0] = byte(dconn.frameCounter >> 24 & 0xFF)
+	FC[1] = byte(dconn.frameCounter >> 16 & 0xFF)
+	FC[2] = byte(dconn.frameCounter >> 8 & 0xFF)
+	FC[3] = byte(dconn.frameCounter & 0xFF)
+
+	// initialization vector
+	IV := make([]byte, 12) // initialization vector
+	if len(dconn.systemTitle) != 8 {
+		err = fmt.Errorf("system title length is not 8")
+		errorLog("%s", err)
+		return err, nil
+	}
+	copy(IV, dconn.systemTitle)
+
+	// additional authenticated data
+	AAD := make([]byte, 1+len(dconn.AK))
+	AAD[0] = SC
+	copy(AAD[1:], dconn.AK)
+
+	block, err := aes.NewCipher(dconn.EK)
+	if err != nil {
+		return err, nil
+	}
+
+	aesgcm, err := cipher.NewGCMWithNonceSize(block, len(IV))
+	if err != nil {
+		return err, nil
+	}
+	ciphertext := aesgcm.Seal(nil, IV, pdu, AAD)
+
+	length := 1 + len(FC) + len(ciphertext)
+
+	epdu = make([]byte, 1+1+1+len(FC)+len(ciphertext))
+
+	epdu[0] = tag
+	if length > 0xFF {
+		warnLog("length exceeds 255")
+	}
+	epdu[1] = byte(length)
+	epdu[2] = SC
+	copy(epdu[3:], FC)
+	copy(epdu[3+len(FC):], ciphertext)
+
+	return nil, epdu
+}
+
+func (dconn *DlmsConn) encryptPdu(authenticationMechanismId int, pdu []byte) (err error, epdu []byte) {
+	if authenticationMechanismId == high_level_security_mechanism_using_GMAC {
+		return dconn.encryptPduGSM(pdu)
+	} else {
+		err = fmt.Errorf("authentication mechanism %v not supported", authenticationMechanismId)
+		errorLog("%s", err)
+		return err, nil
+	}
+}
+
 func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalDevice uint16, invokeId uint8, password string) (aconn *AppConn, err error) {
 	var aarq = AARQ{
 		appCtxt:   LogicalName_NoCiphering,
@@ -329,16 +534,19 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 		return nil, err
 	}
 	if aare.mechanismName == nil {
-		err = fmt.Errorf("app connect failed: verify AARE: meter did not require proper authentication mechanism: HLS authentication_mechanism_id(5)")
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not require proper authentication mechanism id: mechanism_id(5)")
 		errorLog("%s", err)
 		return nil, err
 	}
 	oi := ([]uint32)(*aare.mechanismName)
 	if !(oi[0] == 2 && oi[1] == 16 && oi[2] == 756 && oi[3] == 5 && oi[4] == 8 && oi[5] == 2 && oi[6] == 5) {
-		err = fmt.Errorf("app connect failed: verify AARE: meter did not require proper authentication mechanism: HLS authentication_mechanism_id(5)")
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not require proper authentication mechanism id: mechanism_id(5)")
 		errorLog("%s", err)
 		return nil, err
 	}
+
+	dconn.systemTitle = callingAPtitle
+	dconn.securityMechanismId = high_level_security_mechanism_using_GMAC
 
 	aconn = NewAppConn(dconn, applicationClient, logicalDevice, invokeId)
 	return aconn, nil
