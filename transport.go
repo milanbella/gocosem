@@ -50,19 +50,22 @@ type tWrapperHeader struct {
 }*/
 
 type DlmsConn struct {
-	rwc                 io.ReadWriteCloser
-	hdlcRwc             io.ReadWriteCloser // stream used by hdlc transport for sending and reading HDLC frames
-	HdlcClient          *HdlcTransport
-	transportType       int
-	hdlcResponseTimeout time.Duration
-	snrmTimeout         time.Duration
-	discTimeout         time.Duration
-	systemTitle         []byte
-	securityMechanismId int
-	AK                  []byte // authentication key
-	EK                  []byte // encryption key
-	frameCounterEncrypt uint32
-	frameCounterDecrypt uint32
+	rwc                       io.ReadWriteCloser
+	hdlcRwc                   io.ReadWriteCloser // stream used by hdlc transport for sending and reading HDLC frames
+	HdlcClient                *HdlcTransport
+	transportType             int
+	hdlcResponseTimeout       time.Duration
+	snrmTimeout               time.Duration
+	discTimeout               time.Duration
+	clientSystemTitle         []byte
+	serverSystemTitle         []byte
+	authenticationMechanismId int
+	AK                        []byte // authentication key
+	EK                        []byte // encryption key
+	frameCounterSend          uint32
+	frameCounterReceive       uint32
+	clientToServerChallenge   string
+	serverToClientChallenge   string
 }
 
 type DlmsTransportSendRequest struct {
@@ -152,12 +155,22 @@ func hdlcTransportSend(rwc io.ReadWriteCloser, pdu []byte) error {
 	return nil
 }
 
-func (dconn *DlmsConn) transportSend(src uint16, dst uint16, pdu []byte) error {
+func (dconn *DlmsConn) transportSend(src uint16, dst uint16, pdu []byte) (err error) {
 	debugLog("trnasport type: %d, src: %d, dst: %d\n", dconn.transportType, src, dst)
 
+	dconn.frameCounterSend += 1
+
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
+		err, pdu = dconn.decryptPdu(pdu)
+		if nil != err {
+			return err
+		}
 		return ipTransportSend(dconn.rwc, src, dst, pdu)
 	} else if Transport_HDLC == dconn.transportType {
+		err, pdu = dconn.decryptPdu(pdu)
+		if nil != err {
+			return err
+		}
 		return hdlcTransportSend(dconn.rwc, pdu)
 	} else {
 		panic(fmt.Sprintf("unsupported transport type: %d", dconn.transportType))
@@ -242,19 +255,29 @@ func hdlcTransportReceive(rwc io.ReadWriteCloser) (pdu []byte, err error) {
 func (dconn *DlmsConn) transportReceive(src uint16, dst uint16) (pdu []byte, err error) {
 	debugLog("trnascport type: %d\n", dconn.transportType)
 
+	dconn.frameCounterReceive += 1
+
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 		pdu, _, _, err = ipTransportReceive(dconn.rwc, &src, &dst)
-		return pdu, err
+		if nil != err {
+			return nil, err
+		}
 	} else if Transport_HDLC == dconn.transportType {
-		return hdlcTransportReceive(dconn.rwc)
+		pdu, err = hdlcTransportReceive(dconn.rwc)
+		if nil != err {
+			return nil, err
+		}
 	} else {
 		err := fmt.Errorf("unsupported transport type: %d", dconn.transportType)
 		errorLog("%s", err)
 		return nil, err
 	}
+
+	err, pdu = dconn.decryptPdu(pdu)
+	return pdu, err
 }
 
-func cosemTagToGsmTag(tag1 byte) (err error, tag byte) {
+func cosemTagToGloTag(tag1 byte) (err error, tag byte) {
 	if tag1 == 1 {
 		return nil, 33
 	}
@@ -308,7 +331,7 @@ func cosemTagToGsmTag(tag1 byte) (err error, tag byte) {
 	return err, 0
 }
 
-func gsmTagToCosemTag(tag1 byte) (err error, tag byte) {
+func gloTagToCosemTag(tag1 byte) (err error, tag byte) {
 	if tag1 == 33 {
 		return nil, 1
 	}
@@ -377,7 +400,7 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 	}
 
 	// tag
-	err, tag := cosemTagToGsmTag(pdu[0])
+	err, tag := cosemTagToGloTag(pdu[0])
 	if nil != err {
 		return err, nil
 	}
@@ -386,21 +409,21 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 	SC := byte(0x30) // security control
 
 	// frame counter
-	dconn.frameCounterEncrypt += 1
 	FC := make([]byte, 4)
-	FC[0] = byte(dconn.frameCounterEncrypt >> 24 & 0xFF)
-	FC[1] = byte(dconn.frameCounterEncrypt >> 16 & 0xFF)
-	FC[2] = byte(dconn.frameCounterEncrypt >> 8 & 0xFF)
-	FC[3] = byte(dconn.frameCounterEncrypt & 0xFF)
+	FC[0] = byte(dconn.frameCounterSend >> 24 & 0xFF)
+	FC[1] = byte(dconn.frameCounterSend >> 16 & 0xFF)
+	FC[2] = byte(dconn.frameCounterSend >> 8 & 0xFF)
+	FC[3] = byte(dconn.frameCounterSend & 0xFF)
 
 	// initialization vector
-	IV := make([]byte, 24) // initialization vector
-	if len(dconn.systemTitle) != 8 {
+	IV := make([]byte, 12) // initialization vector
+	if len(dconn.clientSystemTitle) != 8 {
 		err = fmt.Errorf("system title length is not 8")
 		errorLog("%s", err)
 		return err, nil
 	}
-	copy(IV, dconn.systemTitle)
+	copy(IV, dconn.clientSystemTitle)
+	copy(IV[len(dconn.clientSystemTitle):], FC)
 
 	// additional authenticated data
 	AAD := make([]byte, 1+len(dconn.AK))
@@ -412,11 +435,9 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 		return err, nil
 	}
 
-	length := 1 + len(FC) + len(ciphertext) + GCM_TAG_LEN
-
-	epdu = make([]byte, 1+1+1+len(FC)+len(ciphertext)+GCM_TAG_LEN)
-
+	epdu = make([]byte, 1+1+1+len(FC)+len(ciphertext)+len(authTag))
 	epdu[0] = tag
+	length := 1 + len(FC) + len(ciphertext) + len(authTag)
 	if length > 0xFF {
 		warnLog("length exceeds 255")
 	}
@@ -443,15 +464,16 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 	}
 
 	// tag
-	err, _ = cosemTagToGsmTag(pdu[0])
+	err, _ = gloTagToCosemTag(pdu[0])
 	if nil != err {
 		return err, nil
 	}
 
+	// next byte is length, we don't need it
 	//length := int(pdu[1])
 
 	// security control
-	SC := pdu[1] // security control
+	SC := pdu[2] // security control
 	if SC != 0x30 {
 		err = fmt.Errorf("unexpected security control")
 		errorLog("%s", err)
@@ -459,26 +481,27 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 	}
 
 	// frame counter
-	dconn.frameCounterDecrypt += 1
 	var frameCounter uint32
-	frameCounter |= uint32(pdu[2]) << 24
-	frameCounter |= uint32(pdu[3]) << 16
-	frameCounter |= uint32(pdu[4]) << 8
-	frameCounter |= uint32(pdu[5])
-	if dconn.frameCounterDecrypt != frameCounter {
-		err = fmt.Errorf("received unexpected frame")
+	frameCounter |= uint32(pdu[3]) << 24
+	frameCounter |= uint32(pdu[4]) << 16
+	frameCounter |= uint32(pdu[5]) << 8
+	frameCounter |= uint32(pdu[6])
+	if dconn.frameCounterReceive != frameCounter {
+		err = fmt.Errorf("received unexpected out of sequence frame")
 		errorLog("%s", err)
 		return err, nil
 	}
+	FC := pdu[3:4]
 
 	// initialization vector
-	IV := make([]byte, 24) // initialization vector
-	if len(dconn.systemTitle) != 8 {
+	IV := make([]byte, 12) // initialization vector
+	if len(dconn.serverSystemTitle) != 8 {
 		err = fmt.Errorf("system title length is not 8")
 		errorLog("%s", err)
 		return err, nil
 	}
-	copy(IV, dconn.systemTitle)
+	copy(IV, dconn.serverSystemTitle)
+	copy(IV[len(dconn.serverSystemTitle):], FC)
 
 	// additional authenticated data
 	AAD := make([]byte, 1+len(dconn.AK))
@@ -493,7 +516,12 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 		return err, nil
 	}
 
-	for i := 0; i < GCM_TAG_LEN; i++ {
+	if len(authTag) != len(receivedAuthTag) {
+		err = fmt.Errorf("unexpected authentication tag")
+		errorLog("%s", err)
+		return err, nil
+	}
+	for i := 0; i < len(receivedAuthTag); i++ {
 		if authTag[i] != receivedAuthTag[i] {
 			err = fmt.Errorf("unexpected authentication tag")
 			errorLog("%s", err)
@@ -504,14 +532,166 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 	return nil, dpdu
 }
 
-func (dconn *DlmsConn) encryptPdu(authenticationMechanismId int, pdu []byte) (err error, epdu []byte) {
-	if authenticationMechanismId == high_level_security_mechanism_using_GMAC {
-		return dconn.encryptPduGSM(pdu)
+func (dconn *DlmsConn) encryptPdu(pdu []byte) (err error, epdu []byte) {
+	if dconn.authenticationMechanismId == high_level_security_mechanism_using_GMAC {
+		err, epdu = dconn.encryptPduGSM(pdu)
+		debugLog("encrypted pdu: %0X", epdu)
+		return err, epdu
+	} else if dconn.authenticationMechanismId == lowest_level_security_mechanism {
+		return nil, pdu
 	} else {
-		err = fmt.Errorf("authentication mechanism %v not supported", authenticationMechanismId)
+		err = fmt.Errorf("authentication mechanism %v not supported", dconn.authenticationMechanismId)
 		errorLog("%s", err)
 		return err, nil
 	}
+}
+
+func (dconn *DlmsConn) decryptPdu(pdu []byte) (err error, dpdu []byte) {
+	if dconn.authenticationMechanismId == high_level_security_mechanism_using_GMAC {
+		err, dpdu = dconn.decryptPduGSM(pdu)
+		debugLog("decrypted pdu: %0X", dpdu)
+		return err, dpdu
+	} else if dconn.authenticationMechanismId == lowest_level_security_mechanism {
+		return nil, pdu
+	} else {
+		err = fmt.Errorf("authentication mechanism %v not supported", dconn.authenticationMechanismId)
+		errorLog("%s", err)
+		return err, nil
+	}
+}
+
+func (aconn *AppConn) doChallengeClientSide_for_high_level_security_mechanism_using_GMAC() (err error) {
+	dconn := aconn.dconn
+
+	// enforce 128 bit keys
+	if len(dconn.AK) != 16 {
+		err = fmt.Errorf("authentication key length is not 16")
+		errorLog("%s", err)
+		return err
+	}
+	if len(dconn.EK) != 16 {
+		err = fmt.Errorf("encryption key length is not 16")
+		errorLog("%s", err)
+		return err
+	}
+
+	// return back to server encrypted StoC challenge to let server authenticate client first
+
+	// security control
+	SC := byte(0x30) // security control
+
+	// frame counter
+	FC := make([]byte, 4)
+	FC[0] = byte(dconn.frameCounterSend >> 24 & 0xFF)
+	FC[1] = byte(dconn.frameCounterSend >> 16 & 0xFF)
+	FC[2] = byte(dconn.frameCounterSend >> 8 & 0xFF)
+	FC[3] = byte(dconn.frameCounterSend & 0xFF)
+
+	// initialization vector
+	IV := make([]byte, 12) // initialization vector
+	if len(dconn.clientSystemTitle) != 8 {
+		err = fmt.Errorf("system title length is not 8")
+		errorLog("%s", err)
+		return err
+	}
+	copy(IV, dconn.clientSystemTitle)
+	copy(IV[len(dconn.clientSystemTitle):], FC)
+
+	// additional authenticated data
+	AAD := make([]byte, 1+len(dconn.AK)+len(dconn.serverToClientChallenge))
+	AAD[0] = SC
+	copy(AAD[1:], dconn.AK)
+	copy(AAD[1+len(dconn.AK):], dconn.serverToClientChallenge)
+
+	err, _, authTag := aesgcm(dconn.EK, IV, AAD, []byte{}, 0)
+	if err != nil {
+		return err
+	}
+
+	data := make([]byte, 1+4+len(authTag))
+	copy(data, []byte{SC})
+	copy(data[1:], FC)
+	copy(data[1+len(FC):], authTag)
+
+	// do remote method call passing to server encrypted StoC as method input parameter
+
+	debugLog("authenticating with server, sending  f(StoC): %0X", data)
+
+	method := new(DlmsRequest)
+	method.ClassId = 15
+	method.InstanceId = &DlmsOid{0x00, 0x00, 0x28, 0x00, 0x00, 0xFF}
+	method.MethodId = 1
+	methodParameters := new(DlmsData)
+	methodParameters.SetOctetString(data)
+	method.MethodParameters = methodParameters
+	methods := make([]*DlmsRequest, 1)
+	methods[0] = method
+	rep, err := aconn.SendRequest(methods)
+	if nil != err {
+		return err
+	}
+	if 0 != rep.ActionResultAt(0) {
+		err = fmt.Errorf("server did not authenticate client: call to classId 15, instanceId {0,0,40,0,0,255}, methodId 1, failed: actionResult: %d\n", rep.ActionResultAt(0))
+		errorLog("%s", err)
+		return err
+	}
+	if rep.DataAt(0).Typ == DATA_TYPE_OCTET_STRING {
+		data = rep.DataAt(0).GetOctetString()
+		debugLog("client authenticated by server, received f(CtoS): %0X", data)
+	} else {
+		err = fmt.Errorf("server returned unexpected data type: %v", rep.DataAt(0).Typ)
+		errorLog("%s", err)
+		return err
+	}
+
+	debugLog("authenticating server ...")
+
+	// security control
+	SC = data[0]
+	if SC != byte(0x30) {
+		err = fmt.Errorf("server not authenticated by client, received wrong SC: %0X", SC)
+		errorLog("%s", err)
+		return err
+	}
+
+	// frame counter
+	FC = data[1:4]
+	authTagReceived := data[4:]
+
+	// initialization vector
+	if len(dconn.serverSystemTitle) != 8 {
+		err = fmt.Errorf("system title length is not 8")
+		errorLog("%s", err)
+		return err
+	}
+	copy(IV, dconn.serverSystemTitle)
+	copy(IV[len(dconn.serverSystemTitle):], FC)
+
+	// additional authenticated data
+	AAD = make([]byte, 1+len(dconn.AK)+len(dconn.clientToServerChallenge))
+	AAD[0] = SC
+	copy(AAD[1:], dconn.AK)
+	copy(AAD[1+len(dconn.AK):], dconn.clientToServerChallenge)
+
+	err, _, authTag = aesgcm(dconn.EK, IV, AAD, []byte{}, 1)
+	if err != nil {
+		return err
+	}
+	if len(authTagReceived) != len(authTag) {
+		err = fmt.Errorf("did not authenticate server, auth tag differs")
+		errorLog("%s", err)
+		return err
+	}
+	for i := 0; i < len(authTag); i++ {
+		if authTagReceived[i] != authTag[i] {
+			err = fmt.Errorf("did not authenticate server, auth tag differs")
+			errorLog("%s", err)
+			return err
+		}
+	}
+
+	debugLog("server authenticated")
+	return nil
 }
 
 func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalDevice uint16, invokeId uint8, password string) (aconn *AppConn, err error) {
@@ -553,6 +733,8 @@ func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalD
 func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logicalDevice uint16, invokeId uint8, applicationContextName []uint32, callingAPtitle []byte, clientToServerChallenge string, userInformation []byte) (aconn *AppConn, err error) {
 
 	var aarq AARQapdu
+
+	dconn.clientToServerChallenge = clientToServerChallenge
 
 	aarq.applicationContextName = tAsn1ObjectIdentifier(applicationContextName)
 	_callingAPtitle := tAsn1OctetString(callingAPtitle)
@@ -614,11 +796,30 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 		errorLog("%s", err)
 		return nil, err
 	}
+	if aare.respondingAPtitle == nil {
+		err = fmt.Errorf("app connect failed: verify AARE: did no receive respondingAPtitle")
+		errorLog("%s", err)
+		return nil, err
+	}
 
-	dconn.systemTitle = callingAPtitle
-	dconn.securityMechanismId = high_level_security_mechanism_using_GMAC
+	dconn.clientSystemTitle = callingAPtitle
+	dconn.serverSystemTitle = ([]byte)(*aare.respondingAPtitle)
+	dconn.authenticationMechanismId = high_level_security_mechanism_using_GMAC
+	if aare.respondingAuthenticationValue.tag == 0 {
+		dconn.serverToClientChallenge = string(aare.respondingAuthenticationValue.val.(tAsn1GraphicString))
+	} else {
+		err = fmt.Errorf("app connect failed: AARE: wrong authentication value")
+		errorLog("%s", err)
+		return nil, err
+	}
 
 	aconn = NewAppConn(dconn, applicationClient, logicalDevice, invokeId)
+
+	err = aconn.doChallengeClientSide_for_high_level_security_mechanism_using_GMAC()
+	if nil != err {
+		return nil, err
+	}
+
 	return aconn, nil
 
 }

@@ -15,6 +15,8 @@ import (
 
 const GCM_TAG_LEN = 12
 
+// Note: Use 'direction' 0 for encrypt, 'direction' 1 for decrypt.
+
 func aesgcm(key []byte, IV []byte, adata []byte, pdu []byte, direction int) (err error, opdu []byte, tag []byte) {
 
 	ckey := C.CBytes(key)
