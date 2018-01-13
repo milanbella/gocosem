@@ -6,15 +6,17 @@ import (
 	"time"
 )
 
-var hdlcTestMeterIp = "172.16.123.182"
-
-var hdlcTestResponseTimeout = time.Duration(1) * time.Hour
-var hdlcTestCosemWaitTime = time.Duration(5000) * time.Millisecond
-var hdlcTestSnrmTimeout = time.Duration(45) * time.Second
-var hdlcTestDiscTimeout = time.Duration(45) * time.Second
+func init_TestMeterHdlc_with_sec_5() {
+	testMeterIp = "192.168.1.101"
+	testHdlcResponseTimeout = time.Duration(1) * time.Hour
+	testHdlcCosemWaitTime = time.Duration(5000) * time.Millisecond
+	testHdlcSnrmTimeout = time.Duration(45) * time.Second
+	testHdlcDiscTimeout = time.Duration(45) * time.Second
+}
 
 func TestMeterHdlc_with_sec_5_TcpConnect(t *testing.T) {
-	dconn, err := TcpConnect(hdlcTestMeterIp, 4059)
+	init_TestMeterHdlc_with_sec_5()
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -23,7 +25,8 @@ func TestMeterHdlc_with_sec_5_TcpConnect(t *testing.T) {
 }
 
 func TestMeterHdlc_with_sec_5_HdlcConnect(t *testing.T) {
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, &hdlcTestCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	init_TestMeterHdlc_with_sec_5()
+	dconn, err := HdlcConnect(testMeterIp, 4059, 1, 1, nil, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -32,8 +35,9 @@ func TestMeterHdlc_with_sec_5_HdlcConnect(t *testing.T) {
 }
 
 func TestMeterHdlc_with_sec_5_AppConnect(t *testing.T) {
+	init_TestMeterHdlc_with_sec_5()
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, &hdlcTestCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(testMeterIp, 4059, 1, 1, nil, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}

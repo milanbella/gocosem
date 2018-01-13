@@ -5,10 +5,19 @@ import (
 	"time"
 )
 
+func init_TestActions_hdlcMeter() {
+	testMeterIp = "172.16.123.182"
+	testHdlcResponseTimeout = time.Duration(1) * time.Hour
+	testHdlcCosemWaitTime = time.Duration(5000) * time.Millisecond
+	testHdlcSnrmTimeout = time.Duration(45) * time.Second
+	testHdlcDiscTimeout = time.Duration(45) * time.Second
+}
+
 func TestActions_hdlcMeter_StateOfDisconnector(t *testing.T) {
+	init_TestActions_hdlcMeter()
 	aare := []byte{0x61, 0x29, 0xA1, 0x09, 0x06, 0x07, 0x60, 0x85, 0x74, 0x05, 0x08, 0x01, 0x01, 0xA2, 0x03, 0x02, 0x01, 0x00, 0xA3, 0x05, 0xA1, 0x03, 0x02, 0x01, 0x00, 0xBE, 0x10, 0x04, 0x0E, 0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
 
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, &hdlcTestCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	dconn, err := HdlcConnect(testMeterIp, 4059, 1, 1, nil, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -77,7 +86,8 @@ func TestActions_hdlcMeter_StateOfDisconnector(t *testing.T) {
 }
 
 func TestActions_hdlcMeter_Disconnector(t *testing.T) {
-	dconn, err := HdlcConnect(hdlcTestMeterIp, 4059, 1, 1, nil, hdlcTestResponseTimeout, &hdlcTestCosemWaitTime, hdlcTestSnrmTimeout, hdlcTestDiscTimeout)
+	init_TestActions_hdlcMeter()
+	dconn, err := HdlcConnect(testMeterIp, 4059, 1, 1, nil, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}

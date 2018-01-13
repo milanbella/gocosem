@@ -5,11 +5,14 @@ import (
 	"testing"
 )
 
-var tcpTestMeterIp = "172.16.123.201"
+func init_TestMeterTcp() {
+	testMeterIp = "172.16.123.201"
+}
 
 func TestMeterTcp_TcpConnect(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -18,8 +21,9 @@ func TestMeterTcp_TcpConnect(t *testing.T) {
 }
 
 func TestMeterTcp_AppConnect(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatal(err)
 	}
@@ -35,8 +39,9 @@ func TestMeterTcp_AppConnect(t *testing.T) {
 }
 
 func TestMeterTcp_GetTime(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatalf(fmt.Sprintf("%s\n", err))
 	}
@@ -70,8 +75,9 @@ func TestMeterTcp_GetTime(t *testing.T) {
 }
 
 func TestMeterTcp_SetTime(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatalf("cannot connect tcp: %s", err)
 	}
@@ -149,8 +155,9 @@ func TestMeterTcp_SetTime(t *testing.T) {
 }
 
 func TestMeterTcp_ProfileCaptureObjects(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatalf("cannot connect tcp: %s", err)
 		return
@@ -203,8 +210,9 @@ func TestMeterTcp_ProfileCaptureObjects(t *testing.T) {
 }
 
 func TestMeterTcp_ProfileEntriesInUse(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatalf("cannot connect tcp: %s", err)
 		return
@@ -244,8 +252,9 @@ func TestMeterTcp_ProfileEntriesInUse(t *testing.T) {
 }
 
 func TestMeterTcp_ProfileEntries(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatalf("cannot connect tcp: %s", err)
 		return
@@ -285,8 +294,9 @@ func TestMeterTcp_ProfileEntries(t *testing.T) {
 }
 
 func TestMeterTcp_ProfileSortMethod(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatalf("cannot connect tcp: %s", err)
 		return
@@ -326,8 +336,9 @@ func TestMeterTcp_ProfileSortMethod(t *testing.T) {
 }
 
 func TestMeterTcp_ProfileSortObject(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatalf("cannot connect tcp: %s", err)
 		return
@@ -375,8 +386,9 @@ func TestMeterTcp_ProfileSortObject(t *testing.T) {
 }
 
 func TestMeterTcp_ProfileCapturePeriod(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatalf("cannot connect tcp: %s", err)
 		return
@@ -416,8 +428,9 @@ func TestMeterTcp_ProfileCapturePeriod(t *testing.T) {
 }
 
 func TestMeterTcp_ProfileFirstEntries(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatalf("cannot connect tcp: %s", err)
 		return
@@ -474,8 +487,9 @@ func TestMeterTcp_ProfileFirstEntries(t *testing.T) {
 }
 
 func TestMeterTcp_ProfileLastEntries(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatalf("cannot connect tcp: %s", err)
 		return
@@ -559,8 +573,9 @@ func TestMeterTcp_ProfileLastEntries(t *testing.T) {
 }
 
 func TestMeterTcp_ProfileTimeRange(t *testing.T) {
+	init_TestMeterTcp()
 
-	dconn, err := TcpConnect(tcpTestMeterIp, 4059)
+	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatalf("cannot connect tcp: %s", err)
 		return
