@@ -678,13 +678,13 @@ func (aconn *AppConn) doChallengeClientSide_for_high_level_security_mechanism_us
 		return err
 	}
 	if len(authTagReceived) != len(authTag) {
-		err = fmt.Errorf("did not authenticate server, auth tag differs")
+		err = fmt.Errorf("did not authenticate server, authentication tag differs")
 		errorLog("%s", err)
 		return err
 	}
 	for i := 0; i < len(authTag); i++ {
 		if authTagReceived[i] != authTag[i] {
-			err = fmt.Errorf("did not authenticate server, auth tag differs")
+			err = fmt.Errorf("did not authenticate server, authentication tag differs")
 			errorLog("%s", err)
 			return err
 		}
@@ -730,7 +730,7 @@ func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalD
 
 }
 
-func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logicalDevice uint16, invokeId uint8, applicationContextName []uint32, callingAPtitle []byte, clientToServerChallenge string, userInformation []byte) (aconn *AppConn, err error) {
+func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logicalDevice uint16, invokeId uint8, authenticationKey []byte, encryptionKey []byte, applicationContextName []uint32, callingAPtitle []byte, clientToServerChallenge string, userInformation []byte) (aconn *AppConn, err error) {
 
 	var aarq AARQapdu
 
@@ -740,7 +740,7 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	_callingAPtitle := tAsn1OctetString(callingAPtitle)
 	aarq.callingAPtitle = &_callingAPtitle
 	aarq.senderAcseRequirements = &tAsn1BitString{
-		buf:        []byte{0x80},
+		buf:        []byte{0x80}, // bit 0 == 1 => the authentication functional unit is selected
 		bitsUnused: 7,
 	}
 	mechanismName := (tAsn1ObjectIdentifier)([]uint32{2, 16, 756, 5, 8, 2, 5})
@@ -786,18 +786,18 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 		return nil, err
 	}
 	if aare.mechanismName == nil {
-		err = fmt.Errorf("app connect failed: verify AARE: meter did not require proper authentication mechanism id: mechanism_id(5)")
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not require expected authentication mechanism id: mechanism_id(5)")
 		errorLog("%s", err)
 		return nil, err
 	}
 	oi := ([]uint32)(*aare.mechanismName)
 	if !(oi[0] == 2 && oi[1] == 16 && oi[2] == 756 && oi[3] == 5 && oi[4] == 8 && oi[5] == 2 && oi[6] == 5) {
-		err = fmt.Errorf("app connect failed: verify AARE: meter did not require proper authentication mechanism id: mechanism_id(5)")
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not require expected authentication mechanism id: mechanism_id(5)")
 		errorLog("%s", err)
 		return nil, err
 	}
 	if aare.respondingAPtitle == nil {
-		err = fmt.Errorf("app connect failed: verify AARE: did no receive respondingAPtitle")
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not send respondingAPtitle")
 		errorLog("%s", err)
 		return nil, err
 	}
@@ -808,10 +808,13 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	if aare.respondingAuthenticationValue.tag == 0 {
 		dconn.serverToClientChallenge = string(aare.respondingAuthenticationValue.val.(tAsn1GraphicString))
 	} else {
-		err = fmt.Errorf("app connect failed: AARE: wrong authentication value")
+		err = fmt.Errorf("app connect failed: AARE: meter did not send client to server challenge")
 		errorLog("%s", err)
 		return nil, err
 	}
+
+	dconn.AK = authenticationKey
+	dconn.EK = encryptionKey
 
 	aconn = NewAppConn(dconn, applicationClient, logicalDevice, invokeId)
 

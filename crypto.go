@@ -35,8 +35,8 @@ func aesgcm(key []byte, IV []byte, adata []byte, pdu []byte, direction int) (err
 	defer C.free(ctag)
 	ctagLen := C.ulong(GCM_TAG_LEN)
 
-	cipher := C.CBytes(make([]byte, len(pdu)))
-	defer C.free(cipher)
+	copdu := C.CBytes(make([]byte, cpduLen))
+	defer C.free(copdu)
 
 	var res C.int
 	if !(direction == 0) || (direction == 1) {
@@ -44,13 +44,13 @@ func aesgcm(key []byte, IV []byte, adata []byte, pdu []byte, direction int) (err
 		errorLog("%s", err)
 		return err, nil, nil
 	}
-	res = C.gcm_memory(0, (*C.uchar)(ckey), C.ulong(ckeyLen), (*C.uchar)(cIV), C.ulong(cIVLen), (*C.uchar)(cadata), C.ulong(cadataLen), (*C.uchar)(cpdu), C.ulong(cpduLen), (*C.uchar)(cipher), (*C.uchar)(ctag), (*C.ulong)(unsafe.Pointer(&ctagLen)), C.int(direction))
+	res = C.gcm_memory(0, (*C.uchar)(ckey), C.ulong(ckeyLen), (*C.uchar)(cIV), C.ulong(cIVLen), (*C.uchar)(cadata), C.ulong(cadataLen), (*C.uchar)(cpdu), C.ulong(cpduLen), (*C.uchar)(copdu), (*C.uchar)(ctag), (*C.ulong)(unsafe.Pointer(&ctagLen)), C.int(direction))
 	if int(res) != 0 {
 		err = fmt.Errorf("aesgcm() failed: %d", int(res))
 		errorLog("%s", err)
 		return err, nil, nil
 	}
-	opdu = C.GoBytes(cpdu, C.int(cpduLen))
+	opdu = C.GoBytes(copdu, C.int(cpduLen))
 	tag = C.GoBytes(ctag, GCM_TAG_LEN)
 
 	return nil, opdu, tag
