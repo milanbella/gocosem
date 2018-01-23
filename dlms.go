@@ -1622,6 +1622,235 @@ func (data *DlmsData) decodeTime(r io.Reader) (err error) {
 	return nil
 }
 
+type DlmsInitiateRequest struct {
+	dedicatedKey              *[]byte // optional
+	responseAllowed           bool
+	proposedQualityOfService  *int8 // optional
+	proposedDlmsVersionNumber uint8
+	proposedConformance       tAsn1BitString // bit string encoded in BER
+	clientMaxReceivePduSize   uint16
+}
+
+type DlmsInitiateResponse struct {
+	negotiatedQualityOfService  int8
+	negotiatedDlmsVersionNumber uint8
+	serverMaxReceivePduSize     uint16
+	vaaName                     int16
+}
+
+func (req *DlmsInitiateRequest) encode(w io.Writer) (err error) {
+
+	err = binary.Write(w, binary.BigEndian, uint8(1)) // initiateRequest [1] IMPLICIT InitiateRequest
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	// dedicated-key OCTET STRING OPTIONAL
+	if req.dedicatedKey != nil {
+		err = binary.Write(w, binary.BigEndian, uint8(1)) // unused
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+		err = encodeAxdrLength(w, uint16(len(*req.dedicatedKey)))
+		if nil != err {
+			errorLog("encodeAxdrLength() failed, err: %v\n", err)
+			return err
+		}
+
+		_, err = w.Write(*req.dedicatedKey)
+		if nil != err {
+			errorLog("w.Wite() failed, err: %v\n", err)
+			return err
+		}
+	} else {
+		err = binary.Write(w, binary.BigEndian, uint8(0)) // unused
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+	}
+
+	// response-allowed BOOLEAN DEFAULT TRUE
+	if req.responseAllowed == true {
+		err = binary.Write(w, binary.BigEndian, uint8(0)) // unused, value is default value true
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+	} else {
+		err = binary.Write(w, binary.BigEndian, uint8(1)) // used
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+		err = binary.Write(w, binary.BigEndian, req.responseAllowed) // value is false
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+	}
+
+	// proposed-quality-of-service [0] IMPLICIT Integer8 OPTIONAL,
+	if nil != req.proposedQualityOfService {
+		err = binary.Write(w, binary.BigEndian, uint8(1)) // used
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+		err = binary.Write(w, binary.BigEndian, int8(*req.proposedQualityOfService)) // used
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+	} else {
+		err = binary.Write(w, binary.BigEndian, uint8(0)) // unused
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+	}
+
+	// proposed-dlms-version-number Unsigned8,
+	err = binary.Write(w, binary.BigEndian, uint8(*req.proposedQualityOfService))
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	// proposed-conformance Conformance, -- Shall be encoded in BER
+	// Conformance ::= [APPLICATION 31] IMPLICIT BIT STRING
+	ch := new(t_der_chunk)
+	ch.asn1_class = ASN1_CLASS_APPLICATION
+	ch.encoding = BER_ENCODING_PRIMITIVE
+	ch.asn1_tag = 31
+	err, ch.content = der_encode_BitString(&req.proposedConformance)
+	if nil != err {
+		return err
+	}
+	err = der_encode_chunk(w, ch)
+	if nil != err {
+		return err
+	}
+
+	// client-max-receive-pdu-size Unsigned16
+	err = binary.Write(w, binary.BigEndian, uint16(req.clientMaxReceivePduSize))
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	return err
+}
+
+func (req *DlmsInitiateRequest) decode(r io.Reader) (err error) {
+
+	// initiateRequest [1] IMPLICIT InitiateRequest
+	var tag uint8
+	err = binary.Read(r, binary.BigEndian, &tag)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err
+	}
+	if 1 != tag {
+		err = fmt.Errorf("wrong tag: %d", tag)
+		return err
+	}
+
+	// dedicated-key OCTET STRING OPTIONAL
+	var used uint8
+	err = binary.Read(r, binary.BigEndian, &used)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err
+	}
+	if used != 0 {
+		err, length := decodeAxdrLength(r)
+		if nil != err {
+			errorLog("decodeAxdrLength() failed, err: %v\n", err)
+			return err
+		}
+		dedicatedKey := make([]byte, length)
+		err = binary.Read(r, binary.BigEndian, dedicatedKey)
+		if nil != err {
+			errorLog("binary.Read() failed, err: %v", err)
+			return err
+		}
+		req.dedicatedKey = &dedicatedKey
+	}
+
+	// response-allowed BOOLEAN DEFAULT TRUE
+	err = binary.Read(r, binary.BigEndian, &used)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err
+	}
+	if 0 == used {
+		// unused => set default value
+		req.responseAllowed = true
+	} else {
+		var val uint8
+		err = binary.Read(r, binary.BigEndian, &val)
+		if nil != err {
+			errorLog("binary.Read() failed, err: %v", err)
+			return err
+		}
+		if val > 0 {
+			req.responseAllowed = true
+		} else {
+			req.responseAllowed = false
+		}
+	}
+
+	// proposed-quality-of-service [0] IMPLICIT Integer8 OPTIONAL,
+	err = binary.Read(r, binary.BigEndian, &used)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err
+	}
+	if 0 != used {
+		req.proposedQualityOfService = new(int8)
+		err = binary.Read(r, binary.BigEndian, req.proposedQualityOfService)
+		if nil != err {
+			errorLog("binary.Read() failed, err: %v", err)
+			return err
+		}
+	}
+
+	// proposed-dlms-version-number Unsigned8,
+	err = binary.Read(r, binary.BigEndian, &req.proposedDlmsVersionNumber)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err
+	}
+
+	// proposed-conformance Conformance, -- Shall be encoded in BER
+	// Conformance ::= [APPLICATION 31] IMPLICIT BIT STRING
+	err, ch := der_decode_chunk(r)
+	if nil != err {
+		return err
+	}
+	if 31 != ch.asn1_tag {
+		err = fmt.Errorf("wrong tag: %d", ch.asn1_tag)
+		return err
+	}
+	err, bitString := der_decode_BitString(ch.content)
+	if nil != err {
+		return err
+	}
+	req.proposedConformance = *bitString
+
+	// client-max-receive-pdu-size Unsigned16
+	err = binary.Read(r, binary.BigEndian, &req.clientMaxReceivePduSize)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err
+	}
+
+	return err
+}
+
 func encode_getRequest(w io.Writer, classId DlmsClassId, instanceId *DlmsOid, attributeId DlmsAttributeId, accessSelector DlmsAccessSelector, accessParameters *DlmsData) (err error) {
 
 	err = binary.Write(w, binary.BigEndian, classId)
@@ -1974,22 +2203,36 @@ func encode_GetResponsewithDataBlock(w io.Writer, lastBlock bool, blockNumber ui
 		return err
 	}
 
-	err = binary.Write(w, binary.BigEndian, dataAccessResult)
-	if nil != err {
-		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
-		return err
-	}
-
-	if nil != rawData {
-		err = encodeAxdrLength(w, uint16(len(rawData)))
+	if 0 == dataAccessResult {
+		err = binary.Write(w, binary.BigEndian, uint8(0)) // CHOICE raw-data [0] IMPLICIT OCTET STRING,
 		if nil != err {
-			errorLog("encodeAxdrLength() failed, err: %v\n", err)
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
 			return err
 		}
 
-		_, err = w.Write(rawData)
+		if nil != rawData {
+			err = encodeAxdrLength(w, uint16(len(rawData)))
+			if nil != err {
+				errorLog("encodeAxdrLength() failed, err: %v\n", err)
+				return err
+			}
+
+			_, err = w.Write(rawData)
+			if nil != err {
+				errorLog("w.Wite() failed, err: %v\n", err)
+				return err
+			}
+		}
+
+	} else {
+		err = binary.Write(w, binary.BigEndian, uint8(1)) // CHOICE data-access-result [1] IMPLICIT Data-Access-Result
 		if nil != err {
-			errorLog("w.Wite() failed, err: %v\n", err)
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+		err = binary.Write(w, binary.BigEndian, dataAccessResult)
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
 			return err
 		}
 	}
@@ -2019,23 +2262,32 @@ func decode_GetResponsewithDataBlock(r io.Reader) (err error, lastBlock bool, bl
 	}
 
 	var _dataAccessResult DlmsDataAccessResult
-	err = binary.Read(r, binary.BigEndian, &_dataAccessResult)
+	err = binary.Read(r, binary.BigEndian, &_dataAccessResult) // read the tag
 	if nil != err {
 		errorLog("binary.Read() failed, err: %v", err)
 		return err, _lastBlock, _blockNumber, 0, nil
 	}
 
-	err, length := decodeAxdrLength(r)
-	if nil != err {
-		errorLog("decodeAxdrLength() failed, err: %v\n", err)
-		return err, _lastBlock, _blockNumber, _dataAccessResult, nil
-	}
+	if 0 == _dataAccessResult {
 
-	rawData = make([]byte, length)
-	err = binary.Read(r, binary.BigEndian, rawData)
-	if nil != err {
-		errorLog("binary.Read() failed, err: %v", err)
-		return err, _lastBlock, _blockNumber, _dataAccessResult, nil
+		err, length := decodeAxdrLength(r)
+		if nil != err {
+			errorLog("decodeAxdrLength() failed, err: %v\n", err)
+			return err, _lastBlock, _blockNumber, _dataAccessResult, nil
+		}
+
+		rawData = make([]byte, length)
+		err = binary.Read(r, binary.BigEndian, rawData)
+		if nil != err {
+			errorLog("binary.Read() failed, err: %v", err)
+			return err, _lastBlock, _blockNumber, _dataAccessResult, nil
+		}
+	} else {
+		err = binary.Read(r, binary.BigEndian, &_dataAccessResult)
+		if nil != err {
+			errorLog("binary.Read() failed, err: %v", err)
+			return err, _lastBlock, _blockNumber, 0, nil
+		}
 	}
 
 	return nil, _lastBlock, _blockNumber, _dataAccessResult, rawData
