@@ -118,7 +118,7 @@ func ipTransportSend(rwc io.ReadWriteCloser, srcWport uint16, dstWport uint16, p
 	if nil != err {
 		return err
 	}
-	debugLog("sending: % 02X\n", wpdu)
+	debugLog("sending pdu: % 02X\n", wpdu)
 	_, err = rwc.Write(wpdu)
 	if nil != err {
 		errorLog("io.Write() failed, err: %v\n", err)
@@ -144,7 +144,7 @@ func hdlcTransportSend(rwc io.ReadWriteCloser, pdu []byte) error {
 	}
 
 	p := buf.Bytes()
-	debugLog("sending: %02X\n", p)
+	debugLog("sending pdu: % 02X\n", p[3:])
 	_, err = rwc.Write(p)
 	if nil != err {
 		errorLog("io.Write() failed, err: %v\n", err)
@@ -879,7 +879,7 @@ Optional 'cosemWaitTime' should be set to average time what it takes for
     is used for cosem and it serves
     avoiding of sending unnecessary RR frames.
 */
-func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevice uint16, physicalDevice *uint16, responseTimeout time.Duration, cosemWaitTime *time.Duration, snrmTimeout time.Duration, discTimeout time.Duration) (dconn *DlmsConn, err error) {
+func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevice uint16, physicalDevice *uint16, serverAddressLength *int, responseTimeout time.Duration, cosemWaitTime *time.Duration, snrmTimeout time.Duration, discTimeout time.Duration) (dconn *DlmsConn, err error) {
 	var (
 		conn net.Conn
 	)
@@ -895,7 +895,7 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 	}
 	dconn.hdlcRwc = conn
 
-	client := NewHdlcTransport(dconn.hdlcRwc, responseTimeout, true, uint8(applicationClient), logicalDevice, physicalDevice)
+	client := NewHdlcTransport(dconn.hdlcRwc, responseTimeout, true, uint8(applicationClient), logicalDevice, physicalDevice, serverAddressLength)
 	dconn.hdlcResponseTimeout = responseTimeout
 	dconn.snrmTimeout = snrmTimeout
 	dconn.discTimeout = discTimeout

@@ -232,7 +232,7 @@ var HdlcErrorFrameRejected = errors.New("frame rejected")
 var HdlcErrorNotClient = errors.New("not a client")
 var HdlcErrorTransportClosed = errors.New("transport closed")
 
-func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16) *HdlcTransport {
+func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16, serverAddressLength *int) *HdlcTransport {
 	htran := new(HdlcTransport)
 	htran.rw = rw
 	htran.modulus = 8
@@ -257,13 +257,29 @@ func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bo
 	htran.finishedCh = make(chan bool)
 
 	htran.responseTimeout = responseTimeout
-	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_2
+	htran.serverAddrLength = HDLC_ADDRESS_LENGTH_1
 	htran.clientId = clientId
 	htran.logicalDeviceId = logicalDeviceId
 	htran.physicalDeviceId = physicalDeviceId
-	if nil == htran.physicalDeviceId {
-		htran.serverAddrLength = HDLC_ADDRESS_LENGTH_1
+	if nil != htran.physicalDeviceId {
+		htran.serverAddrLength = HDLC_ADDRESS_LENGTH_2
 	}
+
+	if nil != serverAddressLength {
+		if *serverAddressLength == HDLC_ADDRESS_LENGTH_1 {
+			if nil != htran.physicalDeviceId {
+				panic("server address length must be 2 or 4 to make space for physical device id")
+			}
+			htran.serverAddrLength = HDLC_ADDRESS_LENGTH_1
+		} else if *serverAddressLength == HDLC_ADDRESS_LENGTH_2 {
+			htran.serverAddrLength = HDLC_ADDRESS_LENGTH_2
+		} else if *serverAddressLength == HDLC_ADDRESS_LENGTH_4 {
+			htran.serverAddrLength = HDLC_ADDRESS_LENGTH_4
+		} else {
+			panic("unknown server adrress length")
+		}
+	}
+
 	htran.client = client
 	go htran.handleHdlc()
 	return htran
@@ -539,8 +555,8 @@ func (htran *HdlcTransport) decodeServerAddress(frame *HdlcFrame) (err error, n 
 			b3 = p[0]
 
 			if b3&0x01 > 0 {
-				upperMAC := ((uint16(b0)&0x00FE)>>1)<<7 + ((uint16(b1) & 0x00FE) >> 1)
-				lowerMAC := ((uint16(b2)&0x00FE)>>1)<<7 + ((uint16(b3) & 0x00FE) >> 1)
+				upperMAC := ((uint16(b0)&0x00FE)>>1)<<7 | ((uint16(b1) & 0x00FE) >> 1)
+				lowerMAC := ((uint16(b2)&0x00FE)>>1)<<7 | ((uint16(b3) & 0x00FE) >> 1)
 
 				if HDLC_ADDRESS_LENGTH_4 == htran.serverAddrLength {
 
@@ -679,7 +695,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 
 		v16 = logicalDeviceId
 
-		p[0] = byte(((v16 << 2) & 0xFE00) >> 8)
+		p[0] = byte((v16 & 0x3F80) >> 6)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
@@ -710,7 +726,7 @@ func (htran *HdlcTransport) encodeServerAddress(frame *HdlcFrame) (err error) {
 
 		v16 = physicalDeviceId
 
-		p[0] = byte(((v16 << 2) & 0xFE00) >> 8)
+		p[0] = byte((v16 & 0x3F80) >> 6)
 		_, err = w.Write(p)
 		if nil != err {
 			errorLog("binary.Write() failed: %v", err)
@@ -772,12 +788,7 @@ func (htran *HdlcTransport) decodeClientAddress(frame *HdlcFrame) (err error, n 
 	frame.fcs16 = pppfcs16(frame.fcs16, p)
 	b0 = p[0]
 
-	if b0&0x01 > 0 {
-		frame.clientId = (uint8(b0) & 0xFE) >> 1
-	} else {
-		warnLog("long client address")
-		return HdlcErrorMalformedSegment, n
-	}
+	frame.clientId = uint8(b0)
 
 	return nil, n
 }
@@ -789,13 +800,7 @@ func (htran *HdlcTransport) encodeClientAddress(frame *HdlcFrame) (err error) {
 	var b0 byte
 	p := make([]byte, 1)
 
-	clientId := htran.clientId
-	if clientId&0x80 > 0 {
-		errorLog("clientId exceeds limit")
-		return HdlcErrorInvalidValue
-	}
-
-	b0 = (clientId << 1) | 0x01
+	b0 = htran.clientId
 
 	p[0] = b0
 	_, err = w.Write(p)
@@ -2063,9 +2068,9 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 
 		if HdlcDebug {
 			if htran.client {
-				fmt.Printf("client_inbound: 7E%0X%0X%0X\n", b0, b1, p)
+				fmt.Printf("client_inbound: 7E % 0X % 0X % 0X\n", b0, b1, p)
 			} else {
-				fmt.Printf("server_inbound: 7E%0X%0X%0X\n", b0, b1, p)
+				fmt.Printf("server_inbound: 7E % 0X % 0X % 0X\n", b0, b1, p)
 			}
 		}
 
@@ -2380,9 +2385,9 @@ func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 	}
 	if HdlcDebug {
 		if htran.client {
-			fmt.Printf("client_outbound: %0X\n", p)
+			fmt.Printf("client_outbound: % 0X\n", p)
 		} else {
-			fmt.Printf("server_outbound: %0X\n", p)
+			fmt.Printf("server_outbound: % 0X\n", p)
 		}
 		htran.printFrame(frame)
 	}
