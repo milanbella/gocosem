@@ -1631,9 +1631,21 @@ type DlmsInitiateRequest struct {
 	clientMaxReceivePduSize   uint16
 }
 
+/*
+InitiateResponse ::= SEQUENCE
+{
+	negotiated-quality-of-service [0] IMPLICIT Integer8 OPTIONAL,
+	negotiated-dlms-version-number Unsigned8,
+	negotiated-conformance Conformance, -- Shall be encoded in BER
+	server-max-receive-pdu-size Unsigned16,
+	vaa-name ObjectName
+}
+*/
+
 type DlmsInitiateResponse struct {
-	negotiatedQualityOfService  int8
+	negotiatedQualityOfService  *int8 // optional
 	negotiatedDlmsVersionNumber uint8
+	negotiatedConformance       tAsn1BitString
 	serverMaxReceivePduSize     uint16
 	vaaName                     int16
 }
@@ -1648,7 +1660,7 @@ func (req *DlmsInitiateRequest) encode(w io.Writer) (err error) {
 
 	// dedicated-key OCTET STRING OPTIONAL
 	if req.dedicatedKey != nil {
-		err = binary.Write(w, binary.BigEndian, uint8(1)) // unused
+		err = binary.Write(w, binary.BigEndian, uint8(1)) // used
 		if nil != err {
 			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
 			return err
@@ -1843,6 +1855,141 @@ func (req *DlmsInitiateRequest) decode(r io.Reader) (err error) {
 
 	// client-max-receive-pdu-size Unsigned16
 	err = binary.Read(r, binary.BigEndian, &req.clientMaxReceivePduSize)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err
+	}
+
+	return err
+}
+
+func (rep *DlmsInitiateResponse) encde(w io.Writer) (err error) {
+	err = binary.Write(w, binary.BigEndian, uint8(8)) // initiateResponse [8] IMPLICIT InitiateResponse,
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	// negotiated-quality-of-service [0] IMPLICIT Integer8 OPTIONAL,
+	if rep.negotiatedQualityOfService != nil {
+		err = binary.Write(w, binary.BigEndian, uint8(1)) // used
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+
+		err = binary.Write(w, binary.BigEndian, *rep.negotiatedQualityOfService)
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+	} else {
+		err = binary.Write(w, binary.BigEndian, uint8(0)) // unused
+		if nil != err {
+			errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+			return err
+		}
+	}
+
+	// negotiated-dlms-version-number Unsigned8,
+	err = binary.Write(w, binary.BigEndian, rep.negotiatedDlmsVersionNumber)
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	// negotiated-conformance Conformance, -- Shall be encoded in BER
+	// Conformance ::= [APPLICATION 31] IMPLICIT BIT STRING
+	ch := new(t_der_chunk)
+	ch.asn1_class = ASN1_CLASS_APPLICATION
+	ch.encoding = BER_ENCODING_PRIMITIVE
+	ch.asn1_tag = 31
+	err, ch.content = der_encode_BitString(&rep.negotiatedConformance)
+	if nil != err {
+		return err
+	}
+	err = der_encode_chunk(w, ch)
+	if nil != err {
+		return err
+	}
+
+	// server-max-receive-pdu-size Unsigned16,
+	err = binary.Write(w, binary.BigEndian, rep.serverMaxReceivePduSize)
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	// vaa-name ObjectName
+	err = binary.Write(w, binary.BigEndian, rep.vaaName)
+	if nil != err {
+		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
+		return err
+	}
+
+	return err
+}
+
+func (rep *DlmsInitiateResponse) decode(r io.Reader) (err error) {
+	// initiateResponse [8] IMPLICIT InitiateResponse,
+	var tag uint8
+	err = binary.Read(r, binary.BigEndian, &tag)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err
+	}
+	if 8 != tag {
+		err = fmt.Errorf("wrong tag: %d", tag)
+		return err
+	}
+
+	// negotiated-quality-of-service [0] IMPLICIT Integer8 OPTIONAL,
+	var used uint8
+	err = binary.Read(r, binary.BigEndian, &used)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err
+	}
+	if used != 0 {
+		err = binary.Read(r, binary.BigEndian, rep.negotiatedQualityOfService)
+		if nil != err {
+			errorLog("binary.Read() failed, err: %v", err)
+			return err
+		}
+	}
+
+	// negotiated-dlms-version-number Unsigned8,
+	err = binary.Read(r, binary.BigEndian, &rep.negotiatedDlmsVersionNumber)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err
+	}
+
+	// negotiated-conformance Conformance, -- Shall be encoded in BER
+	// Conformance ::= [APPLICATION 31] IMPLICIT BIT STRING
+	err, ch := der_decode_chunk(r)
+	if nil != err {
+		return err
+	}
+	if 31 != ch.asn1_tag {
+		err = fmt.Errorf("wrong tag: %d", ch.asn1_tag)
+		return err
+	}
+	err, bitString := der_decode_BitString(ch.content)
+	if nil != err {
+		return err
+	}
+	rep.negotiatedConformance = *bitString
+
+	// server-max-receive-pdu-size Unsigned16,
+	err = binary.Read(r, binary.BigEndian, &rep.serverMaxReceivePduSize)
+	if nil != err {
+		errorLog("binary.Read() failed, err: %v", err)
+		return err
+	}
+
+	// vaa-name ObjectName
+	err = binary.Read(r, binary.BigEndian, &rep.vaaName)
 	if nil != err {
 		errorLog("binary.Read() failed, err: %v", err)
 		return err
