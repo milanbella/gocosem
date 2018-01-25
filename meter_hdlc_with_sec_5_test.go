@@ -26,14 +26,39 @@ func TestMeterHdlc_with_sec_5_TcpConnect(t *testing.T) {
 
 func TestMeterHdlc_with_sec_5_HdlcConnect(t *testing.T) {
 	init_TestMeterHdlc_with_sec_5()
+	physicalDeviceId := uint16(37)
 	serverAddressLength := int(4)
-	dconn, err := HdlcConnect(testMeterIp, 4059, 3, 1, nil, &serverAddressLength, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
+	dconn, err := HdlcConnect(testMeterIp, 4059, 3, 1, &physicalDeviceId, &serverAddressLength, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
 	if nil != err {
 		t.Fatal(err)
 	}
 	t.Logf("transport connected")
 	defer dconn.Close()
 }
+
+/*
+func TestMeterHdlc_with_sec_5_AppConnect_no_security(t *testing.T) {
+	init_TestMeterHdlc_with_sec_5()
+	physicalDeviceId := uint16(37)
+	serverAddressLength := int(4)
+	dconn, err := HdlcConnect(testMeterIp, 4059, 33, 1, &physicalDeviceId, &serverAddressLength, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
+	if nil != err {
+		t.Fatal(err)
+	}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	var aarq AARQapdu
+
+	aarq.applicationContextName = tAsn1ObjectIdentifier([]uint32{2, 16, 756, 5, 8, 1, 1})
+
+	var buf bytes.Buffer
+	err := encode_AARQapdu(&buf, &aarq)
+	if nil != err {
+		t.Fatalf("encode_AARQapdu() failed")
+	}
+}
+*/
 
 func TestMeterHdlc_with_sec_5_AppConnect(t *testing.T) {
 	init_TestMeterHdlc_with_sec_5()

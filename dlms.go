@@ -1725,7 +1725,7 @@ func (req *DlmsInitiateRequest) encode(w io.Writer) (err error) {
 	}
 
 	// proposed-dlms-version-number Unsigned8,
-	err = binary.Write(w, binary.BigEndian, uint8(*req.proposedQualityOfService))
+	err = binary.Write(w, binary.BigEndian, uint8(req.proposedDlmsVersionNumber))
 	if nil != err {
 		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))
 		return err
@@ -1863,7 +1863,7 @@ func (req *DlmsInitiateRequest) decode(r io.Reader) (err error) {
 	return err
 }
 
-func (rep *DlmsInitiateResponse) encde(w io.Writer) (err error) {
+func (rep *DlmsInitiateResponse) encode(w io.Writer) (err error) {
 	err = binary.Write(w, binary.BigEndian, uint8(8)) // initiateResponse [8] IMPLICIT InitiateResponse,
 	if nil != err {
 		errorLog(fmt.Sprintf("binary.Write() failed, err: %s\n", err))

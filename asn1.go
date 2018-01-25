@@ -736,7 +736,7 @@ func der_decode_chunk(r io.Reader) (err error, _ch *t_der_chunk) {
 
 	// tag
 
-	if 0x1f == b[0] {
+	if 0x1f == b[0]&0x1F {
 		err, ch.asn1_tag = decode_uint32_base128(r)
 		if nil != err {
 			return err, nil

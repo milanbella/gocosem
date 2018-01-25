@@ -336,6 +336,122 @@ func TestDlms_print_DateTime(t *testing.T) {
 	t.Logf("%s", dateTime.PrintDateTime())
 }
 
+func TestDlms_encode_InitiateRequest(t *testing.T) {
+	var ireq DlmsInitiateRequest
+	// 01000000065F1F0400FFFFFF0200
+	var b = []byte{0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0xFF, 0xFF, 0xFF, 0x02, 0x00}
+	ireq.dedicatedKey = nil
+	ireq.responseAllowed = true
+	ireq.proposedQualityOfService = nil
+	ireq.proposedDlmsVersionNumber = 6
+	ireq.proposedConformance.bitsUnused = 0
+	ireq.proposedConformance.buf = []byte{0xFF, 0xFF, 0xFF}
+	ireq.clientMaxReceivePduSize = 0x0200
+
+	var buf bytes.Buffer
+	err := ireq.encode(&buf)
+	if nil != err {
+		t.Fatalf("DlmsInitiateRequest.encode() failed, err: %v", err)
+	}
+
+	bb := buf.Bytes()
+	if !bytes.Equal(bb, b) {
+		t.Fatalf("bytes don't match")
+	}
+	t.Logf("%0X", bb)
+
+}
+
+func TestDlms_decode_InitiateRequest(t *testing.T) {
+	var b = []byte{0x01, 0x00, 0x00, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0xFF, 0xFF, 0xFF, 0x02, 0x00}
+	buf := bytes.NewReader(b)
+
+	ireq := new(DlmsInitiateRequest)
+	err := ireq.decode(buf)
+	if nil != err {
+		t.Fatalf("DlmsInitiateRequest.decode() failed, err: %v", err)
+	}
+
+	if ireq.dedicatedKey != nil {
+		t.Fatalf("item does not match")
+	}
+	if ireq.responseAllowed != true {
+		t.Fatalf("item does not match")
+	}
+	if ireq.proposedQualityOfService != nil {
+		t.Fatalf("item does not match")
+	}
+	if ireq.proposedDlmsVersionNumber != 6 {
+		t.Fatalf("item does not match")
+	}
+	if ireq.proposedConformance.bitsUnused != 0 {
+		t.Fatalf("item does not match")
+	}
+	if !bytes.Equal(ireq.proposedConformance.buf, []byte{0xFF, 0xFF, 0xFF}) {
+		t.Fatalf("item does not match")
+	}
+	if ireq.clientMaxReceivePduSize != 0x0200 {
+		t.Fatalf("item does not match")
+	}
+}
+
+func TestDlms_encode_InitiateResponse(t *testing.T) {
+	var irep DlmsInitiateResponse
+	// 0800065F1F040000FE1D00EF0007
+	var b = []byte{0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
+
+	irep.negotiatedQualityOfService = nil
+	irep.negotiatedDlmsVersionNumber = 6
+	irep.negotiatedConformance.bitsUnused = 0
+	irep.negotiatedConformance.buf = []byte{0x00, 0xFE, 0x1D}
+	irep.serverMaxReceivePduSize = 0x00EF
+	irep.vaaName = 0x0007
+
+	var buf bytes.Buffer
+	err := irep.encode(&buf)
+	if nil != err {
+		t.Fatalf("DlmsInitiateResponse.encode() failed, err: %v", err)
+	}
+
+	bb := buf.Bytes()
+	if !bytes.Equal(bb, b) {
+		t.Fatalf("bytes don't match")
+	}
+	t.Logf("%0X", bb)
+
+}
+
+func TestDlms_decode_InitiateResponse(t *testing.T) {
+	var b = []byte{0x08, 0x00, 0x06, 0x5F, 0x1F, 0x04, 0x00, 0x00, 0xFE, 0x1D, 0x00, 0xEF, 0x00, 0x07}
+	buf := bytes.NewReader(b)
+
+	irep := new(DlmsInitiateResponse)
+	err := irep.decode(buf)
+	if nil != err {
+		t.Fatalf("DlmsInitiateResponse.decode() failed, err: %v", err)
+	}
+
+	if irep.negotiatedQualityOfService != nil {
+		t.Fatalf("item does not match")
+	}
+	if irep.negotiatedDlmsVersionNumber != 6 {
+		t.Fatalf("item does not match")
+	}
+	if irep.negotiatedConformance.bitsUnused != 0 {
+		t.Fatalf("item does not match")
+	}
+	if !bytes.Equal(irep.negotiatedConformance.buf, []byte{0x00, 0xFE, 0x1D}) {
+		t.Fatalf("item does not match")
+	}
+	if irep.serverMaxReceivePduSize != 0x00EF {
+		t.Fatalf("item does not match")
+	}
+	if irep.vaaName != 0x0007 {
+		t.Fatalf("item does not match")
+	}
+
+}
+
 func TestDlms_encode_GetRequestNormal(t *testing.T) {
 	b := []byte{
 		0x00, 0x01, 0x00, 0x00, 0x80, 0x00, 0x00, 0xFF, 0x02, 0x00}
