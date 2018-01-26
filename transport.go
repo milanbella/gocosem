@@ -845,6 +845,40 @@ func (dconn *DlmsConn) AppConnectRaw(applicationClient uint16, logicalDevice uin
 	}
 }
 
+func (dconn *DlmsConn) AppConnect(applicationClient uint16, logicalDevice uint16, invokeId uint8, aarq *AARQapdu) (aconn *AppConn, aare *AAREapdu, err error) {
+	var buf *bytes.Buffer
+
+	buf = new(bytes.Buffer)
+	err = encode_AARQapdu(buf, aarq)
+	if nil != err {
+		return nil, nil, err
+	}
+	aarqBytes := buf.Bytes()
+
+	err = dconn.transportSend(applicationClient, logicalDevice, aarqBytes)
+	if nil != err {
+		return nil, nil, err
+	}
+	pdu, err := dconn.transportReceive(logicalDevice, applicationClient)
+	if nil != err {
+		return nil, nil, err
+	}
+
+	buf = bytes.NewBuffer(pdu)
+	err, aare = decode_AAREapdu(buf)
+	if nil != err {
+		return nil, nil, err
+	}
+
+	if aare.result != 0 {
+		err = fmt.Errorf("AARE.result: %v", aare.result)
+		return nil, aare, err
+	} else {
+		aconn = NewAppConn(dconn, applicationClient, logicalDevice, invokeId)
+		return aconn, aare, nil
+	}
+}
+
 func TcpConnect(ipAddr string, port int) (dconn *DlmsConn, err error) {
 	var (
 		conn net.Conn

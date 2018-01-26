@@ -2067,10 +2067,17 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		}
 
 		if HdlcDebug {
+			pb := make([]byte, 3+len(p))
+			pb[0] = 0x7E
+			pb[1] = b0
+			pb[2] = b1
+			copy(pb[3:], p)
 			if htran.client {
-				fmt.Printf("client_inbound: 7E % 0X % 0X % 0X\n", b0, b1, p)
+				//fmt.Printf("client_inbound: 7E %0X %0X% 0X\n", b0, b1, p)
+				fmt.Printf("client_inbound: % 0X\n", pb)
 			} else {
-				fmt.Printf("server_inbound: 7E % 0X % 0X % 0X\n", b0, b1, p)
+				//fmt.Printf("server_inbound: 7E %0X %0X% 0X\n", b0, b1, p)
+				fmt.Printf("server_inbound: % 0X\n", pb)
 			}
 		}
 
