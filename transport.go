@@ -730,7 +730,74 @@ func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalD
 
 }
 
-func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logicalDevice uint16, invokeId uint8, authenticationKey []byte, encryptionKey []byte, applicationContextName []uint32, callingAPtitle []byte, clientToServerChallenge string, userInformation []byte) (aconn *AppConn, err error) {
+func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logicalDevice uint16, invokeId uint8, authenticationKey []byte, encryptionKey []byte, applicationContextName []uint32, callingAPtitle []byte, clientToServerChallenge string, initiateRequest *DlmsInitiateRequest, frameCounter uint32) (aconn *AppConn, initiateResponse *DlmsInitiateResponse, err error) {
+
+	var buf *bytes.Buffer
+
+	// encode and encrypt initiateRequest
+
+	var userInformation []byte
+
+	buf = new(bytes.Buffer)
+	err = initiateRequest.encode(buf)
+	if nil != err {
+		return nil, nil, err
+	}
+	initiateRequestBytes := buf.Bytes()
+
+	// enforce 128 bit keys
+	if len(dconn.AK) != 16 {
+		err = fmt.Errorf("authentication key length is not 16")
+		errorLog("%s", err)
+		return nil, nil, err
+	}
+	if len(dconn.EK) != 16 {
+		err = fmt.Errorf("encryption key length is not 16")
+		errorLog("%s", err)
+		return nil, nil, err
+	}
+
+	// return back to server encrypted StoC challenge to let server authenticate client first
+
+	// security control
+	SC := byte(0x30) // security control
+
+	// frame counter
+	FC := make([]byte, 4)
+	FC[0] = byte(frameCounter >> 24 & 0xFF)
+	FC[1] = byte(frameCounter >> 16 & 0xFF)
+	FC[2] = byte(frameCounter >> 8 & 0xFF)
+	FC[3] = byte(frameCounter & 0xFF)
+
+	dconn.clientSystemTitle = callingAPtitle
+
+	// initialization vector
+	IV := make([]byte, 12) // initialization vector
+	if len(dconn.clientSystemTitle) != 8 {
+		err = fmt.Errorf("system title length is not 8")
+		errorLog("%s", err)
+		return nil, nil, err
+	}
+	copy(IV, dconn.clientSystemTitle)
+	copy(IV[len(dconn.clientSystemTitle):], FC)
+
+	// additional authenticated data
+	AAD := make([]byte, 1+len(dconn.AK))
+	AAD[0] = SC
+	copy(AAD[1:], dconn.AK)
+
+	err, initiateRequestBytesEncrypted, authTag := aesgcm(dconn.EK, IV, AAD, initiateRequestBytes, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	userInformation = make([]byte, 1+1+1+4+len(initiateRequestBytesEncrypted)+len(authTag)) // glo-initiateRequest tag + LEN + SC + frameCounter + code + authTag
+	userInformation[0] = 33                                                                 // glo-initiateRequest
+	userInformation[1] = uint8(len(userInformation) - 1)
+	userInformation[2] = SC
+	copy(userInformation[3:], FC)
+	copy(userInformation[3+len(FC):], initiateRequestBytesEncrypted)
+	copy(userInformation[3+len(FC)+len(initiateRequestBytesEncrypted):], authTag)
 
 	var aarq AARQapdu
 
@@ -747,70 +814,132 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	aarq.mechanismName = &mechanismName
 	aarq.callingAuthenticationValue = new(tAsn1Choice)
 	aarq.callingAuthenticationValue.setVal(0, tAsn1GraphicString([]byte(clientToServerChallenge)))
+
 	_userInformation := tAsn1OctetString(userInformation)
 	aarq.userInformation = &_userInformation
 
-	var buf *bytes.Buffer
 	buf = new(bytes.Buffer)
 	err = encode_AARQapdu(buf, &aarq)
 	if nil != err {
-		return nil, err
+		return nil, nil, err
 	}
 	pdu := buf.Bytes()
 
 	err = dconn.transportSend(applicationClient, logicalDevice, pdu)
 	if nil != err {
-		return nil, err
+		return nil, nil, err
 	}
 	pdu, err = dconn.transportReceive(logicalDevice, applicationClient)
 	if nil != err {
-		return nil, err
+		return nil, nil, err
 	}
 
 	buf = bytes.NewBuffer(pdu)
 	err, aare := decode_AAREapdu(buf)
 	if nil != err {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// verify AARE
 
+	dconn.serverSystemTitle = ([]byte)(*aare.respondingAPtitle)
+
+	// decrypt and decode initiateResponse
+
+	userInformation = ([]byte)(*aare.userInformation)
+
+	// glo-initiateResponse [40] IMPLICIT OCTET STRING,
+	if 40 != userInformation[0] {
+		err = fmt.Errorf("wrong tag for initiateResponse")
+		return nil, nil, err
+	}
+	SC = userInformation[2]
+	if 0x30 != SC {
+		err = fmt.Errorf("wrong tag for initiateResponse")
+		return nil, nil, err
+	}
+	copy(FC, userInformation[3:4])
+	frameCounter = 0
+	frameCounter |= uint32(FC[0]) << 3
+	frameCounter |= uint32(FC[1]) << 2
+	frameCounter |= uint32(FC[2]) << 1
+	frameCounter |= uint32(FC[3]) << 0
+
+	// initialization vector
+	if len(dconn.serverSystemTitle) != 8 {
+		err = fmt.Errorf("system title length is not 8")
+		errorLog("%s", err)
+		return nil, nil, err
+	}
+	copy(IV, dconn.serverSystemTitle)
+	copy(IV[len(dconn.serverSystemTitle):], FC)
+
+	// additional authenticated data
+	AAD = make([]byte, 1+len(dconn.AK))
+	AAD[0] = SC
+	copy(AAD[1:], dconn.AK)
+
+	initiateResponseBytesEncrypted := userInformation[1+1+1+4 : len(userInformation)-(1+1+1+4)-GCM_TAG_LEN]
+
+	err, initiateResponseBytes, authTag := aesgcm(dconn.EK, IV, AAD, initiateResponseBytesEncrypted, 1)
+	if err != nil {
+		return nil, nil, err
+	}
+	receivedAuthTag := pdu[len(userInformation)-GCM_TAG_LEN-1 : GCM_TAG_LEN]
+
+	if len(authTag) != len(receivedAuthTag) {
+		err = fmt.Errorf("unexpected authentication tag")
+		errorLog("%s", err)
+		return nil, nil, err
+	}
+	for i := 0; i < len(receivedAuthTag); i++ {
+		if authTag[i] != receivedAuthTag[i] {
+			err = fmt.Errorf("unexpected authentication tag")
+			errorLog("%s", err)
+			return nil, nil, err
+		}
+	}
+
+	initiateResponse = new(DlmsInitiateResponse)
+	err = initiateResponse.decode(bytes.NewReader(initiateResponseBytes))
+	if nil != err {
+		return nil, nil, err
+	}
+
 	if aare.result != 0 {
 		err = fmt.Errorf("app connect failed: verify AARE: result %v", aare.result)
 		errorLog("%s", err)
-		return nil, err
+		return nil, nil, err
 	}
 	if !(aare.resultSourceDiagnostic.tag == 1 && aare.resultSourceDiagnostic.val.(tAsn1Integer) == tAsn1Integer(14)) { // 14 - authentication-required
 		err = fmt.Errorf("app connect failed: verify AARE: meter did not require authentication")
 		errorLog("%s", err)
-		return nil, err
+		return nil, nil, err
 	}
 	if aare.mechanismName == nil {
 		err = fmt.Errorf("app connect failed: verify AARE: meter did not require expected authentication mechanism id: mechanism_id(5)")
 		errorLog("%s", err)
-		return nil, err
+		return nil, nil, err
 	}
 	oi := ([]uint32)(*aare.mechanismName)
 	if !(oi[0] == 2 && oi[1] == 16 && oi[2] == 756 && oi[3] == 5 && oi[4] == 8 && oi[5] == 2 && oi[6] == 5) {
 		err = fmt.Errorf("app connect failed: verify AARE: meter did not require expected authentication mechanism id: mechanism_id(5)")
 		errorLog("%s", err)
-		return nil, err
+		return nil, nil, err
 	}
 	if aare.respondingAPtitle == nil {
 		err = fmt.Errorf("app connect failed: verify AARE: meter did not send respondingAPtitle")
 		errorLog("%s", err)
-		return nil, err
+		return nil, nil, err
 	}
 
-	dconn.clientSystemTitle = callingAPtitle
-	dconn.serverSystemTitle = ([]byte)(*aare.respondingAPtitle)
 	dconn.authenticationMechanismId = high_level_security_mechanism_using_GMAC
 	if aare.respondingAuthenticationValue.tag == 0 {
 		dconn.serverToClientChallenge = string(aare.respondingAuthenticationValue.val.(tAsn1GraphicString))
 	} else {
 		err = fmt.Errorf("app connect failed: AARE: meter did not send client to server challenge")
 		errorLog("%s", err)
-		return nil, err
+		return nil, nil, err
 	}
 
 	dconn.AK = authenticationKey
@@ -820,10 +949,10 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 
 	err = aconn.doChallengeClientSide_for_high_level_security_mechanism_using_GMAC()
 	if nil != err {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return aconn, nil
+	return aconn, initiateResponse, nil
 
 }
 
