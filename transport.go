@@ -62,8 +62,7 @@ type DlmsConn struct {
 	authenticationMechanismId int
 	AK                        []byte // authentication key
 	EK                        []byte // encryption key
-	frameCounterSend          uint32
-	frameCounterReceive       uint32
+	frameCounter              uint32
 	clientToServerChallenge   string
 	serverToClientChallenge   string
 }
@@ -157,8 +156,6 @@ func hdlcTransportSend(rwc io.ReadWriteCloser, pdu []byte) error {
 
 func (dconn *DlmsConn) transportSend(src uint16, dst uint16, pdu []byte) (err error) {
 	debugLog("trnasport type: %d, src: %d, dst: %d\n", dconn.transportType, src, dst)
-
-	dconn.frameCounterSend += 1
 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 		err, pdu = dconn.decryptPdu(pdu)
@@ -254,8 +251,6 @@ func hdlcTransportReceive(rwc io.ReadWriteCloser) (pdu []byte, err error) {
 
 func (dconn *DlmsConn) transportReceive(src uint16, dst uint16) (pdu []byte, err error) {
 	debugLog("trnascport type: %d\n", dconn.transportType)
-
-	dconn.frameCounterReceive += 1
 
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
 		pdu, _, _, err = ipTransportReceive(dconn.rwc, &src, &dst)
@@ -387,18 +382,6 @@ func gloTagToCosemTag(tag1 byte) (err error, tag byte) {
 
 func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 
-	// enforce 128 bit keys
-	if len(dconn.AK) != 16 {
-		err = fmt.Errorf("authentication key length is not 16")
-		errorLog("%s", err)
-		return err, nil
-	}
-	if len(dconn.EK) != 16 {
-		err = fmt.Errorf("encryption key length is not 16")
-		errorLog("%s", err)
-		return err, nil
-	}
-
 	// tag
 	err, tag := cosemTagToGloTag(pdu[0])
 	if nil != err {
@@ -410,10 +393,10 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 
 	// frame counter
 	FC := make([]byte, 4)
-	FC[0] = byte(dconn.frameCounterSend >> 24 & 0xFF)
-	FC[1] = byte(dconn.frameCounterSend >> 16 & 0xFF)
-	FC[2] = byte(dconn.frameCounterSend >> 8 & 0xFF)
-	FC[3] = byte(dconn.frameCounterSend & 0xFF)
+	FC[0] = byte(dconn.frameCounter >> 24 & 0xFF)
+	FC[1] = byte(dconn.frameCounter >> 16 & 0xFF)
+	FC[2] = byte(dconn.frameCounter >> 8 & 0xFF)
+	FC[3] = byte(dconn.frameCounter & 0xFF)
 
 	// initialization vector
 	IV := make([]byte, 12) // initialization vector
@@ -451,18 +434,6 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 }
 
 func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
-	// enforce 128 bit keys
-	if len(dconn.AK) != 16 {
-		err = fmt.Errorf("authentication key length is not 16")
-		errorLog("%s", err)
-		return err, nil
-	}
-	if len(dconn.EK) != 16 {
-		err = fmt.Errorf("encryption key length is not 16")
-		errorLog("%s", err)
-		return err, nil
-	}
-
 	// tag
 	err, _ = gloTagToCosemTag(pdu[0])
 	if nil != err {
@@ -486,11 +457,7 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 	frameCounter |= uint32(pdu[4]) << 16
 	frameCounter |= uint32(pdu[5]) << 8
 	frameCounter |= uint32(pdu[6])
-	if dconn.frameCounterReceive != frameCounter {
-		err = fmt.Errorf("received unexpected out of sequence frame")
-		errorLog("%s", err)
-		return err, nil
-	}
+	frameCounter = frameCounter
 	FC := pdu[3:4]
 
 	// initialization vector
@@ -509,7 +476,7 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 	copy(AAD[1:], dconn.AK)
 
 	ciphertext := pdu[3+4 : len(pdu)-GCM_TAG_LEN]
-	receivedAuthTag := pdu[len(pdu)-GCM_TAG_LEN-1 : GCM_TAG_LEN]
+	receivedAuthTag := pdu[len(pdu)-(3+4)-GCM_TAG_LEN-1 : GCM_TAG_LEN]
 
 	err, dpdu, authTag := aesgcm(dconn.EK, IV, AAD, ciphertext, 1)
 	if err != nil {
@@ -563,18 +530,6 @@ func (dconn *DlmsConn) decryptPdu(pdu []byte) (err error, dpdu []byte) {
 func (aconn *AppConn) doChallengeClientSide_for_high_level_security_mechanism_using_GMAC() (err error) {
 	dconn := aconn.dconn
 
-	// enforce 128 bit keys
-	if len(dconn.AK) != 16 {
-		err = fmt.Errorf("authentication key length is not 16")
-		errorLog("%s", err)
-		return err
-	}
-	if len(dconn.EK) != 16 {
-		err = fmt.Errorf("encryption key length is not 16")
-		errorLog("%s", err)
-		return err
-	}
-
 	// return back to server encrypted StoC challenge to let server authenticate client first
 
 	// security control
@@ -582,10 +537,10 @@ func (aconn *AppConn) doChallengeClientSide_for_high_level_security_mechanism_us
 
 	// frame counter
 	FC := make([]byte, 4)
-	FC[0] = byte(dconn.frameCounterSend >> 24 & 0xFF)
-	FC[1] = byte(dconn.frameCounterSend >> 16 & 0xFF)
-	FC[2] = byte(dconn.frameCounterSend >> 8 & 0xFF)
-	FC[3] = byte(dconn.frameCounterSend & 0xFF)
+	FC[0] = byte(dconn.frameCounter >> 24 & 0xFF)
+	FC[1] = byte(dconn.frameCounter >> 16 & 0xFF)
+	FC[2] = byte(dconn.frameCounter >> 8 & 0xFF)
+	FC[3] = byte(dconn.frameCounter & 0xFF)
 
 	// initialization vector
 	IV := make([]byte, 12) // initialization vector
@@ -656,6 +611,14 @@ func (aconn *AppConn) doChallengeClientSide_for_high_level_security_mechanism_us
 
 	// frame counter
 	FC = data[1:4]
+	frameCounter := uint32(0)
+	frameCounter |= uint32(FC[0]) << 3
+	frameCounter |= uint32(FC[1]) << 2
+	frameCounter |= uint32(FC[2]) << 1
+	frameCounter |= uint32(FC[3]) << 0
+	dconn.frameCounter = frameCounter
+
+	// auth tag
 	authTagReceived := data[4:]
 
 	// initialization vector
@@ -736,6 +699,10 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 
 	// encode and encrypt initiateRequest
 
+	dconn.frameCounter = frameCounter
+	dconn.AK = authenticationKey
+	dconn.EK = encryptionKey
+
 	var userInformation []byte
 
 	buf = new(bytes.Buffer)
@@ -764,10 +731,10 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 
 	// frame counter
 	FC := make([]byte, 4)
-	FC[0] = byte(frameCounter >> 24 & 0xFF)
-	FC[1] = byte(frameCounter >> 16 & 0xFF)
-	FC[2] = byte(frameCounter >> 8 & 0xFF)
-	FC[3] = byte(frameCounter & 0xFF)
+	FC[0] = byte(dconn.frameCounter >> 24 & 0xFF)
+	FC[1] = byte(dconn.frameCounter >> 16 & 0xFF)
+	FC[2] = byte(dconn.frameCounter >> 8 & 0xFF)
+	FC[3] = byte(dconn.frameCounter & 0xFF)
 
 	dconn.clientSystemTitle = callingAPtitle
 
@@ -793,7 +760,7 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 
 	userInformation = make([]byte, 1+1+1+4+len(initiateRequestBytesEncrypted)+len(authTag)) // glo-initiateRequest tag + LEN + SC + frameCounter + code + authTag
 	userInformation[0] = 33                                                                 // glo-initiateRequest
-	userInformation[1] = uint8(len(userInformation) - 1)
+	userInformation[1] = uint8(len(userInformation) - 2)
 	userInformation[2] = SC
 	copy(userInformation[3:], FC)
 	copy(userInformation[3+len(FC):], initiateRequestBytesEncrypted)
@@ -844,6 +811,42 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 
 	dconn.serverSystemTitle = ([]byte)(*aare.respondingAPtitle)
 
+	if aare.result != 0 {
+		err = fmt.Errorf("app connect failed: verify AARE: result %v", aare.result)
+		errorLog("%s", err)
+		return nil, nil, err
+	}
+	if !(aare.resultSourceDiagnostic.tag == 1 && aare.resultSourceDiagnostic.val.(tAsn1Integer) == tAsn1Integer(14)) { // 14 - authentication-required
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not require authentication")
+		errorLog("%s", err)
+		return nil, nil, err
+	}
+	if aare.mechanismName == nil {
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not require expected authentication mechanism id: mechanism_id(5)")
+		errorLog("%s", err)
+		return nil, nil, err
+	}
+	oi := ([]uint32)(*aare.mechanismName)
+	if !(oi[0] == 2 && oi[1] == 16 && oi[2] == 756 && oi[3] == 5 && oi[4] == 8 && oi[5] == 2 && oi[6] == 5) {
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not require expected authentication mechanism id: mechanism_id(5)")
+		errorLog("%s", err)
+		return nil, nil, err
+	}
+	if aare.respondingAPtitle == nil {
+		err = fmt.Errorf("app connect failed: verify AARE: meter did not send respondingAPtitle")
+		errorLog("%s", err)
+		return nil, nil, err
+	}
+
+	dconn.authenticationMechanismId = high_level_security_mechanism_using_GMAC
+	if aare.respondingAuthenticationValue.tag == 0 {
+		dconn.serverToClientChallenge = string(aare.respondingAuthenticationValue.val.(tAsn1GraphicString))
+	} else {
+		err = fmt.Errorf("app connect failed: AARE: meter did not send client to server challenge")
+		errorLog("%s", err)
+		return nil, nil, err
+	}
+
 	// decrypt and decode initiateResponse
 
 	userInformation = ([]byte)(*aare.userInformation)
@@ -864,6 +867,7 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	frameCounter |= uint32(FC[1]) << 2
 	frameCounter |= uint32(FC[2]) << 1
 	frameCounter |= uint32(FC[3]) << 0
+	dconn.frameCounter = frameCounter
 
 	// initialization vector
 	if len(dconn.serverSystemTitle) != 8 {
@@ -905,45 +909,6 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	if nil != err {
 		return nil, nil, err
 	}
-
-	if aare.result != 0 {
-		err = fmt.Errorf("app connect failed: verify AARE: result %v", aare.result)
-		errorLog("%s", err)
-		return nil, nil, err
-	}
-	if !(aare.resultSourceDiagnostic.tag == 1 && aare.resultSourceDiagnostic.val.(tAsn1Integer) == tAsn1Integer(14)) { // 14 - authentication-required
-		err = fmt.Errorf("app connect failed: verify AARE: meter did not require authentication")
-		errorLog("%s", err)
-		return nil, nil, err
-	}
-	if aare.mechanismName == nil {
-		err = fmt.Errorf("app connect failed: verify AARE: meter did not require expected authentication mechanism id: mechanism_id(5)")
-		errorLog("%s", err)
-		return nil, nil, err
-	}
-	oi := ([]uint32)(*aare.mechanismName)
-	if !(oi[0] == 2 && oi[1] == 16 && oi[2] == 756 && oi[3] == 5 && oi[4] == 8 && oi[5] == 2 && oi[6] == 5) {
-		err = fmt.Errorf("app connect failed: verify AARE: meter did not require expected authentication mechanism id: mechanism_id(5)")
-		errorLog("%s", err)
-		return nil, nil, err
-	}
-	if aare.respondingAPtitle == nil {
-		err = fmt.Errorf("app connect failed: verify AARE: meter did not send respondingAPtitle")
-		errorLog("%s", err)
-		return nil, nil, err
-	}
-
-	dconn.authenticationMechanismId = high_level_security_mechanism_using_GMAC
-	if aare.respondingAuthenticationValue.tag == 0 {
-		dconn.serverToClientChallenge = string(aare.respondingAuthenticationValue.val.(tAsn1GraphicString))
-	} else {
-		err = fmt.Errorf("app connect failed: AARE: meter did not send client to server challenge")
-		errorLog("%s", err)
-		return nil, nil, err
-	}
-
-	dconn.AK = authenticationKey
-	dconn.EK = encryptionKey
 
 	aconn = NewAppConn(dconn, applicationClient, logicalDevice, invokeId)
 
@@ -1119,4 +1084,35 @@ func (dconn *DlmsConn) Close() (err error) {
 		return err
 	}
 	return ErrUnknownTransport
+}
+
+func (dconn *DlmsConn) CloseWait() (ch chan error) {
+	debugLog("closing transport connection")
+	ch = make(chan error, 1)
+
+	switch dconn.transportType {
+	case Transport_TCP:
+		dconn.rwc.Close()
+		ch <- nil
+	case Transport_HDLC:
+		// send DISC
+		ch <- dconn.HdlcClient.SendDISC()
+		select {
+		case err := <-ch:
+			if nil != err {
+				errorLog("SendDISC() failed: %v", err)
+			}
+			ch <- err
+		case <-time.After(dconn.discTimeout):
+			errorLog("SendDISC(): error timeout")
+			err := ErrDlmsTimeout
+			ch <- err
+		}
+		dconn.hdlcRwc.Close()
+		dconn.HdlcClient.Close()
+	default:
+		errorLog("unknown transport")
+		ch <- ErrUnknownTransport
+	}
+	return ch
 }
