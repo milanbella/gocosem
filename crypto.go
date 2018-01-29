@@ -39,7 +39,7 @@ func aesgcm(key []byte, IV []byte, adata []byte, pdu []byte, direction int) (err
 	defer C.free(copdu)
 
 	var res C.int
-	if !(direction == 0) || (direction == 1) {
+	if !(direction == 0 || direction == 1) {
 		err = fmt.Errorf("wrogn direction parameter: use 0 for encrypt, 1 for decrypt")
 		errorLog("%s", err)
 		return err, nil, nil

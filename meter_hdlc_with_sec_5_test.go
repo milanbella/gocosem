@@ -246,36 +246,28 @@ func TestMeterHdlc_with_sec_5_AppConnect(t *testing.T) {
 	frameCounter := data1.Val.(uint32)
 	t.Logf("frame counter value: %d", frameCounter)
 
-	ch := dconn.CloseWait()
+	dconn.Close()
 
-	var doTest = func() {
+	// connect application again with high security
 
-		// connect application
+	applicationClient = uint16(3)
+	logicalDevice = uint16(1)
+	physicalDeviceId = uint16(37)
+	serverAddressLength = int(4)
 
-		applicationClient = uint16(3)
-		logicalDevice = uint16(1)
-		physicalDeviceId = uint16(37)
-		serverAddressLength = int(4)
-
-		dconn, err = HdlcConnect(testMeterIp, 4059, applicationClient, logicalDevice, &physicalDeviceId, &serverAddressLength, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
-		if nil != err {
-			t.Fatal(err)
-		}
-		t.Logf("transport connected")
-		defer dconn.Close()
-
-		aconn, _, err = dconn.AppConnectWithSecurity5(applicationClient, logicalDevice, 0x0C, []byte{0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDE, 0xDF}, []byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}, []uint32{2, 16, 756, 5, 8, 1, 3}, []byte{0x4D, 0x45, 0x4C, 0x00, 0x00, 0x00, 0x00, 0x00}, "ZDXO2;66", &initiateRequest, frameCounter)
-		if nil != err {
-			t.Fatal(err)
-		}
+	dconn, err = HdlcConnect(testMeterIp, 4059, applicationClient, logicalDevice, &physicalDeviceId, &serverAddressLength, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
+	if nil != err {
+		t.Fatal(err)
 	}
-	select {
-	case err = <-ch:
-		if nil == err {
-			doTest()
-		} else {
-			t.Fatal(err)
-		}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	aconn, _, err = dconn.AppConnectWithSecurity5(applicationClient, logicalDevice, 0x0C,
+		[]byte{0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF},
+		[]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F},
+		[]uint32{2, 16, 756, 5, 8, 1, 3}, []byte{0x4D, 0x45, 0x4C, 0x00, 0x00, 0x00, 0x00, 0x00}, "ZDXO2;66", &initiateRequest, frameCounter)
+	if nil != err {
+		t.Fatal(err)
 	}
 
 }

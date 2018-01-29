@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -50,6 +51,8 @@ type tWrapperHeader struct {
 }*/
 
 type DlmsConn struct {
+	closed                    bool
+	closedMutex               sync.Mutex
 	rwc                       io.ReadWriteCloser
 	hdlcRwc                   io.ReadWriteCloser // stream used by hdlc transport for sending and reading HDLC frames
 	HdlcClient                *HdlcTransport
@@ -392,6 +395,7 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 	SC := byte(0x30) // security control
 
 	// frame counter
+	dconn.frameCounter += 1
 	FC := make([]byte, 4)
 	FC[0] = byte(dconn.frameCounter >> 24 & 0xFF)
 	FC[1] = byte(dconn.frameCounter >> 16 & 0xFF)
@@ -457,7 +461,7 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 	frameCounter |= uint32(pdu[4]) << 16
 	frameCounter |= uint32(pdu[5]) << 8
 	frameCounter |= uint32(pdu[6])
-	frameCounter = frameCounter
+	dconn.frameCounter = frameCounter
 	FC := pdu[3:4]
 
 	// initialization vector
@@ -476,7 +480,7 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 	copy(AAD[1:], dconn.AK)
 
 	ciphertext := pdu[3+4 : len(pdu)-GCM_TAG_LEN]
-	receivedAuthTag := pdu[len(pdu)-(3+4)-GCM_TAG_LEN-1 : GCM_TAG_LEN]
+	receivedAuthTag := pdu[len(pdu)-(3+4)-GCM_TAG_LEN:]
 
 	err, dpdu, authTag := aesgcm(dconn.EK, IV, AAD, ciphertext, 1)
 	if err != nil {
@@ -536,6 +540,7 @@ func (aconn *AppConn) doChallengeClientSide_for_high_level_security_mechanism_us
 	SC := byte(0x30) // security control
 
 	// frame counter
+	dconn.frameCounter += 1
 	FC := make([]byte, 4)
 	FC[0] = byte(dconn.frameCounter >> 24 & 0xFF)
 	FC[1] = byte(dconn.frameCounter >> 16 & 0xFF)
@@ -699,7 +704,6 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 
 	// encode and encrypt initiateRequest
 
-	dconn.frameCounter = frameCounter
 	dconn.AK = authenticationKey
 	dconn.EK = encryptionKey
 
@@ -730,6 +734,7 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	SC := byte(0x30) // security control
 
 	// frame counter
+	dconn.frameCounter = frameCounter + 1
 	FC := make([]byte, 4)
 	FC[0] = byte(dconn.frameCounter >> 24 & 0xFF)
 	FC[1] = byte(dconn.frameCounter >> 16 & 0xFF)
@@ -753,10 +758,12 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	AAD[0] = SC
 	copy(AAD[1:], dconn.AK)
 
+	debugLog("AppConnectWithSecurity5(): initiate request: % 0X", initiateRequestBytes)
 	err, initiateRequestBytesEncrypted, authTag := aesgcm(dconn.EK, IV, AAD, initiateRequestBytes, 0)
 	if err != nil {
 		return nil, nil, err
 	}
+	debugLog("AppConnectWithSecurity5(): initiate request encrypted: % 0X", initiateRequestBytesEncrypted)
 
 	userInformation = make([]byte, 1+1+1+4+len(initiateRequestBytesEncrypted)+len(authTag)) // glo-initiateRequest tag + LEN + SC + frameCounter + code + authTag
 	userInformation[0] = 33                                                                 // glo-initiateRequest
@@ -765,6 +772,7 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	copy(userInformation[3:], FC)
 	copy(userInformation[3+len(FC):], initiateRequestBytesEncrypted)
 	copy(userInformation[3+len(FC)+len(initiateRequestBytesEncrypted):], authTag)
+	debugLog("AppConnectWithSecurity5(): AARQ.user_information: % 0X", userInformation)
 
 	var aarq AARQapdu
 
@@ -809,8 +817,6 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 
 	// verify AARE
 
-	dconn.serverSystemTitle = ([]byte)(*aare.respondingAPtitle)
-
 	if aare.result != 0 {
 		err = fmt.Errorf("app connect failed: verify AARE: result %v", aare.result)
 		errorLog("%s", err)
@@ -838,6 +844,8 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 		return nil, nil, err
 	}
 
+	dconn.serverSystemTitle = ([]byte)(*aare.respondingAPtitle)
+
 	dconn.authenticationMechanismId = high_level_security_mechanism_using_GMAC
 	if aare.respondingAuthenticationValue.tag == 0 {
 		dconn.serverToClientChallenge = string(aare.respondingAuthenticationValue.val.(tAsn1GraphicString))
@@ -851,6 +859,8 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 
 	userInformation = ([]byte)(*aare.userInformation)
 
+	debugLog("AppConnectWithSecurity5(): AARE.user_information: % 0X", userInformation)
+
 	// glo-initiateResponse [40] IMPLICIT OCTET STRING,
 	if 40 != userInformation[0] {
 		err = fmt.Errorf("wrong tag for initiateResponse")
@@ -861,13 +871,13 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 		err = fmt.Errorf("wrong tag for initiateResponse")
 		return nil, nil, err
 	}
-	copy(FC, userInformation[3:4])
+	copy(FC, userInformation[3:3+4])
 	frameCounter = 0
 	frameCounter |= uint32(FC[0]) << 3
 	frameCounter |= uint32(FC[1]) << 2
 	frameCounter |= uint32(FC[2]) << 1
 	frameCounter |= uint32(FC[3]) << 0
-	dconn.frameCounter = frameCounter
+	debugLog("@@@@@@@@@@@@@@@@@@ frameCounter: %d", frameCounter)
 
 	// initialization vector
 	if len(dconn.serverSystemTitle) != 8 {
@@ -883,13 +893,18 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	AAD[0] = SC
 	copy(AAD[1:], dconn.AK)
 
-	initiateResponseBytesEncrypted := userInformation[1+1+1+4 : len(userInformation)-(1+1+1+4)-GCM_TAG_LEN]
+	debugLog("@@@@@@@@@@@@@@@@@@ userInformation: % 0X", userInformation)
+	initiateResponseBytesEncrypted := userInformation[1+1+1+4 : len(userInformation)-GCM_TAG_LEN]
+	debugLog("@@@@@@@@@@@@@@@@@@ initiateResponseBytesEncrypted: % 0X", initiateResponseBytesEncrypted)
 
 	err, initiateResponseBytes, authTag := aesgcm(dconn.EK, IV, AAD, initiateResponseBytesEncrypted, 1)
 	if err != nil {
 		return nil, nil, err
 	}
-	receivedAuthTag := pdu[len(userInformation)-GCM_TAG_LEN-1 : GCM_TAG_LEN]
+	receivedAuthTag := userInformation[len(userInformation)-GCM_TAG_LEN:]
+	debugLog("@@@@@@@@@@@@@@@@@@ receivedAuthTag: % 0X", receivedAuthTag)
+	debugLog("@@@@@@@@@@@@@@@@@@ initiateResponseBytes: % 0X", initiateResponseBytes)
+	debugLog("@@@@@@@@@@@@@@@@@@ authTag: % 0X", authTag)
 
 	if len(authTag) != len(receivedAuthTag) {
 		err = fmt.Errorf("unexpected authentication tag")
@@ -1060,59 +1075,35 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 func (dconn *DlmsConn) Close() (err error) {
 	debugLog("closing transport connection")
 
-	switch dconn.transportType {
-	case Transport_TCP:
-		dconn.rwc.Close()
-		return nil
-	case Transport_HDLC:
-		// send DISC
-		ch := make(chan error, 1)
-		go func() {
-			ch <- dconn.HdlcClient.SendDISC()
-		}()
-		select {
-		case err = <-ch:
-			if nil != err {
-				errorLog("SendDISC() failed: %v", err)
+	dconn.closedMutex.Lock()
+	if !dconn.closed {
+		switch dconn.transportType {
+		case Transport_TCP:
+			dconn.rwc.Close()
+		case Transport_HDLC:
+			// send DISC
+			ch := make(chan error, 1)
+			go func() {
+				ch <- dconn.HdlcClient.SendDISC()
+			}()
+			select {
+			case err = <-ch:
+				if nil != err {
+					errorLog("SendDISC() failed: %v", err)
+				}
+			case <-time.After(dconn.discTimeout):
+				errorLog("SendDISC(): error timeout")
+				err = ErrDlmsTimeout
 			}
-		case <-time.After(dconn.discTimeout):
-			errorLog("SendDISC(): error timeout")
-			err = ErrDlmsTimeout
+			dconn.hdlcRwc.Close()
+			dconn.HdlcClient.Close()
+		default:
+			err = ErrUnknownTransport
 		}
-		dconn.hdlcRwc.Close()
-		dconn.HdlcClient.Close()
-		return err
+		dconn.closed = true
+	} else {
+		warnLog("DlmsConn.Close(): connection already closed")
 	}
-	return ErrUnknownTransport
-}
-
-func (dconn *DlmsConn) CloseWait() (ch chan error) {
-	debugLog("closing transport connection")
-	ch = make(chan error, 1)
-
-	switch dconn.transportType {
-	case Transport_TCP:
-		dconn.rwc.Close()
-		ch <- nil
-	case Transport_HDLC:
-		// send DISC
-		ch <- dconn.HdlcClient.SendDISC()
-		select {
-		case err := <-ch:
-			if nil != err {
-				errorLog("SendDISC() failed: %v", err)
-			}
-			ch <- err
-		case <-time.After(dconn.discTimeout):
-			errorLog("SendDISC(): error timeout")
-			err := ErrDlmsTimeout
-			ch <- err
-		}
-		dconn.hdlcRwc.Close()
-		dconn.HdlcClient.Close()
-	default:
-		errorLog("unknown transport")
-		ch <- ErrUnknownTransport
-	}
-	return ch
+	dconn.closedMutex.Unlock()
+	return err
 }
