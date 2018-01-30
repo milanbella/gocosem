@@ -657,7 +657,6 @@ func (aconn *AppConn) doChallengeClientSide_for_high_level_security_mechanism_us
 	}
 
 	debugLog("server authenticated")
-	dconn.authenticationMechanismId = high_level_security_mechanism_using_GMAC
 	return nil
 }
 
@@ -923,6 +922,7 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	if nil != err {
 		return nil, nil, err
 	}
+	dconn.authenticationMechanismId = high_level_security_mechanism_using_GMAC
 
 	return aconn, initiateResponse, nil
 
