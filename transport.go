@@ -65,7 +65,7 @@ type DlmsConn struct {
 	authenticationMechanismId int
 	AK                        []byte // authentication key
 	EK                        []byte // encryption key
-	frameCounter              uint32
+	sendFrameCounter          uint32
 	clientToServerChallenge   string
 	serverToClientChallenge   string
 }
@@ -395,12 +395,12 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 	SC := byte(0x30) // security control
 
 	// frame counter
-	dconn.frameCounter += 1
+	dconn.sendFrameCounter += 1
 	FC := make([]byte, 4)
-	FC[0] = byte(dconn.frameCounter >> 24 & 0xFF)
-	FC[1] = byte(dconn.frameCounter >> 16 & 0xFF)
-	FC[2] = byte(dconn.frameCounter >> 8 & 0xFF)
-	FC[3] = byte(dconn.frameCounter & 0xFF)
+	FC[0] = byte(dconn.sendFrameCounter >> 24 & 0xFF)
+	FC[1] = byte(dconn.sendFrameCounter >> 16 & 0xFF)
+	FC[2] = byte(dconn.sendFrameCounter >> 8 & 0xFF)
+	FC[3] = byte(dconn.sendFrameCounter & 0xFF)
 
 	// initialization vector
 	IV := make([]byte, 12) // initialization vector
@@ -461,7 +461,6 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 	frameCounter |= uint32(pdu[4]) << 16
 	frameCounter |= uint32(pdu[5]) << 8
 	frameCounter |= uint32(pdu[6])
-	dconn.frameCounter = frameCounter
 	FC := pdu[3:4]
 
 	// initialization vector
@@ -540,12 +539,12 @@ func (aconn *AppConn) doChallengeClientSide_for_high_level_security_mechanism_us
 	SC := byte(0x30) // security control
 
 	// frame counter
-	dconn.frameCounter += 1
+	dconn.sendFrameCounter += 1
 	FC := make([]byte, 4)
-	FC[0] = byte(dconn.frameCounter >> 24 & 0xFF)
-	FC[1] = byte(dconn.frameCounter >> 16 & 0xFF)
-	FC[2] = byte(dconn.frameCounter >> 8 & 0xFF)
-	FC[3] = byte(dconn.frameCounter & 0xFF)
+	FC[0] = byte(dconn.sendFrameCounter >> 24 & 0xFF)
+	FC[1] = byte(dconn.sendFrameCounter >> 16 & 0xFF)
+	FC[2] = byte(dconn.sendFrameCounter >> 8 & 0xFF)
+	FC[3] = byte(dconn.sendFrameCounter & 0xFF)
 
 	// initialization vector
 	IV := make([]byte, 12) // initialization vector
@@ -615,16 +614,15 @@ func (aconn *AppConn) doChallengeClientSide_for_high_level_security_mechanism_us
 	}
 
 	// frame counter
-	FC = data[1:4]
+	FC = data[1:5]
 	frameCounter := uint32(0)
 	frameCounter |= uint32(FC[0]) << 3
 	frameCounter |= uint32(FC[1]) << 2
 	frameCounter |= uint32(FC[2]) << 1
 	frameCounter |= uint32(FC[3]) << 0
-	dconn.frameCounter = frameCounter
 
 	// auth tag
-	authTagReceived := data[4:]
+	authTagReceived := data[5:]
 
 	// initialization vector
 	if len(dconn.serverSystemTitle) != 8 {
@@ -659,6 +657,7 @@ func (aconn *AppConn) doChallengeClientSide_for_high_level_security_mechanism_us
 	}
 
 	debugLog("server authenticated")
+	dconn.authenticationMechanismId = high_level_security_mechanism_using_GMAC
 	return nil
 }
 
@@ -698,7 +697,7 @@ func (dconn *DlmsConn) AppConnectWithPassword(applicationClient uint16, logicalD
 
 }
 
-func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logicalDevice uint16, invokeId uint8, authenticationKey []byte, encryptionKey []byte, applicationContextName []uint32, callingAPtitle []byte, clientToServerChallenge string, initiateRequest *DlmsInitiateRequest, frameCounter uint32) (aconn *AppConn, initiateResponse *DlmsInitiateResponse, err error) {
+func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logicalDevice uint16, invokeId uint8, authenticationKey []byte, encryptionKey []byte, applicationContextName []uint32, callingAPtitle []byte, clientToServerChallenge string, initiateRequest *DlmsInitiateRequest, sendFrameCounter uint32) (aconn *AppConn, initiateResponse *DlmsInitiateResponse, err error) {
 
 	var buf *bytes.Buffer
 
@@ -734,12 +733,12 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	SC := byte(0x30) // security control
 
 	// frame counter
-	dconn.frameCounter = frameCounter + 1
+	dconn.sendFrameCounter = sendFrameCounter + 1
 	FC := make([]byte, 4)
-	FC[0] = byte(dconn.frameCounter >> 24 & 0xFF)
-	FC[1] = byte(dconn.frameCounter >> 16 & 0xFF)
-	FC[2] = byte(dconn.frameCounter >> 8 & 0xFF)
-	FC[3] = byte(dconn.frameCounter & 0xFF)
+	FC[0] = byte(dconn.sendFrameCounter >> 24 & 0xFF)
+	FC[1] = byte(dconn.sendFrameCounter >> 16 & 0xFF)
+	FC[2] = byte(dconn.sendFrameCounter >> 8 & 0xFF)
+	FC[3] = byte(dconn.sendFrameCounter & 0xFF)
 
 	dconn.clientSystemTitle = callingAPtitle
 
@@ -846,7 +845,6 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 
 	dconn.serverSystemTitle = ([]byte)(*aare.respondingAPtitle)
 
-	dconn.authenticationMechanismId = high_level_security_mechanism_using_GMAC
 	if aare.respondingAuthenticationValue.tag == 0 {
 		dconn.serverToClientChallenge = string(aare.respondingAuthenticationValue.val.(tAsn1GraphicString))
 	} else {
@@ -872,12 +870,11 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 		return nil, nil, err
 	}
 	copy(FC, userInformation[3:3+4])
-	frameCounter = 0
+	frameCounter := uint32(0)
 	frameCounter |= uint32(FC[0]) << 3
 	frameCounter |= uint32(FC[1]) << 2
 	frameCounter |= uint32(FC[2]) << 1
 	frameCounter |= uint32(FC[3]) << 0
-	debugLog("@@@@@@@@@@@@@@@@@@ frameCounter: %d", frameCounter)
 
 	// initialization vector
 	if len(dconn.serverSystemTitle) != 8 {
@@ -893,18 +890,13 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	AAD[0] = SC
 	copy(AAD[1:], dconn.AK)
 
-	debugLog("@@@@@@@@@@@@@@@@@@ userInformation: % 0X", userInformation)
 	initiateResponseBytesEncrypted := userInformation[1+1+1+4 : len(userInformation)-GCM_TAG_LEN]
-	debugLog("@@@@@@@@@@@@@@@@@@ initiateResponseBytesEncrypted: % 0X", initiateResponseBytesEncrypted)
 
 	err, initiateResponseBytes, authTag := aesgcm(dconn.EK, IV, AAD, initiateResponseBytesEncrypted, 1)
 	if err != nil {
 		return nil, nil, err
 	}
 	receivedAuthTag := userInformation[len(userInformation)-GCM_TAG_LEN:]
-	debugLog("@@@@@@@@@@@@@@@@@@ receivedAuthTag: % 0X", receivedAuthTag)
-	debugLog("@@@@@@@@@@@@@@@@@@ initiateResponseBytes: % 0X", initiateResponseBytes)
-	debugLog("@@@@@@@@@@@@@@@@@@ authTag: % 0X", authTag)
 
 	if len(authTag) != len(receivedAuthTag) {
 		err = fmt.Errorf("unexpected authentication tag")
