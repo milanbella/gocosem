@@ -93,7 +93,11 @@ func NewAppConn(dconn *DlmsConn, applicationClient uint16, logicalDevice uint16,
 }
 
 func (aconn *AppConn) Close() {
-	debugLog("closing")
+	debugLog("closing application connection ...")
+	if !aconn.dconn.closed {
+		aconn.dconn.Close()
+	}
+	debugLog("application connection closed")
 }
 
 func (aconn *AppConn) processGetResponseNormal(rips []*DlmsRequestResponse, r io.Reader, errr error) error {

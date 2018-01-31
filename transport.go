@@ -160,17 +160,14 @@ func hdlcTransportSend(rwc io.ReadWriteCloser, pdu []byte) error {
 func (dconn *DlmsConn) transportSend(src uint16, dst uint16, pdu []byte) (err error) {
 	debugLog("trnasport type: %d, src: %d, dst: %d\n", dconn.transportType, src, dst)
 
+	err, pdu = dconn.encryptPdu(pdu)
+	if nil != err {
+		return err
+	}
+
 	if (Transport_TCP == dconn.transportType) || (Transport_UDP == dconn.transportType) {
-		err, pdu = dconn.decryptPdu(pdu)
-		if nil != err {
-			return err
-		}
 		return ipTransportSend(dconn.rwc, src, dst, pdu)
 	} else if Transport_HDLC == dconn.transportType {
-		err, pdu = dconn.decryptPdu(pdu)
-		if nil != err {
-			return err
-		}
 		return hdlcTransportSend(dconn.rwc, pdu)
 	} else {
 		panic(fmt.Sprintf("unsupported transport type: %d", dconn.transportType))
@@ -461,7 +458,7 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 	frameCounter |= uint32(pdu[4]) << 16
 	frameCounter |= uint32(pdu[5]) << 8
 	frameCounter |= uint32(pdu[6])
-	FC := pdu[3:4]
+	FC := pdu[3:7]
 
 	// initialization vector
 	IV := make([]byte, 12) // initialization vector
@@ -479,7 +476,7 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 	copy(AAD[1:], dconn.AK)
 
 	ciphertext := pdu[3+4 : len(pdu)-GCM_TAG_LEN]
-	receivedAuthTag := pdu[len(pdu)-(3+4)-GCM_TAG_LEN:]
+	receivedAuthTag := pdu[len(pdu)-GCM_TAG_LEN:]
 
 	err, dpdu, authTag := aesgcm(dconn.EK, IV, AAD, ciphertext, 1)
 	if err != nil {
@@ -1065,7 +1062,7 @@ func HdlcConnect(ipAddr string, port int, applicationClient uint16, logicalDevic
 }
 
 func (dconn *DlmsConn) Close() (err error) {
-	debugLog("closing transport connection")
+	debugLog("closing transport connection ...")
 
 	dconn.closedMutex.Lock()
 	if !dconn.closed {
@@ -1093,9 +1090,8 @@ func (dconn *DlmsConn) Close() (err error) {
 			err = ErrUnknownTransport
 		}
 		dconn.closed = true
-	} else {
-		warnLog("DlmsConn.Close(): connection already closed")
 	}
 	dconn.closedMutex.Unlock()
+	debugLog("transport connection closed")
 	return err
 }

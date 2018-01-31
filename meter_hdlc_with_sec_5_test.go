@@ -271,3 +271,149 @@ func TestMeterHdlc_with_sec_5_AppConnect(t *testing.T) {
 	}
 
 }
+
+// Connect with highest level security 5
+func Mikroelectronica_AppConnectWithSec5() (aconn *AppConn, err error) {
+
+	// read frame counter
+	debugLog("reading meter's receive frame counter")
+
+	applicationClient := uint16(33)
+	logicalDevice := uint16(1)
+	physicalDeviceId := uint16(37)
+	serverAddressLength := int(4)
+
+	dconn, err := HdlcConnect(testMeterIp, 4059, applicationClient, logicalDevice, &physicalDeviceId, &serverAddressLength, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
+	if nil != err {
+		errorLog("Microelectronica_AppConnectWithSec5(): HdlcConnect() failed")
+		return nil, err
+	}
+	debugLog("transport connected")
+
+	var buf *bytes.Buffer
+
+	var initiateRequest DlmsInitiateRequest
+	initiateRequest.dedicatedKey = nil
+	initiateRequest.responseAllowed = true
+	initiateRequest.proposedQualityOfService = nil
+	initiateRequest.proposedDlmsVersionNumber = 6
+	initiateRequest.proposedConformance.bitsUnused = 0
+	initiateRequest.proposedConformance.buf = []byte{0xFF, 0xFF, 0xFF}
+	initiateRequest.clientMaxReceivePduSize = 0xFFFF
+
+	buf = new(bytes.Buffer)
+	err = initiateRequest.encode(buf)
+	if nil != err {
+		return nil, err
+	}
+	userInformation := buf.Bytes()
+
+	var aarq AARQapdu
+
+	aarq.applicationContextName = tAsn1ObjectIdentifier([]uint32{2, 16, 756, 5, 8, 1, 1})
+	aarq.userInformation = (*tAsn1OctetString)(&userInformation)
+
+	aconn, _, err = dconn.AppConnect(applicationClient, logicalDevice, 0x0C, &aarq)
+	if nil != err {
+		errorLog("Microelectronica_AppConnectWithSec5(): AppConnect() failed")
+		return nil, err
+	}
+
+	val1 := new(DlmsRequest)
+	val1.ClassId = 1
+	val1.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x01, 0x00, 0xFF}
+	val1.AttributeId = 0x02
+
+	val2 := new(DlmsRequest)
+	val2.ClassId = 1
+	val2.InstanceId = &DlmsOid{0x00, 0x00, 0x2B, 0x01, 0x01, 0xFF}
+	val2.AttributeId = 0x02
+
+	vals := make([]*DlmsRequest, 2)
+	vals[0] = val1
+	vals[1] = val2
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		errorLog("Microelectronica_AppConnectWithSec5(): aconn.SendRequest() failed")
+		return nil, err
+	}
+
+	if 0 != rep.DataAccessResultAt(0) {
+		err = fmt.Errorf("Microelectronica_AppConnectWithSec5(): dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+		errorLog("%s", err)
+		return nil, err
+	}
+	data1 := rep.DataAt(0)
+	debugLog("value read %#v", data1.Val)
+
+	if 0 != rep.DataAccessResultAt(1) {
+		err = fmt.Errorf("Microelectronica_AppConnectWithSec5(): dataAccessResult: %d\n", rep.DataAccessResultAt(1))
+		errorLog("%s", err)
+		return nil, err
+	}
+	data2 := rep.DataAt(1)
+	debugLog("value read %#v", data2.Val)
+
+	if data1.Typ != DATA_TYPE_DOUBLE_LONG_UNSIGNED {
+		err = fmt.Errorf("Microelectronica_AppConnectWithSec5(): wrong data type received")
+		errorLog("%s", err)
+		return nil, err
+	}
+	frameCounter := data1.Val.(uint32)
+	debugLog("meter's receive frame counter value: %d", frameCounter)
+
+	dconn.Close()
+
+	// connect application again with high security
+	debugLog("opening application connection with highest level security ....")
+
+	applicationClient = uint16(3)
+	logicalDevice = uint16(1)
+	physicalDeviceId = uint16(37)
+	serverAddressLength = int(4)
+
+	dconn, err = HdlcConnect(testMeterIp, 4059, applicationClient, logicalDevice, &physicalDeviceId, &serverAddressLength, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
+	if nil != err {
+		errorLog("Microelectronica_AppConnectWithSec5(): HdlcConnect() failed")
+		return nil, err
+	}
+	debugLog("transport connected")
+
+	aconn, _, err = dconn.AppConnectWithSecurity5(applicationClient, logicalDevice, 0x0C,
+		[]byte{0xD0, 0xD1, 0xD2, 0xD3, 0xD4, 0xD5, 0xD6, 0xD7, 0xD8, 0xD9, 0xDA, 0xDB, 0xDC, 0xDD, 0xDE, 0xDF},
+		[]byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F},
+		[]uint32{2, 16, 756, 5, 8, 1, 3}, []byte{0x4D, 0x45, 0x4C, 0x00, 0x00, 0x00, 0x00, 0x00}, "ZDXO2;66", &initiateRequest, frameCounter)
+	if nil != err {
+		errorLog("Microelectronica_AppConnectWithSec5(): failed to open application connection with highest level security")
+		return nil, err
+	}
+	debugLog("application connection with highest level security opened")
+	return aconn, nil
+}
+
+func TestMeterHdlc_with_sec_5_GetTime(t *testing.T) {
+	init_TestMeterHdlc_with_sec_5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	val := new(DlmsRequest)
+	val.ClassId = 8
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x01, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals := make([]*DlmsRequest, 1)
+	vals[0] = val
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf(fmt.Sprintf("%s\n", err))
+	}
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	data := rep.DataAt(0)
+	t.Logf("value read %#v", data.Val)
+	t.Logf("datetime: %s", DlmsDateTimeFromBytes(data.GetOctetString()).PrintDateTime())
+}
