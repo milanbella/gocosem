@@ -419,17 +419,23 @@ func (dconn *DlmsConn) encryptPduGSM(pdu []byte) (err error, epdu []byte) {
 		return err, nil
 	}
 
-	epdu = make([]byte, 1+1+1+len(FC)+len(ciphertext)+len(authTag))
-	epdu[0] = tag
 	length := 1 + len(FC) + len(ciphertext) + len(authTag)
-	if length > 0xFF {
-		warnLog("length exceeds 255")
+	buf := new(bytes.Buffer)
+	err = encodeAxdrLength(buf, uint16(length))
+	if nil != err {
+		return err, nil
 	}
-	epdu[1] = byte(length)
-	epdu[2] = SC
-	copy(epdu[3:], FC)
-	copy(epdu[3+len(FC):], ciphertext)
-	copy(epdu[3+len(FC)+len(ciphertext):], authTag)
+	LEN := buf.Bytes()
+
+	epdu = make([]byte, 1+len(LEN)+1+len(FC)+len(ciphertext)+len(authTag))
+	p := epdu[0:]
+	p[0] = tag
+	copy(p[1:], LEN)
+	p = p[1+len(LEN):]
+	p[0] = SC
+	copy(p[1:], FC)
+	copy(p[1+len(FC):], ciphertext)
+	copy(p[1+len(FC)+len(ciphertext):], authTag)
 
 	return nil, epdu
 }
@@ -441,11 +447,16 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 		return err, nil
 	}
 
-	// next byte is length, we don't need it
-	//length := int(pdu[1])
+	// skip length
+	buf := bytes.NewBuffer(pdu[1:])
+	err, _ = decodeAxdrLength(buf)
+	if nil != err {
+		return err, nil
+	}
+	pdu = buf.Bytes()
 
 	// security control
-	SC := pdu[2] // security control
+	SC := pdu[0] // security control
 	if SC != 0x30 {
 		err = fmt.Errorf("unexpected security control")
 		errorLog("%s", err)
@@ -454,11 +465,11 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 
 	// frame counter
 	var frameCounter uint32
-	frameCounter |= uint32(pdu[3]) << 24
-	frameCounter |= uint32(pdu[4]) << 16
-	frameCounter |= uint32(pdu[5]) << 8
-	frameCounter |= uint32(pdu[6])
-	FC := pdu[3:7]
+	frameCounter |= uint32(pdu[1]) << 24
+	frameCounter |= uint32(pdu[2]) << 16
+	frameCounter |= uint32(pdu[3]) << 8
+	frameCounter |= uint32(pdu[4])
+	FC := pdu[1:5]
 
 	// initialization vector
 	IV := make([]byte, 12) // initialization vector
@@ -475,7 +486,7 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 	AAD[0] = SC
 	copy(AAD[1:], dconn.AK)
 
-	ciphertext := pdu[3+4 : len(pdu)-GCM_TAG_LEN]
+	ciphertext := pdu[1+4 : len(pdu)-GCM_TAG_LEN]
 	receivedAuthTag := pdu[len(pdu)-GCM_TAG_LEN:]
 
 	err, dpdu, authTag := aesgcm(dconn.EK, IV, AAD, ciphertext, 1)
@@ -502,7 +513,7 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 func (dconn *DlmsConn) encryptPdu(pdu []byte) (err error, epdu []byte) {
 	if dconn.authenticationMechanismId == high_level_security_mechanism_using_GMAC {
 		err, epdu = dconn.encryptPduGSM(pdu)
-		debugLog("encrypted pdu: %0X", epdu)
+		debugLog("encrypted pdu: % 0X", epdu)
 		return err, epdu
 	} else if dconn.authenticationMechanismId == lowest_level_security_mechanism {
 		return nil, pdu
@@ -516,7 +527,7 @@ func (dconn *DlmsConn) encryptPdu(pdu []byte) (err error, epdu []byte) {
 func (dconn *DlmsConn) decryptPdu(pdu []byte) (err error, dpdu []byte) {
 	if dconn.authenticationMechanismId == high_level_security_mechanism_using_GMAC {
 		err, dpdu = dconn.decryptPduGSM(pdu)
-		debugLog("decrypted pdu: %0X", dpdu)
+		debugLog("decrypted pdu: % 0X", dpdu)
 		return err, dpdu
 	} else if dconn.authenticationMechanismId == lowest_level_security_mechanism {
 		return nil, pdu
@@ -760,13 +771,23 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	}
 	debugLog("AppConnectWithSecurity5(): initiate request encrypted: % 0X", initiateRequestBytesEncrypted)
 
-	userInformation = make([]byte, 1+1+1+4+len(initiateRequestBytesEncrypted)+len(authTag)) // glo-initiateRequest tag + LEN + SC + frameCounter + code + authTag
-	userInformation[0] = 33                                                                 // glo-initiateRequest
-	userInformation[1] = uint8(len(userInformation) - 2)
-	userInformation[2] = SC
-	copy(userInformation[3:], FC)
-	copy(userInformation[3+len(FC):], initiateRequestBytesEncrypted)
-	copy(userInformation[3+len(FC)+len(initiateRequestBytesEncrypted):], authTag)
+	length := 1 + 4 + len(initiateRequestBytesEncrypted) + len(authTag)
+	buf = new(bytes.Buffer)
+	err = encodeAxdrLength(buf, uint16(length))
+	if nil != err {
+		return nil, nil, err
+	}
+	LEN := buf.Bytes()
+
+	userInformation = make([]byte, 1+len(LEN)+1+4+len(initiateRequestBytesEncrypted)+len(authTag)) // glo-initiateRequest tag + LEN + SC + frameCounter + code + authTag
+	p := userInformation[0:]
+	p[0] = 33 // glo-initiateRequest
+	copy(p[1:], LEN)
+	p = p[1+len(LEN):]
+	p[0] = SC
+	copy(p[1:], FC)
+	copy(p[1+len(FC):], initiateRequestBytesEncrypted)
+	copy(p[1+len(FC)+len(initiateRequestBytesEncrypted):], authTag)
 	debugLog("AppConnectWithSecurity5(): AARQ.user_information: % 0X", userInformation)
 
 	var aarq AARQapdu
@@ -860,12 +881,21 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 		err = fmt.Errorf("wrong tag for initiateResponse")
 		return nil, nil, err
 	}
-	SC = userInformation[2]
+
+	// skip length
+	buf = bytes.NewBuffer(userInformation[1:])
+	err, _ = decodeAxdrLength(buf)
+	if nil != err {
+		return nil, nil, err
+	}
+	p = buf.Bytes()
+
+	SC = p[0]
 	if 0x30 != SC {
 		err = fmt.Errorf("wrong tag for initiateResponse")
 		return nil, nil, err
 	}
-	copy(FC, userInformation[3:3+4])
+	copy(FC, p[1:1+4])
 	frameCounter := uint32(0)
 	frameCounter |= uint32(FC[0]) << 3
 	frameCounter |= uint32(FC[1]) << 2
@@ -886,13 +916,13 @@ func (dconn *DlmsConn) AppConnectWithSecurity5(applicationClient uint16, logical
 	AAD[0] = SC
 	copy(AAD[1:], dconn.AK)
 
-	initiateResponseBytesEncrypted := userInformation[1+1+1+4 : len(userInformation)-GCM_TAG_LEN]
+	initiateResponseBytesEncrypted := p[1+4 : len(p)-GCM_TAG_LEN]
 
 	err, initiateResponseBytes, authTag := aesgcm(dconn.EK, IV, AAD, initiateResponseBytesEncrypted, 1)
 	if err != nil {
 		return nil, nil, err
 	}
-	receivedAuthTag := userInformation[len(userInformation)-GCM_TAG_LEN:]
+	receivedAuthTag := p[len(p)-GCM_TAG_LEN:]
 
 	if len(authTag) != len(receivedAuthTag) {
 		err = fmt.Errorf("unexpected authentication tag")

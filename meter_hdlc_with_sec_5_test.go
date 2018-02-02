@@ -7,7 +7,35 @@ import (
 	"time"
 )
 
-func init_TestMeterHdlc_with_sec_5() {
+func printProfile(t *testing.T, data *DlmsData) {
+	if DATA_TYPE_ARRAY != data.GetType() {
+		t.Fatalf("wrong data type")
+	}
+	t.Logf("profile entries read:\n")
+	for i := 0; i < len(data.Arr); i++ {
+		d := data.Arr[i]
+		if d.Typ != DATA_TYPE_STRUCTURE {
+			t.Logf("\t%d: error: wrong line format: %d, expecting DATA_TYPE_STRUCTURE", i, data.Typ)
+			continue
+		}
+		if len(d.Arr) < 1 {
+			t.Logf("\t%d: error: wrong line format: missing first item", i)
+			continue
+		}
+		d0 := d.Arr[0]
+		if d0.Typ == DATA_TYPE_NULL {
+			t.Logf("\t%d: nil", i)
+			continue
+		}
+		if d0.Typ != DATA_TYPE_OCTET_STRING {
+			t.Logf("\t%d: error: wrong first item format: %d", i, d0.Typ)
+			continue
+		}
+		t.Logf("\t%d: %s %s: ", i, DlmsDateTimeFromBytes(d0.GetOctetString()).PrintDateTime(), d.Print())
+	}
+}
+
+func init_TestMeterHdlc_elektrotikaSecurity5() {
 	testMeterIp = "127.0.0.1"
 	testHdlcResponseTimeout = time.Duration(1) * time.Hour
 	testHdlcCosemWaitTime = time.Duration(5000) * time.Millisecond
@@ -15,8 +43,8 @@ func init_TestMeterHdlc_with_sec_5() {
 	testHdlcDiscTimeout = time.Duration(45) * time.Second
 }
 
-func TestMeterHdlc_with_sec_5_TcpConnect(t *testing.T) {
-	init_TestMeterHdlc_with_sec_5()
+func TestMeterHdlc_elektrotikaSecurity5_TcpConnect(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
 	dconn, err := TcpConnect(testMeterIp, 4059)
 	if nil != err {
 		t.Fatal(err)
@@ -25,8 +53,8 @@ func TestMeterHdlc_with_sec_5_TcpConnect(t *testing.T) {
 	defer dconn.Close()
 }
 
-func TestMeterHdlc_with_sec_5_HdlcConnect(t *testing.T) {
-	init_TestMeterHdlc_with_sec_5()
+func TestMeterHdlc_elektrotikaSecurity5_HdlcConnect(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
 	physicalDeviceId := uint16(37)
 	serverAddressLength := int(4)
 	dconn, err := HdlcConnect(testMeterIp, 4059, 3, 1, &physicalDeviceId, &serverAddressLength, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
@@ -37,8 +65,8 @@ func TestMeterHdlc_with_sec_5_HdlcConnect(t *testing.T) {
 	defer dconn.Close()
 }
 
-func TestMeterHdlc_with_sec_5_AppConnect_no_security(t *testing.T) {
-	init_TestMeterHdlc_with_sec_5()
+func TestMeterHdlc_elektrotikaSecurity5_AppConnect_no_security(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
 
 	applicationClient := uint16(33)
 	logicalDevice := uint16(1)
@@ -81,8 +109,8 @@ func TestMeterHdlc_with_sec_5_AppConnect_no_security(t *testing.T) {
 	}
 }
 
-func TestMeterHdlc_with_sec_5_readFrameCounter(t *testing.T) {
-	init_TestMeterHdlc_with_sec_5()
+func TestMeterHdlc_elektrotikaSecurity5_readFrameCounter(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
 
 	// read frame counter
 
@@ -164,8 +192,8 @@ func TestMeterHdlc_with_sec_5_readFrameCounter(t *testing.T) {
 	t.Logf("frame counter value: %d", frameCounter)
 }
 
-func TestMeterHdlc_with_sec_5_AppConnect(t *testing.T) {
-	init_TestMeterHdlc_with_sec_5()
+func TestMeterHdlc_elektrotikaSecurity5_AppConnect(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
 
 	// read frame counter
 
@@ -391,8 +419,8 @@ func Mikroelectronica_AppConnectWithSec5() (aconn *AppConn, err error) {
 	return aconn, nil
 }
 
-func TestMeterHdlc_with_sec_5_GetTime(t *testing.T) {
-	init_TestMeterHdlc_with_sec_5()
+func TestMeterHdlc_elektrotikaSecurity5_GetTime(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
 	aconn, err := Mikroelectronica_AppConnectWithSec5()
 	if nil != err {
 		t.Fatal(err)
@@ -416,4 +444,661 @@ func TestMeterHdlc_with_sec_5_GetTime(t *testing.T) {
 	data := rep.DataAt(0)
 	t.Logf("value read %#v", data.Val)
 	t.Logf("datetime: %s", DlmsDateTimeFromBytes(data.GetOctetString()).PrintDateTime())
+}
+
+func TestMeterHdlc_elektrotikaSecurity5_SetTime(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	// read time
+
+	val := new(DlmsRequest)
+	val.ClassId = 8
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x01, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals := make([]*DlmsRequest, 1)
+	vals[0] = val
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	data := rep.DataAt(0)
+	t.Logf("value read %#v", data.Val)
+	t.Logf("datetime: %s", DlmsDateTimeFromBytes(data.GetOctetString()).PrintDateTime())
+
+	// set time
+
+	val = new(DlmsRequest)
+	val.ClassId = 8
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x01, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	val.Data = data
+	vals = make([]*DlmsRequest, 1)
+	vals[0] = val
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	t.Logf("time set successfully")
+
+	// read time again
+
+	val = new(DlmsRequest)
+	val.ClassId = 8
+	val.InstanceId = &DlmsOid{0x00, 0x00, 0x01, 0x00, 0x00, 0xFF}
+	val.AttributeId = 0x02
+	vals = make([]*DlmsRequest, 1)
+	vals[0] = val
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	t.Logf("response delivered: in %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	data = rep.DataAt(0)
+	t.Logf("value read %#v", data.Val)
+	t.Logf("datetime: %s", DlmsDateTimeFromBytes(data.GetOctetString()).PrintDateTime())
+
+}
+
+func TestMeterHdlc_elektrotikaSecurity5_ProfileCaptureObjects(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	// capture objects definitions
+
+	t.Logf("read objects captured by profile...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 3
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	if DATA_TYPE_ARRAY != data.GetType() {
+		t.Fatalf("wrong data type")
+	}
+	t.Logf("profile captures follwing objects:")
+	for i, st := range data.Arr {
+		if DATA_TYPE_STRUCTURE != st.GetType() {
+			t.Fatalf("wrong data type")
+		}
+		t.Logf("capture object [%d]:", i)
+		t.Logf("\tclass id: %d", st.Arr[0].GetLongUnsigned())
+		t.Logf("\tlogical name: %02X", st.Arr[1].GetOctetString())
+		t.Logf("\tattribute index: %d", st.Arr[2].GetInteger())
+		t.Logf("\tdata index: %02X", st.Arr[3].GetLongUnsigned())
+	}
+}
+
+func TestMeterHdlc_elektrotikaSecurity5_ProfileEntriesInUse(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	// profile entries in use
+
+	t.Logf("read profile entries in use...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 7
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	t.Logf("profile entries in use: %d", data.GetDoubleLongUnsigned())
+}
+
+func TestMeterHdlc_elektrotikaSecurity5_ProfileEntries(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	// profile entries
+
+	t.Logf("read maximum profile entries...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 8
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	t.Logf("maximum profile entries: %d", data.GetDoubleLongUnsigned())
+}
+
+func TestMeterHdlc_elektrotikaSecurity5_ProfileSortMethod(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	// sort method
+
+	t.Logf("read sort method ...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 5
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	t.Logf("sort method: %d", data.GetEnum())
+}
+
+func TestMeterHdlc_elektrotikaSecurity5_ProfileSortObject(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	// sort object
+
+	t.Logf("read sort object ...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 6
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+
+	if DATA_TYPE_STRUCTURE != data.GetType() {
+		t.Fatalf("wrong data type")
+	}
+	t.Logf("sort object:")
+	t.Logf("\tclass id: %d", data.Arr[0].GetLongUnsigned())
+	t.Logf("\tlogical name: %02X", data.Arr[1].GetOctetString())
+	t.Logf("\tattribute index: %d", data.Arr[2].GetInteger())
+	t.Logf("\tdata index: %02X", data.Arr[3].GetLongUnsigned())
+}
+
+func TestMeterHdlc_elektrotikaSecurity5_ProfileCapturePeriod(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	// capture period
+
+	t.Logf("read capture period ...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 4
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	t.Logf("capture period: %d seconds", data.GetDoubleLongUnsigned())
+}
+
+func TestMeterHdlc_elektrotikaSecurity5_ProfileFirstEntries(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	// request first 10 entries
+
+	vals := make([]*DlmsRequest, 1)
+
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 2
+	val.AccessSelector = 2
+	val.AccessParameter = new(DlmsData)
+	val.AccessParameter.SetStructure(4)
+	val.AccessParameter.Arr[0].SetDoubleLongUnsigned(1)  // from_entry
+	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(10) // to_entry
+	val.AccessParameter.Arr[2].SetLongUnsigned(1)        // from_selected_value
+	val.AccessParameter.Arr[3].SetLongUnsigned(0)        // to_selected_value
+
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+
+	data := rep.DataAt(0) // first request
+	printProfile(t, data)
+}
+
+// TODO: verify empty profile entries
+func noTestMeterHdlc_elektrotikaSecurity5_useLowSec_ProfileFirstEntries(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+
+	applicationClient := uint16(3)
+	logicalDevice := uint16(1)
+	physicalDeviceId := uint16(37)
+	serverAddressLength := int(4)
+
+	dconn, err := HdlcConnect(testMeterIp, 4059, applicationClient, logicalDevice, &physicalDeviceId, &serverAddressLength, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
+	if nil != err {
+		t.Fatal(err)
+	}
+	t.Logf("transport connected")
+	defer dconn.Close()
+
+	var buf *bytes.Buffer
+
+	var initiateRequest DlmsInitiateRequest
+	initiateRequest.dedicatedKey = nil
+	initiateRequest.responseAllowed = true
+	initiateRequest.proposedQualityOfService = nil
+	initiateRequest.proposedDlmsVersionNumber = 6
+	initiateRequest.proposedConformance.bitsUnused = 0
+	initiateRequest.proposedConformance.buf = []byte{0xFF, 0xFF, 0xFF}
+	initiateRequest.clientMaxReceivePduSize = 0xFFFF
+
+	buf = new(bytes.Buffer)
+	err = initiateRequest.encode(buf)
+	if nil != err {
+		t.Fatalf("DlmsInitiateRequest.encode() failed: %s", err)
+	}
+	userInformation := buf.Bytes()
+
+	var aarq AARQapdu
+
+	/*
+
+		rec1value XDLMS-APDU ::= aarq :    {     application-context-name { 2 16 756 5 8 1 1 },     sender-acse-requirements { authentication },     mechanism-name { 2 16 756 5 8 2 1 },     calling-authentication-value charstring : "12345678",     user-information '01000000065F1F0400FFFFFFFFFF'H   }
+	*/
+
+	aarq.applicationContextName = tAsn1ObjectIdentifier([]uint32{2, 16, 756, 5, 8, 1, 1})
+	aarq.senderAcseRequirements = &tAsn1BitString{
+		buf:        []byte{0x80},
+		bitsUnused: 7,
+	}
+	mechanismName := (tAsn1ObjectIdentifier)([]uint32{2, 16, 756, 5, 8, 2, 1})
+	aarq.mechanismName = &mechanismName
+	password := tAsn1GraphicString([]byte("12345678"))
+	aarq.callingAuthenticationValue = new(tAsn1Choice)
+	aarq.callingAuthenticationValue.setVal(0, password)
+	aarq.userInformation = (*tAsn1OctetString)(&userInformation)
+
+	aconn, _, err := dconn.AppConnect(applicationClient, logicalDevice, 0x0C, &aarq)
+	if nil != err {
+		t.Fatalf("dconn.AppConnect() failed: %s", err)
+	}
+
+	// request first 10 entries
+
+	vals := make([]*DlmsRequest, 1)
+
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 2
+	val.AccessSelector = 2
+	val.AccessParameter = new(DlmsData)
+	val.AccessParameter.SetStructure(4)
+	val.AccessParameter.Arr[0].SetDoubleLongUnsigned(1)  // from_entry
+	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(10) // to_entry
+	val.AccessParameter.Arr[2].SetLongUnsigned(1)        // from_selected_value
+	val.AccessParameter.Arr[3].SetLongUnsigned(0)        // to_selected_value
+
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+
+	data := rep.DataAt(0) // first request
+	printProfile(t, data)
+}
+
+func TestMeterHdlc_elektrotikaSecurity5_ProfileLastEntries(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	// profile entries in use
+
+	t.Logf("read profile entries ...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 7
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	entriesInUse := data.GetDoubleLongUnsigned()
+	t.Logf("profile entries in use: %d", entriesInUse)
+
+	vals = make([]*DlmsRequest, 1)
+
+	// read last 10 entries
+
+	entriesCnt := uint32(10)
+
+	val = new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 2
+	val.AccessSelector = 2
+	val.AccessParameter = new(DlmsData)
+	val.AccessParameter.SetStructure(4)
+	if entriesInUse > 10 {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(entriesInUse - entriesCnt + 1) // from_entry
+	} else {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(1) // from_entry
+	}
+	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(entriesInUse) // to_entry
+	val.AccessParameter.Arr[2].SetLongUnsigned(1)                  // from_selected_value
+	val.AccessParameter.Arr[3].SetLongUnsigned(0)                  // to_selected_value
+
+	vals[0] = val
+
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult = rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+
+	data = rep.DataAt(0) // first request
+	printProfile(t, data)
+}
+
+func TestMeterHdlc_elektrotikaSecurity5__ProfileTimeRange(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	// profile entries in use
+
+	t.Logf("read profile entries ...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 7
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	entriesInUse := data.GetDoubleLongUnsigned()
+	t.Logf("profile entries in use: %d", entriesInUse)
+
+	vals = make([]*DlmsRequest, 1)
+
+	// read last 10 entries
+
+	val = new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 2
+	val.AccessSelector = 2
+	val.AccessParameter = new(DlmsData)
+	val.AccessParameter.SetStructure(4)
+	if entriesInUse > 10 {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(entriesInUse - 10 + 1) // from_entry
+	} else {
+		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(1) // from_entry
+	}
+	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(entriesInUse) // to_entry
+	val.AccessParameter.Arr[2].SetLongUnsigned(1)                  // from_selected_value
+	val.AccessParameter.Arr[3].SetLongUnsigned(0)                  // to_selected_value
+
+	vals[0] = val
+
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult = rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+
+	data = rep.DataAt(0) // first request
+	printProfile(t, data)
+
+	d1 := data.Arr[0]
+	if nil != d1.Err {
+		t.Fatalf("data error: %v", d1.Err)
+	}
+	if d1.Typ != DATA_TYPE_STRUCTURE {
+		t.Fatalf("data error: unexpected format")
+	}
+	d2 := data.Arr[len(data.Arr)-1]
+	if nil != d2.Err {
+		t.Fatalf("data error: %v", d2.Err)
+	}
+	if d2.Typ != DATA_TYPE_STRUCTURE {
+		t.Fatalf("data error: unexpected format")
+	}
+
+	// read last 10 entries using time interval selection
+
+	vals = make([]*DlmsRequest, 1)
+
+	val = new(DlmsRequest)
+	val.ClassId = 7
+	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
+	val.AttributeId = 2
+	val.AccessSelector = 1
+	val.AccessParameter = new(DlmsData)
+	val.AccessParameter.SetStructure(4)
+
+	// selecting according first column which is the time
+
+	restrictingObject := new(DlmsData)
+	restrictingObject.SetStructure(4)
+	restrictingObject.Arr[0].SetLongUnsigned(8)                                         // class_id
+	restrictingObject.Arr[1].SetOctetString([]byte{0x00, 0x00, 0x01, 0x00, 0x00, 0xFF}) // logical_name
+	restrictingObject.Arr[2].SetInteger(2)                                              // attribute_index
+	restrictingObject.Arr[3].SetLongUnsigned(0)                                         // data_index
+
+	if len(d1.Arr) < 0 || d1.Arr[0].Typ != DATA_TYPE_TIME {
+		t.Fatalf("data error: unexpected format")
+	}
+	tim := DlmsDateTimeFromBytes(d1.Arr[0].GetOctetString())
+	/*
+		tim := new(DlmsDateTime)
+
+		tim.Year = 2016
+		tim.Month = 2
+		tim.DayOfMonth = 22
+		tim.DayOfWeek = 1
+		tim.Hour = 4
+		tim.Minute = 16
+		tim.Second = 39
+		tim.Hundredths = 0
+		tim.Deviation = 0
+		tim.ClockStatus = 0
+	*/
+
+	t.Logf("time from: %s", tim.PrintDateTime())
+
+	// for some reason deviation and status must be zeroed or else thi meter reports error
+	tim.Deviation = 0
+	tim.ClockStatus = 0
+
+	fromValue := new(DlmsData)
+	fromValue.SetOctetString(tim.ToBytes())
+
+	if len(d2.Arr) < 0 || d2.Arr[0].Typ != DATA_TYPE_TIME {
+		t.Fatalf("data error: unexpected format")
+	}
+	tim = DlmsDateTimeFromBytes(d2.Arr[0].GetOctetString())
+	/*
+		tim = new(DlmsDateTime)
+
+		tim.Year = 2016
+		tim.Month = 2
+		tim.DayOfMonth = 22
+		tim.DayOfWeek = 1
+		tim.Hour = 5
+		tim.Minute = 16
+		tim.Second = 39
+		tim.Hundredths = 0
+		tim.Deviation = 0
+		tim.ClockStatus = 0
+	*/
+
+	// for some reason deviation and status must be zeroed or else thi meter reports error
+	tim.Deviation = 0
+	tim.ClockStatus = 0
+
+	t.Logf("time to: %s", tim.PrintDateTime())
+
+	toValue := new(DlmsData)
+	toValue.SetOctetString(tim.ToBytes())
+
+	selectedValues := new(DlmsData)
+	selectedValues.SetArray(0)
+
+	val.AccessParameter.Arr[0] = restrictingObject
+	val.AccessParameter.Arr[1] = fromValue
+	val.AccessParameter.Arr[2] = toValue
+	val.AccessParameter.Arr[3] = selectedValues
+
+	vals[0] = val
+
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult = rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+
+	data = rep.DataAt(0) // first request
+	printProfile(t, data)
 }

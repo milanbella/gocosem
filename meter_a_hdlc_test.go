@@ -288,7 +288,7 @@ func TestMeterAHdlcHdlc_ProfileEntries(t *testing.T) {
 
 	// profile entries
 
-	t.Logf("read profile entries in use...")
+	t.Logf("read maximum profile entries...")
 	vals := make([]*DlmsRequest, 1)
 	val := new(DlmsRequest)
 	val.ClassId = 7
