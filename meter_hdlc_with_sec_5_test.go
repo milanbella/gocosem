@@ -762,96 +762,6 @@ func TestMeterHdlc_elektrotikaSecurity5_ProfileFirstEntries(t *testing.T) {
 	printProfile(t, data)
 }
 
-// TODO: verify empty profile entries
-func noTestMeterHdlc_elektrotikaSecurity5_useLowSec_ProfileFirstEntries(t *testing.T) {
-	init_TestMeterHdlc_elektrotikaSecurity5()
-
-	applicationClient := uint16(3)
-	logicalDevice := uint16(1)
-	physicalDeviceId := uint16(37)
-	serverAddressLength := int(4)
-
-	dconn, err := HdlcConnect(testMeterIp, 4059, applicationClient, logicalDevice, &physicalDeviceId, &serverAddressLength, testHdlcResponseTimeout, &testHdlcCosemWaitTime, testHdlcSnrmTimeout, testHdlcDiscTimeout)
-	if nil != err {
-		t.Fatal(err)
-	}
-	t.Logf("transport connected")
-	defer dconn.Close()
-
-	var buf *bytes.Buffer
-
-	var initiateRequest DlmsInitiateRequest
-	initiateRequest.dedicatedKey = nil
-	initiateRequest.responseAllowed = true
-	initiateRequest.proposedQualityOfService = nil
-	initiateRequest.proposedDlmsVersionNumber = 6
-	initiateRequest.proposedConformance.bitsUnused = 0
-	initiateRequest.proposedConformance.buf = []byte{0xFF, 0xFF, 0xFF}
-	initiateRequest.clientMaxReceivePduSize = 0xFFFF
-
-	buf = new(bytes.Buffer)
-	err = initiateRequest.encode(buf)
-	if nil != err {
-		t.Fatalf("DlmsInitiateRequest.encode() failed: %s", err)
-	}
-	userInformation := buf.Bytes()
-
-	var aarq AARQapdu
-
-	/*
-
-		rec1value XDLMS-APDU ::= aarq :    {     application-context-name { 2 16 756 5 8 1 1 },     sender-acse-requirements { authentication },     mechanism-name { 2 16 756 5 8 2 1 },     calling-authentication-value charstring : "12345678",     user-information '01000000065F1F0400FFFFFFFFFF'H   }
-	*/
-
-	aarq.applicationContextName = tAsn1ObjectIdentifier([]uint32{2, 16, 756, 5, 8, 1, 1})
-	aarq.senderAcseRequirements = &tAsn1BitString{
-		buf:        []byte{0x80},
-		bitsUnused: 7,
-	}
-	mechanismName := (tAsn1ObjectIdentifier)([]uint32{2, 16, 756, 5, 8, 2, 1})
-	aarq.mechanismName = &mechanismName
-	password := tAsn1GraphicString([]byte("12345678"))
-	aarq.callingAuthenticationValue = new(tAsn1Choice)
-	aarq.callingAuthenticationValue.setVal(0, password)
-	aarq.userInformation = (*tAsn1OctetString)(&userInformation)
-
-	aconn, _, err := dconn.AppConnect(applicationClient, logicalDevice, 0x0C, &aarq)
-	if nil != err {
-		t.Fatalf("dconn.AppConnect() failed: %s", err)
-	}
-
-	// request first 10 entries
-
-	vals := make([]*DlmsRequest, 1)
-
-	val := new(DlmsRequest)
-	val.ClassId = 7
-	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
-	val.AttributeId = 2
-	val.AccessSelector = 2
-	val.AccessParameter = new(DlmsData)
-	val.AccessParameter.SetStructure(4)
-	val.AccessParameter.Arr[0].SetDoubleLongUnsigned(1)  // from_entry
-	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(10) // to_entry
-	val.AccessParameter.Arr[2].SetLongUnsigned(1)        // from_selected_value
-	val.AccessParameter.Arr[3].SetLongUnsigned(0)        // to_selected_value
-
-	vals[0] = val
-
-	rep, err := aconn.SendRequest(vals)
-	if nil != err {
-		t.Fatalf("read failed: %s", err)
-		return
-	}
-	dataAccessResult := rep.DataAccessResultAt(0)
-	if 0 != dataAccessResult {
-		t.Fatalf("data access result: %d", dataAccessResult)
-	}
-
-	data := rep.DataAt(0) // first request
-	printProfile(t, data)
-}
-
 func TestMeterHdlc_elektrotikaSecurity5_ProfileLastEntries(t *testing.T) {
 	init_TestMeterHdlc_elektrotikaSecurity5()
 	aconn, err := Mikroelectronica_AppConnectWithSec5()
@@ -921,7 +831,7 @@ func TestMeterHdlc_elektrotikaSecurity5_ProfileLastEntries(t *testing.T) {
 	printProfile(t, data)
 }
 
-func TestMeterHdlc_elektrotikaSecurity5__ProfileTimeRange(t *testing.T) {
+func TestMeterHdlc_elektrotikaSecurity5_ProfileTimeRange(t *testing.T) {
 	init_TestMeterHdlc_elektrotikaSecurity5()
 	aconn, err := Mikroelectronica_AppConnectWithSec5()
 	if nil != err {
@@ -929,7 +839,7 @@ func TestMeterHdlc_elektrotikaSecurity5__ProfileTimeRange(t *testing.T) {
 	}
 	defer aconn.Close()
 
-	// profile entries in use
+	// read profile entries in use
 
 	t.Logf("read profile entries ...")
 	vals := make([]*DlmsRequest, 1)
@@ -955,6 +865,8 @@ func TestMeterHdlc_elektrotikaSecurity5__ProfileTimeRange(t *testing.T) {
 	vals = make([]*DlmsRequest, 1)
 
 	// read last 10 entries
+
+	t.Logf("reading last profile entries using the time selector")
 
 	val = new(DlmsRequest)
 	val.ClassId = 7
@@ -1023,61 +935,78 @@ func TestMeterHdlc_elektrotikaSecurity5__ProfileTimeRange(t *testing.T) {
 	restrictingObject.Arr[2].SetInteger(2)                                              // attribute_index
 	restrictingObject.Arr[3].SetLongUnsigned(0)                                         // data_index
 
-	if len(d1.Arr) < 0 || d1.Arr[0].Typ != DATA_TYPE_TIME {
-		t.Fatalf("data error: unexpected format")
-	}
-	tim := DlmsDateTimeFromBytes(d1.Arr[0].GetOctetString())
-	/*
+	var fromValue, toValue *DlmsData
+
+	if (len(d1.Arr) < 0 || d1.Arr[0].Typ != DATA_TYPE_TIME) || len(d2.Arr) < 0 || d2.Arr[0].Typ != DATA_TYPE_TIME {
+		// first column does not contain time, perhaps time is nil
+		t.Logf("data error: unexpected format of time column")
+		t.Logf("            therefore reading profile entries from yesterday")
+
+		gtim := time.Now()
+		gtim = gtim.AddDate(0, 0, -1)
+		year, month, day := gtim.Date()
+		hour, min, sec := gtim.Clock()
+
 		tim := new(DlmsDateTime)
-
-		tim.Year = 2016
-		tim.Month = 2
-		tim.DayOfMonth = 22
-		tim.DayOfWeek = 1
-		tim.Hour = 4
-		tim.Minute = 16
-		tim.Second = 39
+		tim.Year = uint16(year)
+		tim.Month = uint8(month)
+		tim.DayOfMonth = uint8(day)
+		tim.DayOfWeek = 0xFF
+		tim.Hour = uint8(hour)
+		tim.Minute = uint8(min)
+		tim.Second = uint8(sec)
 		tim.Hundredths = 0
 		tim.Deviation = 0
 		tim.ClockStatus = 0
-	*/
 
-	t.Logf("time from: %s", tim.PrintDateTime())
+		t.Logf("time from: %s", tim.PrintDateTime())
 
-	// for some reason deviation and status must be zeroed or else thi meter reports error
-	tim.Deviation = 0
-	tim.ClockStatus = 0
+		fromValue = new(DlmsData)
+		fromValue.SetOctetString(tim.ToBytes())
 
-	fromValue := new(DlmsData)
-	fromValue.SetOctetString(tim.ToBytes())
+		gtim = time.Now()
+		year, month, day = gtim.Date()
+		hour, min, sec = gtim.Clock()
 
-	if len(d2.Arr) < 0 || d2.Arr[0].Typ != DATA_TYPE_TIME {
-		t.Fatalf("data error: unexpected format")
-	}
-	tim = DlmsDateTimeFromBytes(d2.Arr[0].GetOctetString())
-	/*
 		tim = new(DlmsDateTime)
-
-		tim.Year = 2016
-		tim.Month = 2
-		tim.DayOfMonth = 22
-		tim.DayOfWeek = 1
-		tim.Hour = 5
-		tim.Minute = 16
-		tim.Second = 39
+		tim.Year = uint16(year)
+		tim.Month = uint8(month)
+		tim.DayOfMonth = uint8(day)
+		tim.DayOfWeek = 0xFF
+		tim.Hour = uint8(hour)
+		tim.Minute = uint8(min)
+		tim.Second = uint8(sec)
 		tim.Hundredths = 0
 		tim.Deviation = 0
 		tim.ClockStatus = 0
-	*/
 
-	// for some reason deviation and status must be zeroed or else thi meter reports error
-	tim.Deviation = 0
-	tim.ClockStatus = 0
+		t.Logf("time to: %s", tim.PrintDateTime())
 
-	t.Logf("time to: %s", tim.PrintDateTime())
+		toValue = new(DlmsData)
+		toValue.SetOctetString(tim.ToBytes())
+	} else {
+		// read last profile entries again using time selector
 
-	toValue := new(DlmsData)
-	toValue.SetOctetString(tim.ToBytes())
+		// read the start time from fisrt profile entry
+
+		tim := DlmsDateTimeFromBytes(d1.Arr[0].GetOctetString())
+		t.Logf("time from: %s", tim.PrintDateTime())
+		// for some reason deviation and status must be zeroed or else this meter reports error
+		tim.Deviation = 0
+		tim.ClockStatus = 0
+		fromValue = new(DlmsData)
+		fromValue.SetOctetString(tim.ToBytes())
+
+		// read the end time from last profile entry
+
+		tim = DlmsDateTimeFromBytes(d2.Arr[0].GetOctetString())
+		// for some reason deviation and status must be zeroed or else this meter reports error
+		tim.Deviation = 0
+		tim.ClockStatus = 0
+		t.Logf("time to: %s", tim.PrintDateTime())
+		toValue = new(DlmsData)
+		toValue.SetOctetString(tim.ToBytes())
+	}
 
 	selectedValues := new(DlmsData)
 	selectedValues.SetArray(0)
@@ -1101,4 +1030,391 @@ func TestMeterHdlc_elektrotikaSecurity5__ProfileTimeRange(t *testing.T) {
 
 	data = rep.DataAt(0) // first request
 	printProfile(t, data)
+}
+
+func TestMeterHdlc_elektrotikaSecurity5_ActCalendarDaytable(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	t.Logf("read day table...")
+	vals := make([]*DlmsRequest, 1)
+	val := new(DlmsRequest)
+	val.ClassId = 20
+	val.InstanceId = &DlmsOid{0, 0, 13, 0, 0, 255}
+	val.AttributeId = 5
+	vals[0] = val
+
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("read failed: %s", err)
+		return
+	}
+	dataAccessResult := rep.DataAccessResultAt(0)
+	if 0 != dataAccessResult {
+		t.Fatalf("data access result: %d", dataAccessResult)
+	}
+	data := rep.DataAt(0)
+	if DATA_TYPE_ARRAY != data.GetType() {
+		t.Fatalf("wrong data type")
+	}
+	t.Logf("daytable:")
+	for i, st := range data.Arr {
+		if DATA_TYPE_STRUCTURE != st.GetType() {
+			t.Fatalf("wrong data type")
+		}
+		t.Logf("daytable [%d]: ", i)
+		t.Logf("\tid: %d", st.Arr[0].GetUnsigned())
+		for a, da := range st.Arr[1].Arr {
+			if DATA_TYPE_STRUCTURE != da.GetType() {
+				t.Fatalf("wrong data type: %v", da.GetType())
+			}
+			t.Logf("\taction [%d]:", a)
+			t.Logf("\t  start: %v", da.Arr[0].GetTime())
+			t.Logf("\t  script obis: %v", da.Arr[1].GetOctetString())
+			t.Logf("\t  script selector: %d", da.Arr[2].GetLongUnsigned())
+		}
+	}
+}
+
+func TestMeterHdlc_elektrotikaSecurity5_StateOfDisconnector(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	instanceId := &DlmsOid{0x00, 0x00, 0x60, 0x03, 0x0A, 0xFF}
+	classId := DlmsClassId(70)
+	attributeIdControlState := DlmsAttributeId(3)
+	attributeIdControlMode := DlmsAttributeId(4)
+
+	// Read control mode
+
+	val := new(DlmsRequest)
+	val.ClassId = classId
+	val.InstanceId = instanceId
+	val.AttributeId = attributeIdControlMode
+	vals := make([]*DlmsRequest, 1)
+	vals[0] = val
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	t.Logf("response took: %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	data := rep.DataAt(0)
+	if DATA_TYPE_ENUM != data.GetType() {
+		t.Fatalf("not integer")
+	}
+	controlMode := data.GetEnum()
+	t.Logf("control mode: %d", controlMode)
+
+	// Check connected state.
+
+	val = new(DlmsRequest)
+	val.ClassId = classId
+	val.InstanceId = instanceId
+	val.AttributeId = attributeIdControlState
+	vals = make([]*DlmsRequest, 1)
+	vals[0] = val
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	t.Logf("response took: %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	data = rep.DataAt(0)
+	if DATA_TYPE_ENUM != data.GetType() {
+		t.Fatalf("not integer")
+	}
+
+	controlState := data.GetEnum()
+	t.Logf("control state: %d", controlState)
+
+}
+
+// TODO: This test is failing because disconnector control mode is not 2.
+func noTestMeterHdlc_elektrotikaSecurity5_Disconnector(t *testing.T) {
+	init_TestMeterHdlc_elektrotikaSecurity5()
+	aconn, err := Mikroelectronica_AppConnectWithSec5()
+	if nil != err {
+		t.Fatal(err)
+	}
+	defer aconn.Close()
+
+	instanceId := &DlmsOid{0x00, 0x00, 0x60, 0x03, 0x0A, 0xFF}
+	classId := DlmsClassId(70)
+	attributeIdControlState := DlmsAttributeId(3)
+	attributeIdControlMode := DlmsAttributeId(4)
+	methodIdRemoteDisconnect := DlmsMethodId(1)
+	methodIdRemoteConnect := DlmsMethodId(2)
+	//stateDisconnected := uint8(0)
+	//stateConnected := uint8(1)
+
+	// Read control mode
+
+	val := new(DlmsRequest)
+	val.ClassId = classId
+	val.InstanceId = instanceId
+	val.AttributeId = attributeIdControlMode
+	vals := make([]*DlmsRequest, 1)
+	vals[0] = val
+	rep, err := aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	//t.Logf("response took: %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	data := rep.DataAt(0)
+	if DATA_TYPE_ENUM != data.GetType() {
+		t.Fatalf("not integer")
+	}
+	controlMode := data.GetEnum()
+	t.Logf("control mode: %d", data.GetEnum())
+
+	// Check if control mode is acceptable.
+	if controlMode != 2 {
+		t.Fatalf("unsupported control mode: %v", controlMode)
+	}
+
+	// Check connected state.
+
+	val = new(DlmsRequest)
+	val.ClassId = classId
+	val.InstanceId = instanceId
+	val.AttributeId = attributeIdControlState
+	vals = make([]*DlmsRequest, 1)
+	vals[0] = val
+	rep, err = aconn.SendRequest(vals)
+	if nil != err {
+		t.Fatalf("%s\n", err)
+	}
+	//t.Logf("response took: %v", rep.DeliveredIn())
+	if 0 != rep.DataAccessResultAt(0) {
+		t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+	}
+	data = rep.DataAt(0)
+	if DATA_TYPE_ENUM != data.GetType() {
+		t.Fatalf("not integer")
+	}
+
+	controlState := data.GetEnum()
+	t.Logf("initial state: %d", controlState)
+
+	// Based on current control state try to disconnect or connect.
+	// At the end of test always return meter to connected state.
+
+	switch controlState {
+
+	case 0: // disconnected
+
+		// Call remote_connect method.
+
+		method := new(DlmsRequest)
+		method.ClassId = classId
+		method.InstanceId = instanceId
+		method.MethodId = methodIdRemoteConnect
+		methodParameters := new(DlmsData)
+		methodParameters.SetInteger(1)
+		method.MethodParameters = methodParameters
+		methods := make([]*DlmsRequest, 1)
+		methods[0] = method
+		rep, err = aconn.SendRequest(methods)
+		if nil != err {
+			t.Fatalf("%s\n", err)
+		}
+		//t.Logf("response took: %v", rep.DeliveredIn())
+		if 0 != rep.ActionResultAt(0) {
+			t.Fatalf("actionResult: %d\n", rep.ActionResultAt(0))
+		}
+
+		// Check connected state.
+
+		val = new(DlmsRequest)
+		val.ClassId = classId
+		val.InstanceId = instanceId
+		val.AttributeId = attributeIdControlState
+		vals = make([]*DlmsRequest, 1)
+		vals[0] = val
+		rep, err = aconn.SendRequest(vals)
+		if nil != err {
+			t.Fatalf("%s\n", err)
+		}
+		//t.Logf("response took: %v", rep.DeliveredIn())
+		if 0 != rep.DataAccessResultAt(0) {
+			t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+		}
+		data = rep.DataAt(0)
+		if DATA_TYPE_ENUM != data.GetType() {
+			t.Fatalf("not integer")
+		}
+
+		controlState := data.GetEnum()
+		t.Logf("control state: %d", controlState)
+		if 1 != controlState {
+			t.Fatalf("meter did not connect, control state: %d", controlState)
+		}
+
+	case 1: // connected
+
+		// Call remote_disconnect method.
+
+		method := new(DlmsRequest)
+		method.ClassId = classId
+		method.InstanceId = instanceId
+		method.MethodId = methodIdRemoteDisconnect
+		methodParameters := new(DlmsData)
+		methodParameters.SetInteger(1)
+		method.MethodParameters = methodParameters
+		methods := make([]*DlmsRequest, 1)
+		methods[0] = method
+		rep, err = aconn.SendRequest(methods)
+		if nil != err {
+			t.Fatalf("%s\n", err)
+		}
+		//t.Logf("response took: %v", rep.DeliveredIn())
+		if 0 != rep.ActionResultAt(0) {
+			t.Fatalf("actionResult: %d\n", rep.ActionResultAt(0))
+		}
+
+		// Check connected state.
+
+		val = new(DlmsRequest)
+		val.ClassId = classId
+		val.InstanceId = instanceId
+		val.AttributeId = attributeIdControlState
+		vals = make([]*DlmsRequest, 1)
+		vals[0] = val
+		rep, err = aconn.SendRequest(vals)
+		if nil != err {
+			t.Fatalf("%s\n", err)
+		}
+		//t.Logf("response took: %v", rep.DeliveredIn())
+		if 0 != rep.DataAccessResultAt(0) {
+			t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+		}
+		data = rep.DataAt(0)
+		if DATA_TYPE_ENUM != data.GetType() {
+			t.Fatalf("not integer")
+		}
+
+		controlState := data.GetEnum()
+		t.Logf("control state: %d", controlState)
+		if 0 != controlState {
+			t.Fatalf("meter did not disconnect, control state: %d", controlState)
+		}
+
+		// Pause before connect
+		time.Sleep(time.Second * 1)
+
+		// Call remote_connect method.
+
+		method = new(DlmsRequest)
+		method.ClassId = classId
+		method.InstanceId = instanceId
+		method.MethodId = methodIdRemoteConnect
+		methodParameters = new(DlmsData)
+		methodParameters.SetInteger(1)
+		method.MethodParameters = methodParameters
+		methods = make([]*DlmsRequest, 1)
+		methods[0] = method
+		rep, err = aconn.SendRequest(methods)
+		if nil != err {
+			t.Fatalf("%s\n", err)
+		}
+		//t.Logf("response took: %v", rep.DeliveredIn())
+		if 0 != rep.ActionResultAt(0) {
+			t.Fatalf("actionResult: %d\n", rep.ActionResultAt(0))
+		}
+
+		// Check final state.
+
+		val = new(DlmsRequest)
+		val.ClassId = classId
+		val.InstanceId = instanceId
+		val.AttributeId = attributeIdControlState
+		vals = make([]*DlmsRequest, 1)
+		vals[0] = val
+		rep, err = aconn.SendRequest(vals)
+		if nil != err {
+			t.Fatalf("%s\n", err)
+		}
+		//t.Logf("response took: %v", rep.DeliveredIn())
+		if 0 != rep.DataAccessResultAt(0) {
+			t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+		}
+		data = rep.DataAt(0)
+		if DATA_TYPE_ENUM != data.GetType() {
+			t.Fatalf("not integer")
+		}
+
+		controlState = data.GetEnum()
+		t.Logf("control state: %d", controlState)
+		if 1 != controlState {
+			t.Fatalf("meter did not connect, control state: %d", controlState)
+		}
+
+	case 3: // ready for connection
+
+		// Call remote_connect method.
+
+		method := new(DlmsRequest)
+		method.ClassId = classId
+		method.InstanceId = instanceId
+		method.MethodId = methodIdRemoteConnect
+		methodParameters := new(DlmsData)
+		methodParameters.SetInteger(1)
+		method.MethodParameters = methodParameters
+		methods := make([]*DlmsRequest, 1)
+		methods[0] = method
+		rep, err = aconn.SendRequest(methods)
+		if nil != err {
+			t.Fatalf("%s\n", err)
+		}
+		//t.Logf("response took: %v", rep.DeliveredIn())
+		if 0 != rep.ActionResultAt(0) {
+			t.Fatalf("actionResult: %d\n", rep.ActionResultAt(0))
+		}
+
+		// Check connected state.
+
+		val = new(DlmsRequest)
+		val.ClassId = classId
+		val.InstanceId = instanceId
+		val.AttributeId = attributeIdControlState
+		vals = make([]*DlmsRequest, 1)
+		vals[0] = val
+		rep, err = aconn.SendRequest(vals)
+		if nil != err {
+			t.Fatalf("%s\n", err)
+		}
+		//t.Logf("response took: %v", rep.DeliveredIn())
+		if 0 != rep.DataAccessResultAt(0) {
+			t.Fatalf("dataAccessResult: %d\n", rep.DataAccessResultAt(0))
+		}
+		data = rep.DataAt(0)
+		if DATA_TYPE_ENUM != data.GetType() {
+			t.Fatalf("not integer")
+		}
+
+		controlState := data.GetEnum()
+		t.Logf("control state: %d", controlState)
+		if 1 != controlState {
+			t.Fatalf("meter did not connect, control state: %d", controlState)
+		}
+
+	default:
+		t.Fatalf("unknown controlState: %d", controlState)
+	}
 }
