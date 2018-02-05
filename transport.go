@@ -160,6 +160,8 @@ func hdlcTransportSend(rwc io.ReadWriteCloser, pdu []byte) error {
 func (dconn *DlmsConn) transportSend(src uint16, dst uint16, pdu []byte) (err error) {
 	debugLog("trnasport type: %d, src: %d, dst: %d\n", dconn.transportType, src, dst)
 
+	debugLog("sending app pdu: % 02X\n", pdu)
+
 	err, pdu = dconn.encryptPdu(pdu)
 	if nil != err {
 		return err
@@ -267,6 +269,8 @@ func (dconn *DlmsConn) transportReceive(src uint16, dst uint16) (pdu []byte, err
 		errorLog("%s", err)
 		return nil, err
 	}
+
+	debugLog("received app pdu: % 02X\n", pdu)
 
 	err, pdu = dconn.decryptPdu(pdu)
 	return pdu, err
@@ -513,7 +517,7 @@ func (dconn *DlmsConn) decryptPduGSM(pdu []byte) (err error, dpdu []byte) {
 func (dconn *DlmsConn) encryptPdu(pdu []byte) (err error, epdu []byte) {
 	if dconn.authenticationMechanismId == high_level_security_mechanism_using_GMAC {
 		err, epdu = dconn.encryptPduGSM(pdu)
-		debugLog("encrypted pdu: % 0X", epdu)
+		debugLog("encrypted app pdu: % 0X", epdu)
 		return err, epdu
 	} else if dconn.authenticationMechanismId == lowest_level_security_mechanism {
 		return nil, pdu
@@ -527,7 +531,7 @@ func (dconn *DlmsConn) encryptPdu(pdu []byte) (err error, epdu []byte) {
 func (dconn *DlmsConn) decryptPdu(pdu []byte) (err error, dpdu []byte) {
 	if dconn.authenticationMechanismId == high_level_security_mechanism_using_GMAC {
 		err, dpdu = dconn.decryptPduGSM(pdu)
-		debugLog("decrypted pdu: % 0X", dpdu)
+		debugLog("decrypted app pdu: % 0X", dpdu)
 		return err, dpdu
 	} else if dconn.authenticationMechanismId == lowest_level_security_mechanism {
 		return nil, pdu
