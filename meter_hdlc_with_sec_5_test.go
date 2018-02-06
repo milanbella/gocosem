@@ -1143,7 +1143,7 @@ func TestMeterHdlc_elektrotikaSecurity5_StateOfDisconnector(t *testing.T) {
 }
 
 // TODO: This test is failing because disconnector control mode is not 2.
-func noTestMeterHdlc_elektrotikaSecurity5_Disconnector(t *testing.T) {
+func TestMeterHdlc_elektrotikaSecurity5_Disconnector(t *testing.T) {
 	init_TestMeterHdlc_elektrotikaSecurity5()
 	aconn, err := Mikroelectronica_AppConnectWithSec5()
 	if nil != err {
@@ -1210,7 +1210,7 @@ func noTestMeterHdlc_elektrotikaSecurity5_Disconnector(t *testing.T) {
 	}
 
 	controlState := data.GetEnum()
-	t.Logf("initial state: %d", controlState)
+	t.Logf("control state: %d", controlState)
 
 	// Based on current control state try to disconnect or connect.
 	// At the end of test always return meter to connected state.

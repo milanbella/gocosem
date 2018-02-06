@@ -313,7 +313,7 @@ func cosemTagToGloTag(tag1 byte) (err error, tag byte) {
 	if tag1 == 194 {
 		return nil, 202
 	}
-	if tag1 == 199 {
+	if tag1 == 195 {
 		return nil, 203
 	}
 	if tag1 == 196 {
