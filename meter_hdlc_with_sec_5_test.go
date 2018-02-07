@@ -24,14 +24,16 @@ func printProfile(t *testing.T, data *DlmsData) {
 		}
 		d0 := d.Arr[0]
 		if d0.Typ == DATA_TYPE_NULL {
-			t.Logf("\t%d: nil", i)
-			continue
+			// Cosem Blue Book:
+			// REMARK 2 The value of a captured object may be replaced by “null-data” if it can be unambiguously recovered from the previous value (for example for time: if it can be calculated from the previous value and capture_period; or for a value: if it is equal to the previous value).
+			t.Logf("\t%d: nil %s: ", i, d.Print())
+		} else {
+			if d0.Typ != DATA_TYPE_OCTET_STRING {
+				t.Logf("\t%d: error: wrong first item format: %d", i, d0.Typ)
+				continue
+			}
+			t.Logf("\t%d: %s %s: ", i, DlmsDateTimeFromBytes(d0.GetOctetString()).PrintDateTime(), d.Print())
 		}
-		if d0.Typ != DATA_TYPE_OCTET_STRING {
-			t.Logf("\t%d: error: wrong first item format: %d", i, d0.Typ)
-			continue
-		}
-		t.Logf("\t%d: %s %s: ", i, DlmsDateTimeFromBytes(d0.GetOctetString()).PrintDateTime(), d.Print())
 	}
 }
 
@@ -839,86 +841,11 @@ func TestMeterHdlc_elektrotikaSecurity5_ProfileTimeRange(t *testing.T) {
 	}
 	defer aconn.Close()
 
-	// read profile entries in use
-
-	t.Logf("read profile entries ...")
-	vals := make([]*DlmsRequest, 1)
-	val := new(DlmsRequest)
-	val.ClassId = 7
-	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
-	val.AttributeId = 7
-	vals[0] = val
-
-	rep, err := aconn.SendRequest(vals)
-	if nil != err {
-		t.Fatalf("read failed: %s", err)
-		return
-	}
-	dataAccessResult := rep.DataAccessResultAt(0)
-	if 0 != dataAccessResult {
-		t.Fatalf("data access result: %d", dataAccessResult)
-	}
-	data := rep.DataAt(0)
-	entriesInUse := data.GetDoubleLongUnsigned()
-	t.Logf("profile entries in use: %d", entriesInUse)
-
-	vals = make([]*DlmsRequest, 1)
-
-	// read last 10 entries
-
-	t.Logf("reading last profile entries using the time selector")
-
-	val = new(DlmsRequest)
-	val.ClassId = 7
-	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
-	val.AttributeId = 2
-	val.AccessSelector = 2
-	val.AccessParameter = new(DlmsData)
-	val.AccessParameter.SetStructure(4)
-	if entriesInUse > 10 {
-		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(entriesInUse - 10 + 1) // from_entry
-	} else {
-		val.AccessParameter.Arr[0].SetDoubleLongUnsigned(1) // from_entry
-	}
-	val.AccessParameter.Arr[1].SetDoubleLongUnsigned(entriesInUse) // to_entry
-	val.AccessParameter.Arr[2].SetLongUnsigned(1)                  // from_selected_value
-	val.AccessParameter.Arr[3].SetLongUnsigned(0)                  // to_selected_value
-
-	vals[0] = val
-
-	rep, err = aconn.SendRequest(vals)
-	if nil != err {
-		t.Fatalf("read failed: %s", err)
-		return
-	}
-	dataAccessResult = rep.DataAccessResultAt(0)
-	if 0 != dataAccessResult {
-		t.Fatalf("data access result: %d", dataAccessResult)
-	}
-
-	data = rep.DataAt(0) // first request
-	printProfile(t, data)
-
-	d1 := data.Arr[0]
-	if nil != d1.Err {
-		t.Fatalf("data error: %v", d1.Err)
-	}
-	if d1.Typ != DATA_TYPE_STRUCTURE {
-		t.Fatalf("data error: unexpected format")
-	}
-	d2 := data.Arr[len(data.Arr)-1]
-	if nil != d2.Err {
-		t.Fatalf("data error: %v", d2.Err)
-	}
-	if d2.Typ != DATA_TYPE_STRUCTURE {
-		t.Fatalf("data error: unexpected format")
-	}
-
 	// read last 10 entries using time interval selection
 
-	vals = make([]*DlmsRequest, 1)
+	vals := make([]*DlmsRequest, 1)
 
-	val = new(DlmsRequest)
+	val := new(DlmsRequest)
 	val.ClassId = 7
 	val.InstanceId = &DlmsOid{1, 0, 99, 1, 0, 255}
 	val.AttributeId = 2
@@ -937,76 +864,50 @@ func TestMeterHdlc_elektrotikaSecurity5_ProfileTimeRange(t *testing.T) {
 
 	var fromValue, toValue *DlmsData
 
-	if (len(d1.Arr) < 0 || d1.Arr[0].Typ != DATA_TYPE_TIME) || len(d2.Arr) < 0 || d2.Arr[0].Typ != DATA_TYPE_TIME {
-		// first column does not contain time, perhaps time is nil
-		t.Logf("data error: unexpected format of time column")
-		t.Logf("            therefore reading profile entries from yesterday")
+	t.Logf("reading profile entries from yesterday")
 
-		gtim := time.Now()
-		gtim = gtim.AddDate(0, 0, -1)
-		year, month, day := gtim.Date()
-		hour, min, sec := gtim.Clock()
+	gtim := time.Now()
+	gtim = gtim.AddDate(0, 0, -1)
+	year, month, day := gtim.Date()
+	hour, min, sec := gtim.Clock()
 
-		tim := new(DlmsDateTime)
-		tim.Year = uint16(year)
-		tim.Month = uint8(month)
-		tim.DayOfMonth = uint8(day)
-		tim.DayOfWeek = 0xFF
-		tim.Hour = uint8(hour)
-		tim.Minute = uint8(min)
-		tim.Second = uint8(sec)
-		tim.Hundredths = 0
-		tim.Deviation = 0
-		tim.ClockStatus = 0
+	tim := new(DlmsDateTime)
+	tim.Year = uint16(year)
+	tim.Month = uint8(month)
+	tim.DayOfMonth = uint8(day)
+	tim.DayOfWeek = 0xFF
+	tim.Hour = uint8(hour)
+	tim.Minute = uint8(min)
+	tim.Second = uint8(sec)
+	tim.Hundredths = 0
+	tim.Deviation = 0
+	tim.ClockStatus = 0
 
-		t.Logf("time from: %s", tim.PrintDateTime())
+	t.Logf("time from: %s", tim.PrintDateTime())
 
-		fromValue = new(DlmsData)
-		fromValue.SetOctetString(tim.ToBytes())
+	fromValue = new(DlmsData)
+	fromValue.SetOctetString(tim.ToBytes())
 
-		gtim = time.Now()
-		year, month, day = gtim.Date()
-		hour, min, sec = gtim.Clock()
+	gtim = time.Now()
+	year, month, day = gtim.Date()
+	hour, min, sec = gtim.Clock()
 
-		tim = new(DlmsDateTime)
-		tim.Year = uint16(year)
-		tim.Month = uint8(month)
-		tim.DayOfMonth = uint8(day)
-		tim.DayOfWeek = 0xFF
-		tim.Hour = uint8(hour)
-		tim.Minute = uint8(min)
-		tim.Second = uint8(sec)
-		tim.Hundredths = 0
-		tim.Deviation = 0
-		tim.ClockStatus = 0
+	tim = new(DlmsDateTime)
+	tim.Year = uint16(year)
+	tim.Month = uint8(month)
+	tim.DayOfMonth = uint8(day)
+	tim.DayOfWeek = 0xFF
+	tim.Hour = uint8(hour)
+	tim.Minute = uint8(min)
+	tim.Second = uint8(sec)
+	tim.Hundredths = 0
+	tim.Deviation = 0
+	tim.ClockStatus = 0
 
-		t.Logf("time to: %s", tim.PrintDateTime())
+	t.Logf("time to: %s", tim.PrintDateTime())
 
-		toValue = new(DlmsData)
-		toValue.SetOctetString(tim.ToBytes())
-	} else {
-		// read last profile entries again using time selector
-
-		// read the start time from fisrt profile entry
-
-		tim := DlmsDateTimeFromBytes(d1.Arr[0].GetOctetString())
-		t.Logf("time from: %s", tim.PrintDateTime())
-		// for some reason deviation and status must be zeroed or else this meter reports error
-		tim.Deviation = 0
-		tim.ClockStatus = 0
-		fromValue = new(DlmsData)
-		fromValue.SetOctetString(tim.ToBytes())
-
-		// read the end time from last profile entry
-
-		tim = DlmsDateTimeFromBytes(d2.Arr[0].GetOctetString())
-		// for some reason deviation and status must be zeroed or else this meter reports error
-		tim.Deviation = 0
-		tim.ClockStatus = 0
-		t.Logf("time to: %s", tim.PrintDateTime())
-		toValue = new(DlmsData)
-		toValue.SetOctetString(tim.ToBytes())
-	}
+	toValue = new(DlmsData)
+	toValue.SetOctetString(tim.ToBytes())
 
 	selectedValues := new(DlmsData)
 	selectedValues.SetArray(0)
@@ -1018,17 +919,17 @@ func TestMeterHdlc_elektrotikaSecurity5_ProfileTimeRange(t *testing.T) {
 
 	vals[0] = val
 
-	rep, err = aconn.SendRequest(vals)
+	rep, err := aconn.SendRequest(vals)
 	if nil != err {
 		t.Fatalf("read failed: %s", err)
 		return
 	}
-	dataAccessResult = rep.DataAccessResultAt(0)
+	dataAccessResult := rep.DataAccessResultAt(0)
 	if 0 != dataAccessResult {
 		t.Fatalf("data access result: %d", dataAccessResult)
 	}
 
-	data = rep.DataAt(0) // first request
+	data := rep.DataAt(0) // first request
 	printProfile(t, data)
 }
 
@@ -1142,7 +1043,6 @@ func TestMeterHdlc_elektrotikaSecurity5_StateOfDisconnector(t *testing.T) {
 
 }
 
-// TODO: This test is failing because disconnector control mode is not 2.
 func TestMeterHdlc_elektrotikaSecurity5_Disconnector(t *testing.T) {
 	init_TestMeterHdlc_elektrotikaSecurity5()
 	aconn, err := Mikroelectronica_AppConnectWithSec5()
