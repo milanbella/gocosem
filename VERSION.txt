@@ -91,3 +91,7 @@ but original asn1c encoder encode_AARQapdu()  is preserved and may be stil used,
 4.2.0
 ======
 - asn1 parser for AARQ, AARE
+
+4.3.0
+======
+- highest level security: high_level_security_mechanism_using_GMAC 
