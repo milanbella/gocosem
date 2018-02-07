@@ -10,3 +10,5 @@ go test -run TestHdlc
 #go test -run TestMeterAHdlc
 #go test -run TestActions_hdlcMeter
 #go test -run TestMeterLgHdlc
+#go test -run TestMeterHdlc_elektrotikaSecurity5
+
