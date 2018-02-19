@@ -203,9 +203,9 @@ func TestMeterTcp_ProfileCaptureObjects(t *testing.T) {
 		}
 		t.Logf("capture object [%d]:", i)
 		t.Logf("\tclass id: %d", st.Arr[0].GetLongUnsigned())
-		t.Logf("\tlogical name: %02X", st.Arr[1].GetOctetString())
+		t.Logf("\tlogical name: % 02X", st.Arr[1].GetOctetString())
 		t.Logf("\tattribute index: %d", st.Arr[2].GetInteger())
-		t.Logf("\tdata index: %02X", st.Arr[3].GetLongUnsigned())
+		t.Logf("\tdata index: % 02X", st.Arr[3].GetLongUnsigned())
 	}
 }
 
@@ -380,9 +380,9 @@ func TestMeterTcp_ProfileSortObject(t *testing.T) {
 	}
 	t.Logf("sort object:")
 	t.Logf("\tclass id: %d", data.Arr[0].GetLongUnsigned())
-	t.Logf("\tlogical name: %02X", data.Arr[1].GetOctetString())
+	t.Logf("\tlogical name: % 02X", data.Arr[1].GetOctetString())
 	t.Logf("\tattribute index: %d", data.Arr[2].GetInteger())
-	t.Logf("\tdata index: %02X", data.Arr[3].GetLongUnsigned())
+	t.Logf("\tdata index: % 02X", data.Arr[3].GetLongUnsigned())
 }
 
 func TestMeterTcp_ProfileCapturePeriod(t *testing.T) {

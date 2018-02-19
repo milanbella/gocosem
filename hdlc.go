@@ -232,12 +232,14 @@ var HdlcErrorFrameRejected = errors.New("frame rejected")
 var HdlcErrorNotClient = errors.New("not a client")
 var HdlcErrorTransportClosed = errors.New("transport closed")
 
+var MaxInfoFieldLength = uint16(512)
+
 func NewHdlcTransport(rw io.ReadWriter, responseTimeout time.Duration, client bool, clientId uint8, logicalDeviceId uint16, physicalDeviceId *uint16, serverAddressLength *int) *HdlcTransport {
 	htran := new(HdlcTransport)
 	htran.rw = rw
 	htran.modulus = 8
-	htran.maxInfoFieldLengthTransmit = 128
-	htran.maxInfoFieldLengthReceive = 128
+	htran.maxInfoFieldLengthTransmit = MaxInfoFieldLength
+	htran.maxInfoFieldLengthReceive = MaxInfoFieldLength
 	htran.windowSizeTransmit = 1
 	htran.windowSizeReceive = 1
 
@@ -300,13 +302,13 @@ func (htran *HdlcTransport) SendSNRM(maxInfoFieldLengthTransmit *uint16, maxInfo
 	if nil != maxInfoFieldLengthTransmit {
 		command.snrm.maxInfoFieldLengthTransmit = *maxInfoFieldLengthTransmit
 	} else {
-		command.snrm.maxInfoFieldLengthTransmit = 128
+		command.snrm.maxInfoFieldLengthTransmit = htran.maxInfoFieldLengthTransmit
 	}
 
 	if nil != maxInfoFieldLengthReceive {
 		command.snrm.maxInfoFieldLengthReceive = *maxInfoFieldLengthReceive
 	} else {
-		command.snrm.maxInfoFieldLengthReceive = 128
+		command.snrm.maxInfoFieldLengthReceive = htran.maxInfoFieldLengthReceive
 	}
 
 	command.snrm.windowSizeTransmit = 1
@@ -2073,11 +2075,11 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 			pb[2] = b1
 			copy(pb[3:], p)
 			if htran.client {
-				//fmt.Printf("client_inbound: 7E %0X %0X% 0X\n", b0, b1, p)
-				fmt.Printf("client_inbound: % 0X\n", pb)
+				fmt.Printf("client_inbound: 7E% 02X% 02X% 02X\n", b0, b1, p)
+				//fmt.Printf("client_inbound: % 0X\n", pb)
 			} else {
-				//fmt.Printf("server_inbound: 7E %0X %0X% 0X\n", b0, b1, p)
-				fmt.Printf("server_inbound: % 0X\n", pb)
+				fmt.Printf("server_inbound: 7E% 02X% 02X% 02X\n", b0, b1, p)
+				//fmt.Printf("server_inbound: % 0X\n", pb)
 			}
 		}
 
@@ -2085,7 +2087,7 @@ func (htran *HdlcTransport) decodeFrameFACI(frame *HdlcFrame, l int) (err error,
 		n += nn
 		return err, n
 	} else {
-		warnLog("worng format field %02X", p)
+		warnLog("worng format field % 02X", p)
 		return HdlcErrorMalformedSegment, n
 	}
 }
@@ -2392,9 +2394,9 @@ func (htran *HdlcTransport) writeFrame(frame *HdlcFrame) (err error) {
 	}
 	if HdlcDebug {
 		if htran.client {
-			fmt.Printf("client_outbound: % 0X\n", p)
+			fmt.Printf("client_outbound: % 02X\n", p)
 		} else {
-			fmt.Printf("server_outbound: % 0X\n", p)
+			fmt.Printf("server_outbound: % 02X\n", p)
 		}
 		htran.printFrame(frame)
 	}
@@ -2880,10 +2882,10 @@ mainLoop:
 						if HdlcDebug {
 							if htran.client {
 								clientRcnt += len(segment.p)
-								fmt.Fprintf(os.Stdout, "client: received bytes total: %d, segment: %02X\n", clientRcnt, segment.p)
+								fmt.Fprintf(os.Stdout, "client: received bytes total: %d, segment: % 02X\n", clientRcnt, segment.p)
 							} else {
 								serverRcnt += len(segment.p)
-								fmt.Fprintf(os.Stdout, "server: received bytes total: %d, segment: %02X\n", serverRcnt, segment.p)
+								fmt.Fprintf(os.Stdout, "server: received bytes total: %d, segment: % 02X\n", serverRcnt, segment.p)
 							}
 						}
 
@@ -3142,12 +3144,12 @@ mainLoop:
 					if nil != maxInfoFieldLengthTransmit {
 						htran.maxInfoFieldLengthTransmit = *maxInfoFieldLengthTransmit
 					} else {
-						htran.maxInfoFieldLengthTransmit = 128
+						htran.maxInfoFieldLengthTransmit = MaxInfoFieldLength
 					}
 					if nil != maxInfoFieldLengthReceive {
 						htran.maxInfoFieldLengthReceive = *maxInfoFieldLengthReceive
 					} else {
-						htran.maxInfoFieldLengthReceive = 128
+						htran.maxInfoFieldLengthReceive = MaxInfoFieldLength
 					}
 					if nil != windowSizeTransmit {
 						htran.windowSizeTransmit = *windowSizeTransmit
