@@ -276,111 +276,42 @@ func (dconn *DlmsConn) transportReceive(src uint16, dst uint16) (pdu []byte, err
 	return pdu, err
 }
 
-func cosemTagToGloTag(tag1 byte) (err error, tag byte) {
-	if tag1 == 1 {
-		return nil, 33
+var gloTagMap = map[byte]byte{
+	1:   33,
+	5:   37,
+	6:   38,
+	8:   40,
+	12:  44,
+	13:  45,
+	14:  46,
+	22:  54,
+	24:  56,
+	192: 200,
+	193: 201,
+	194: 202,
+	195: 203,
+	196: 204,
+	197: 205,
+	199: 207,
+}
+
+func cosemTagToGloTag(cosTag byte) (error, byte) {
+	if glo, ok := gloTagMap[cosTag]; ok {
+		return nil, glo
 	}
-	if tag1 == 5 {
-		return nil, 37
-	}
-	if tag1 == 6 {
-		return nil, 38
-	}
-	if tag1 == 8 {
-		return nil, 40
-	}
-	if tag1 == 12 {
-		return nil, 44
-	}
-	if tag1 == 13 {
-		return nil, 45
-	}
-	if tag1 == 14 {
-		return nil, 46
-	}
-	if tag1 == 22 {
-		return nil, 54
-	}
-	if tag1 == 24 {
-		return nil, 56
-	}
-	if tag1 == 192 {
-		return nil, 200
-	}
-	if tag1 == 193 {
-		return nil, 201
-	}
-	if tag1 == 194 {
-		return nil, 202
-	}
-	if tag1 == 195 {
-		return nil, 203
-	}
-	if tag1 == 196 {
-		return nil, 204
-	}
-	if tag1 == 197 {
-		return nil, 205
-	}
-	if tag1 == 199 {
-		return nil, 207
-	}
-	err = fmt.Errorf("unknown tag")
-	errorLog("%s", err)
+	err := fmt.Errorf("unknown tag")
+	errorLog("cosemTagToGloTag(%b): %s", cosTag, err)
 	return err, 0
 }
 
-func gloTagToCosemTag(tag1 byte) (err error, tag byte) {
-	if tag1 == 33 {
-		return nil, 1
+func gloTagToCosemTag(gloTag byte) (error, byte) {
+	for cos, glo := range gloTagMap {
+		if glo == gloTag {
+			return nil, cos
+		}
 	}
-	if tag1 == 37 {
-		return nil, 5
-	}
-	if tag1 == 38 {
-		return nil, 6
-	}
-	if tag1 == 40 {
-		return nil, 8
-	}
-	if tag1 == 44 {
-		return nil, 12
-	}
-	if tag1 == 45 {
-		return nil, 13
-	}
-	if tag1 == 46 {
-		return nil, 14
-	}
-	if tag1 == 54 {
-		return nil, 22
-	}
-	if tag1 == 56 {
-		return nil, 24
-	}
-	if tag1 == 200 {
-		return nil, 192
-	}
-	if tag1 == 201 {
-		return nil, 193
-	}
-	if tag1 == 202 {
-		return nil, 194
-	}
-	if tag1 == 203 {
-		return nil, 199
-	}
-	if tag1 == 204 {
-		return nil, 196
-	}
-	if tag1 == 205 {
-		return nil, 197
-	}
-	if tag1 == 207 {
-		return nil, 199
-	}
-	err = fmt.Errorf("unknown tag")
-	errorLog("%s", err)
+	err := fmt.Errorf("unknown tag")
+	errorLog("gloTagToCosemTag(%b): %s", gloTag, err)
 	return err, 0
 }
 
