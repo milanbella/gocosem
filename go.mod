@@ -1,3 +1,3 @@
-module github.com/mwlazlo/gocosem
+module github.com/milanbella/gocosem
 
 go 1.13
